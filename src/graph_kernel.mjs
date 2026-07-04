@@ -1057,10 +1057,7 @@ function bloomDeath(world, e) {
     if (deep > 780 && world.rng() < 0.7) spawnParticle(world, 'spores', e.x, e.y, Math.ceil(deep / 1400));
     if (deep > 1120 && world.rng() < 0.58) spawnParticle(world, choice(world, ['enzymes', 'crystals']), e.x, e.y, 1);
     const player = getPlayer(world);
-    // DNA can exist before mitochondria; the Eucharist asks for one deep record.
-    // It remains scarce because it only appears from deep rupture events and still
-    // requires a DNA Memory Vesicle to carry.
-    if (player && deep > 1800 && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
+    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
       spawnParticle(world, 'dna', e.x, e.y, e.controller === 'protozoan' ? 2 : 1);
     }
   }
