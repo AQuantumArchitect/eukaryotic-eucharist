@@ -43,7 +43,13 @@ const DNA_CATEGORY_COLORS = Object.freeze({
   lance: '#ff3d9a',
   rasp: '#ff7a3d',
   launcher: '#b06dff',
-  leech: '#8fe37a'
+  leech: '#8fe37a',
+  aura: '#ff5a5a',
+  control: '#6fd6ff',
+  risk: '#ff2d7a',
+  execute: '#ff8a3d',
+  projectile: '#4db8ff',
+  orbital: '#ffd24d'
 });
 
 // Each species carries a pool of mutant strains. A strain grafts one signature
@@ -66,10 +72,27 @@ const STRAINS = Object.freeze({
     { org: 'saw_lance', tint: '#9a8fb0' },
     { org: 'leech_rasp', tint: '#8fe37a' },
     { org: 'leech_lance', tint: '#6fce8f' },
+    { org: 'rupture_auger', tint: '#ff3d9a' },
+    { org: 'adrenal_vesicle', tint: '#ff2d7a' },
+    { org: 'thorn_coat', tint: '#ff6a6a' },
+    { org: 'corrosive_pellicle', tint: '#ff5a5a' },
+    { org: 'discharge_vesicle', tint: '#ffe86f' },
+    { org: 'cryo_vesicle', tint: '#8fd6ff' },
+    { org: 'chemotaxis_cilia', tint: '#6fd6ff' },
+    { org: 'phagocyte_maw', tint: '#ff8a3d' },
+    { org: 'necrosis_gland', tint: '#c88a4d' },
+    { org: 'volatile_vacuole', tint: '#ff4d6a' },
+    { org: 'seeker_gland', tint: '#4db8ff' },
+    { org: 'harpoon_spine', tint: '#3d9aff' },
+    { org: 'neuro_barb', tint: '#6faaff' },
+    { org: 'orbital_spores', tint: '#ffd24d' },
+    { org: 'fission_bud', tint: '#ffc24d' },
     { org: 'spore_toxin_launcher', tint: '#b06dff' }
   ]
 });
-const STRAIN_CHANCE = Object.freeze({ algae: 0.18, predator: 0.28, protozoan: 0.22 });
+// Deep protozoans are the most mutated: half spawn as a strain, drawn from a large
+// pool, so the deep froth is a churning mix of exotic genomes to hunt and harvest.
+const STRAIN_CHANCE = Object.freeze({ algae: 0.18, predator: 0.28, protozoan: 0.5 });
 
 // Every processor is one biomass→ATP flow with its own yield and toxic-waste
 // signature; they coexist and stack. A body's metabolic character is the sum of
@@ -77,11 +100,11 @@ const STRAIN_CHANCE = Object.freeze({ algae: 0.18, predator: 0.28, protozoan: 0.
 const PROCESSORS = Object.freeze(['anaerobic_processor', 'clean_processor', 'virulent_processor', 'catalytic_processor']);
 // Forward spines share one impact model; each type tunes damage, reach, and how
 // hard it ramps with speed. Saw lances pin speed out entirely for flat grind.
-const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance', 'leech_lance']);
+const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance', 'leech_lance', 'rupture_auger']);
 const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp']);
 // Organelles that express an individually-rolled potency (see potency() / applyStrain).
 // Each mutant that carries one of these rolls its own multiplier when it spawns.
-const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance']);
+const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance', 'rupture_auger', 'adrenal_vesicle', 'thorn_coat', 'corrosive_pellicle', 'discharge_vesicle', 'cryo_vesicle', 'chemotaxis_cilia', 'phagocyte_maw', 'necrosis_gland', 'volatile_vacuole', 'seeker_gland', 'harpoon_spine', 'neuro_barb', 'orbital_spores', 'fission_bud']);
 
 export const ORGANELLES = Object.freeze({
   membrane: {
@@ -229,6 +252,83 @@ export const ORGANELLES = Object.freeze({
     desc: 'A feeding spine. Its jab barely wounds, but on contact it draws biomass and lipids at range — parasitize prey without killing it.',
     stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 7.0 }
   },
+
+  // ── Deep-predator strains (survivor-like exotic organelles) ────────────────
+  rupture_auger: {
+    name: 'Rupture Auger', tier: 3, action: null, stackable: true, max: 6, category: 'lance',
+    desc: 'A drilling spine that ignores membrane hardness entirely — carves through the toughest deep armor as if it were slurry.',
+    stats: { damage: 20, length: 46, rupturePower: 2.0, alignmentFloor: 0.30, speedScale: 120, speedFloor: 30, pierce: true }
+  },
+  adrenal_vesicle: {
+    name: 'Adrenal Vesicle', tier: 3, action: null, stackable: true, max: 4, category: 'risk',
+    desc: 'A stress gland. The closer to death you swim, the harder and faster you strike — up to double when the membrane is nearly ruptured.',
+    stats: { maxBonus: 1.0, threshold: 0.6 }
+  },
+  thorn_coat: {
+    name: 'Thorn Coat', tier: 3, action: null, stackable: true, max: 5, category: 'aura',
+    desc: 'A spined pellicle. A share of any damage dealt to you is driven straight back into whatever touched you.',
+    stats: { reflect: 0.40 }
+  },
+  corrosive_pellicle: {
+    name: 'Corrosive Pellicle', tier: 3, action: null, stackable: true, max: 5, category: 'aura',
+    desc: 'An acidic skin. Anything sharing your space dissolves a little each moment — no action required, just overlap.',
+    stats: { dps: 8.0 }
+  },
+  discharge_vesicle: {
+    name: 'Discharge Vesicle', tier: 3, action: null, stackable: true, max: 4, category: 'aura',
+    desc: 'An electric organ that periodically shocks every body around you, spending a little ATP per pulse.',
+    stats: { damage: 20, radius: 92, energyCost: 3.0, cooldown: 1.6 }
+  },
+  cryo_vesicle: {
+    name: 'Cryo Vesicle', tier: 3, action: null, stackable: true, max: 4, category: 'control',
+    desc: 'A chilling organ. Anything you damage is slowed for a moment — kite the tanky deep cells to death.',
+    stats: { slowMult: 0.5, dur: 1.3 }
+  },
+  chemotaxis_cilia: {
+    name: 'Chemotaxis Cilia', tier: 3, action: null, stackable: true, max: 4, category: 'control',
+    desc: 'A sensory fringe that drags nearby slurry fields and loose particles toward you — a feeding-build\'s dream vacuum.',
+    stats: { radius: 220, pull: 120 }
+  },
+  phagocyte_maw: {
+    name: 'Phagocyte Maw', tier: 3, action: null, stackable: true, max: 3, category: 'execute',
+    desc: 'An engulfing morphology. Overlap a small, weakened body and it is swallowed whole — instantly rendered into biomass.',
+    stats: { hpFrac: 0.20, sizeRatio: 0.85, cooldown: 0.5, biomassGain: 12 }
+  },
+  necrosis_gland: {
+    name: 'Necrosis Gland', tier: 3, action: null, stackable: true, max: 3, category: 'execute',
+    desc: 'Anything you kill ruptures into a lingering spore-toxin bloom — chain your way through a crowd.',
+    stats: { radius: 72, damage: 20, age: 1.8 }
+  },
+  volatile_vacuole: {
+    name: 'Volatile Vacuole', tier: 3, action: null, stackable: true, max: 3, category: 'risk',
+    desc: 'A pressurized bladder. When you die, you detonate — a final toxin blast that takes your killers with you.',
+    stats: { radius: 84, damage: 42, age: 1.2 }
+  },
+  seeker_gland: {
+    name: 'Seeker Gland', tier: 3, action: null, stackable: true, max: 4, category: 'projectile',
+    desc: 'An autonomous armament: periodically launches a slow homing spore that curves after the nearest prey. Fires itself.',
+    stats: { damage: 16, energyCost: 3.0, speed: 300, turn: 3.4, cooldown: 1.2, range: 480, maxAge: 1.8 }
+  },
+  harpoon_spine: {
+    name: 'Harpoon Spine', tier: 3, action: 'harpoon', stackable: true, max: 3, category: 'projectile',
+    desc: 'A launched, tethered spine. It pierces, wounds, and hauls the struck body toward you — set up the kill.',
+    stats: { damage: 20, energyCost: 4.0, speed: 640, pull: 320, cooldown: 0.85, maxAge: 0.7 }
+  },
+  neuro_barb: {
+    name: 'Neuro-Toxin Barb', tier: 3, action: null, stackable: true, max: 3, category: 'control',
+    desc: 'A neurotoxic sting. Sometimes a struck body turns and fights for you for a while before shaking it off.',
+    stats: { chance: 0.22, dur: 4.0 }
+  },
+  orbital_spores: {
+    name: 'Orbital Spore-Bodies', tier: 3, action: null, stackable: true, max: 3, category: 'orbital',
+    desc: 'Daughter cells that circle you and grind anything they brush against — a constant, hands-free perimeter.',
+    stats: { count: 2, damage: 16, radius: 11, orbitDist: 30, spin: 1.8 }
+  },
+  fission_bud: {
+    name: 'Fission Bud', tier: 3, action: null, stackable: true, max: 3, category: 'orbital',
+    desc: 'Each kill may bud off a short-lived allied grazer that fights at your side before dissolving back into the froth.',
+    stats: { chance: 0.5, life: 12 }
+  },
   mitochondrion: {
     name: 'Integrated Mitochondrion', tier: 'gate', action: null,
     desc: 'Not purchased. Achieved through Yuki\'s Eucharist. Turns oxygen and lipids into high ATP.',
@@ -291,6 +391,21 @@ export const OFFERINGS = Object.freeze([
   { id: 'spore_toxin_launcher', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Sporo-Toxic Launcher', desc: 'Combination gun: spends toxins and spores for a heavy glob, wide splash, and a lingering cloud.', cost: { biomass: 22, dna: 1, spores: 2, crystals: 1 }, organelle: 'spore_toxin_launcher', requiresDiscovery: 'spore_toxin_launcher', stackLimit: 3 },
   { id: 'leech_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Leech Lamella', desc: 'Parasite organ: near-zero damage, but rasping siphons biomass and lipids straight out of your host.', cost: { biomass: 14, dna: 1, enzymes: 1 }, organelle: 'leech_rasp', requiresDiscovery: 'leech_rasp', stackLimit: 5 },
   { id: 'leech_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Leech Proboscis', desc: 'Feeding spine: barely wounds, but draws biomass and lipids from prey at range. Parasitize without killing.', cost: { biomass: 16, dna: 1, spores: 1 }, organelle: 'leech_lance', requiresDiscovery: 'leech_lance', stackLimit: 6 },
+  { id: 'rupture_auger', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Rupture Auger', desc: 'Armor-piercing spine: ignores membrane hardness entirely.', cost: { biomass: 20, dna: 1, crystals: 1 }, organelle: 'rupture_auger', requiresDiscovery: 'rupture_auger', stackLimit: 6 },
+  { id: 'adrenal_vesicle', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Adrenal Vesicle', desc: 'The lower your HP, the harder and faster you strike — up to double near death.', cost: { biomass: 18, dna: 1, enzymes: 1 }, organelle: 'adrenal_vesicle', requiresDiscovery: 'adrenal_vesicle', stackLimit: 4 },
+  { id: 'thorn_coat', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Thorn Coat', desc: 'Reflects a share of any damage dealt to you straight back at the attacker.', cost: { biomass: 20, dna: 1, crystals: 1 }, organelle: 'thorn_coat', requiresDiscovery: 'thorn_coat', stackLimit: 5 },
+  { id: 'corrosive_pellicle', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Corrosive Pellicle', desc: 'Passive acid skin — anything overlapping you dissolves each moment.', cost: { biomass: 18, dna: 1, toxins: 6 }, organelle: 'corrosive_pellicle', requiresDiscovery: 'corrosive_pellicle', stackLimit: 5 },
+  { id: 'discharge_vesicle', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Discharge Vesicle', desc: 'Auto-shocks every nearby body on a timer, spending ATP per pulse.', cost: { biomass: 20, dna: 1, crystals: 1 }, organelle: 'discharge_vesicle', requiresDiscovery: 'discharge_vesicle', stackLimit: 4 },
+  { id: 'cryo_vesicle', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Cryo Vesicle', desc: 'Anything you damage is chilled and slowed for a moment.', cost: { biomass: 18, dna: 1, enzymes: 1 }, organelle: 'cryo_vesicle', requiresDiscovery: 'cryo_vesicle', stackLimit: 4 },
+  { id: 'chemotaxis_cilia', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Chemotaxis Cilia', desc: 'Vacuums nearby slurry fields and loose particles toward you.', cost: { biomass: 16, dna: 1, spores: 1 }, organelle: 'chemotaxis_cilia', requiresDiscovery: 'chemotaxis_cilia', stackLimit: 4 },
+  { id: 'phagocyte_maw', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Phagocyte Maw', desc: 'Engulfs any small, weakened body you overlap — instant biomass.', cost: { biomass: 22, dna: 1, enzymes: 1 }, organelle: 'phagocyte_maw', requiresDiscovery: 'phagocyte_maw', stackLimit: 3 },
+  { id: 'necrosis_gland', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Necrosis Gland', desc: 'Anything you kill bursts into a lingering spore-toxin bloom.', cost: { biomass: 20, dna: 1, spores: 2 }, organelle: 'necrosis_gland', requiresDiscovery: 'necrosis_gland', stackLimit: 3 },
+  { id: 'volatile_vacuole', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Volatile Vacuole', desc: 'You detonate when you die — a final blast that takes your killers with you.', cost: { biomass: 18, dna: 1, toxins: 8 }, organelle: 'volatile_vacuole', requiresDiscovery: 'volatile_vacuole', stackLimit: 3 },
+  { id: 'seeker_gland', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Seeker Gland', desc: 'Auto-launches slow homing spores that curve after the nearest prey.', cost: { biomass: 20, dna: 1, spores: 2 }, organelle: 'seeker_gland', requiresDiscovery: 'seeker_gland', stackLimit: 4 },
+  { id: 'harpoon_spine', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Harpoon Spine', desc: 'Fires a tethered spine that pierces, wounds, and hauls prey toward you.', cost: { biomass: 20, dna: 1, crystals: 1 }, organelle: 'harpoon_spine', requiresDiscovery: 'harpoon_spine', stackLimit: 3 },
+  { id: 'neuro_barb', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Neuro-Toxin Barb', desc: 'Struck bodies sometimes turn and fight for you for a while.', cost: { biomass: 22, dna: 1, enzymes: 2 }, organelle: 'neuro_barb', requiresDiscovery: 'neuro_barb', stackLimit: 3 },
+  { id: 'orbital_spores', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Orbital Spore-Bodies', desc: 'Daughter cells circle you and grind anything they brush.', cost: { biomass: 22, dna: 1, spores: 2 }, organelle: 'orbital_spores', requiresDiscovery: 'orbital_spores', stackLimit: 3 },
+  { id: 'fission_bud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Fission Bud', desc: 'Each kill may bud a short-lived allied grazer that fights at your side.', cost: { biomass: 22, dna: 1, crystals: 1 }, organelle: 'fission_bud', requiresDiscovery: 'fission_bud', stackLimit: 3 },
 
   { id: 'mitochondrial_eucharist', section: 'Eucharist Gate - Mitochondrial endosymbiosis', kind: 'sacrament', name: 'Mitochondrial Eucharist', desc: 'Yuki gives a living endosymbiont seed. Survive incubation; oxygen becomes power.', cost: { biomass: 24, lipids: 24, spores: 3, enzymes: 2, crystals: 2, dna: 1 }, requiresHostReady: true, effect: { beginEucharist: true } },
 
@@ -312,6 +427,14 @@ function mulberry32(seed) {
 function rand(world, min, max) { return min + (max - min) * world.rng(); }
 function choice(world, arr) { return arr[Math.floor(world.rng() * arr.length)]; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+// Box-Muller normal sample. Genomes cluster near the mean with rare tails, so the
+// common 0.8..1.2 band is ~1.5 SD wide and the occasional god-roll (or dud) lives
+// beyond it. Soft-clamped so nothing goes negative or absurd.
+function gaussian(rng, mean = 0, sd = 1) {
+  const u1 = Math.max(1e-9, rng());
+  const u2 = rng();
+  return mean + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
 function wrapX(x) { x %= WORLD.w; if (x < 0) x += WORLD.w; return x; }
 function dxWrap(ax, bx) { let dx = bx - ax; if (dx > WORLD.w / 2) dx -= WORLD.w; if (dx < -WORLD.w / 2) dx += WORLD.w; return dx; }
 function dist2Wrap(ax, ay, bx, by) { const dx = dxWrap(ax, bx); const dy = by - ay; return dx * dx + dy * dy; }
@@ -573,6 +696,18 @@ function buoyancy(entity) {
   return legacyLift + oxygenLift + (entity.oxygen || 0) * 1.5;
 }
 
+// Adrenal Vesicle: a combat multiplier that ramps as HP falls below the threshold,
+// reaching (1 + maxBonus) at zero HP. Used for both attack power and swim speed.
+function adrenalFactor(entity) {
+  const n = orgCount(entity, 'adrenal_vesicle');
+  if (n <= 0) return 1;
+  const st = ORGANELLES.adrenal_vesicle.stats;
+  const hpRatio = clamp((entity.hp || 0) / Math.max(1, caps(entity).hp), 0, 1);
+  const missing = Math.max(0, (st.threshold - hpRatio) / st.threshold);
+  const p = (entity.strain === 'adrenal_vesicle' && entity.strainPotency) ? entity.strainPotency : 1;
+  return 1 + st.maxBonus * missing * p * (1 + 0.25 * (n - 1));
+}
+
 function speedOf(entity) {
   if ((entity.cargo.energy || 0) <= 0.01) return 0;
   if (orgCount(entity, 'basal_motility') <= 0 && orgCount(entity, 'flagella') <= 0) return 0;
@@ -595,6 +730,8 @@ function speedOf(entity) {
   if (entity.feedIntent) sp *= hasOrg(entity, 'cytostome') ? 0.78 : 0.86;
   if (entity.repairIntent) sp *= 0.55;
   if (entity.hp < caps(entity).hp * 0.35) sp *= 0.8;
+  if ((entity.chill || 0) > 0) sp *= (entity.chillMult ?? ORGANELLES.cryo_vesicle.stats.slowMult); // Cryo Vesicle slow
+  sp *= adrenalFactor(entity); // Adrenal Vesicle: faster the closer to death
   return sp;
 }
 
@@ -681,6 +818,7 @@ export function step(world, commands = {}, dt = 1 / 60) {
   updateParticles(world, dt);
   updateHazards(world, dt);
   applyActiveActionCosts(world, dt);
+  updateStrainSystems(world, dt);
   resolveContacts(world, dt);
   removeDead(world);
   for (const e of world.entities) {
@@ -692,6 +830,10 @@ export function step(world, commands = {}, dt = 1 / 60) {
     e.hit = Math.max(0, e.hit - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
     e.maxDepth = Math.max(e.maxDepth || 0, e.y - WORLD.canopy);
     if (e.cooldowns) for (const k of Object.keys(e.cooldowns)) e.cooldowns[k] = Math.max(0, e.cooldowns[k] - dt);
+    // Strain-effect timers: chill wears off; charm reverts to hostility; a fission bud dissolves.
+    if (e.chill > 0) { e.chill = Math.max(0, e.chill - dt); if (e.chill === 0) e.chillMult = 1; }
+    if (e.charmTimer > 0) { e.charmTimer = Math.max(0, e.charmTimer - dt); if (e.charmTimer === 0) e.friendly = false; }
+    if (e.friendLife > 0) { e.friendLife = Math.max(0, e.friendLife - dt); if (e.friendLife === 0 && e.alive) hurt(world, e, caps(e).hp + 999, null); }
     e.r = targetRadius(e);
     clampCargo(e);
   }
@@ -738,6 +880,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (commands.rasp && hasRasp(player) && player.cargo.energy > 0) player.action = 'rasp';
     if (commands.acid && hasOrg(player, 'toxin_launcher')) acidPulse(world, player, commands.aimX, commands.aimY);
     if (commands.sporeshot && hasOrg(player, 'spore_toxin_launcher')) sporePulse(world, player, commands.aimX, commands.aimY);
+    if (commands.harpoon && hasOrg(player, 'harpoon_spine')) harpoonPulse(world, player, commands.aimX, commands.aimY);
     if (commands.cloud && hasOrg(player, 'toxin_cloud')) toxinCloud(world, player);
   }
 
@@ -785,6 +928,9 @@ function updateNPCs(world, player, dt) {
       }
       if (powered && hasOrg(e, 'spore_toxin_launcher') && preyDist < 540 && e.cargo.energy > ORGANELLES.spore_toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.spore_toxin_launcher.stats.toxinCost && (e.cargo.spores || 0) >= ORGANELLES.spore_toxin_launcher.stats.sporeCost && world.rng() < 0.014) {
         sporePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+      }
+      if (powered && hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && world.rng() < 0.02) {
+        harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
       }
       // With collision removed, predators should commit to standing on the target.
       // Rasping is overlap-based; orbiting just outside contact is explicitly wrong.
@@ -1046,17 +1192,36 @@ function updateHazards(world, dt) {
   for (let i = world.hazards.length - 1; i >= 0; i--) {
     const h = world.hazards[i];
     h.age += dt;
+    // Seeker Gland shots steer toward the nearest opposite-side body each tick.
+    if (h.homing) {
+      let best = null, bestD = 1e9;
+      for (const e of world.entities) { if (!e.alive || friendlySide(e) === h.side) continue; const d = distWrap(h.x, h.y, e.x, e.y); if (d < bestD) { bestD = d; best = e; } }
+      if (best) {
+        const dir = norm(dxWrap(h.x, best.x), best.y - h.y);
+        const sp = h.speed || Math.hypot(h.vx, h.vy) || 1;
+        const cur = Math.atan2(h.vy, h.vx); let da = Math.atan2(dir.y, dir.x) - cur;
+        while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        const na = cur + clamp(da, -h.homing * dt, h.homing * dt);
+        h.vx = Math.cos(na) * sp; h.vy = Math.sin(na) * sp;
+      }
+    }
     h.x = wrapX(h.x + h.vx * dt); h.y += h.vy * dt;
-    h.vx *= Math.pow(0.985, dt * 60); h.vy *= Math.pow(0.985, dt * 60);
+    if (!h.homing) { h.vx *= Math.pow(0.985, dt * 60); h.vy *= Math.pow(0.985, dt * 60); }
     let burst = false;
     for (const e of world.entities) {
       if (!e.alive || e.id === h.sourceId) continue;
+      if (h.side !== undefined && friendlySide(e) === h.side) continue; // side-aware shots never hit allies
       const d = distWrap(h.x, h.y, e.x, e.y);
       if (d > h.radius + e.r) continue;
       if (h.hitOnce && h.hitIds.has(e.id)) continue;
-      const isProjectile = h.kind === 'toxic_projectile' || h.kind === 'spore_projectile';
+      const isProjectile = h.kind === 'toxic_projectile' || h.kind === 'spore_projectile' || h.kind === 'seeker' || h.kind === 'harpoon';
       const overlap = clamp((h.radius + e.r - d) / Math.max(8, h.radius), 0, 1.4);
       hurt(world, e, h.damage * overlap * dt * (isProjectile ? 18 : 1), h.sourceId || h.id);
+      // Harpoon Spine hauls the struck body toward whoever fired it.
+      if (h.kind === 'harpoon' && h.pull) {
+        const src = world.entities.find(x => x.id === h.sourceId);
+        if (src) { const dir = norm(dxWrap(e.x, src.x), src.y - e.y); e.vx += dir.x * h.pull; e.vy += dir.y * h.pull; }
+      }
       h.hitIds.add(e.id);
       world.stats.toxicHits += 1;
       if (isProjectile) { burst = true; break; }
@@ -1107,10 +1272,36 @@ function resolveContacts(world, dt) {
       if (overlap > 0) {
         contactDamage(world, a, b, overlap, nx, ny, dt);
         contactDamage(world, b, a, overlap, -nx, -ny, dt);
+        overlapAura(world, a, b, dt);
+        overlapAura(world, b, a, dt);
       }
       lanceDamage(world, a, b, d, nx, ny, dt);
       lanceDamage(world, b, a, d, -nx, -ny, dt);
     }
+  }
+}
+
+// Post-damage on-hit riders shared by lances and rasps: chilling, charming, and
+// the target's own thorns firing back. Kept in one place so every damage source
+// gets the same treatment.
+function afterDamage(world, attacker, target, dmg) {
+  if (dmg <= 0 || !target) return;
+  if (hasOrg(attacker, 'cryo_vesicle')) {
+    const st = ORGANELLES.cryo_vesicle.stats;
+    const p = potency(world, attacker, 'cryo_vesicle');
+    target.chill = Math.max(target.chill || 0, st.dur);
+    target.chillMult = clamp(1 - (1 - st.slowMult) * p, 0.1, 0.95); // higher potency → stronger slow
+  }
+  if (hasOrg(attacker, 'neuro_barb') && attacker.kind === 'player' && target.kind !== 'player' && !target.friendly && !target.charmTimer) {
+    const st = ORGANELLES.neuro_barb.stats;
+    if (world.rng() < st.chance * potency(world, attacker, 'neuro_barb')) {
+      target.friendly = true; target.charmTimer = st.dur;
+      world.events.push({ type: 'charm', entityId: target.id });
+    }
+  }
+  if (hasOrg(target, 'thorn_coat') && attacker.alive && attacker.id !== target.id) {
+    const st = ORGANELLES.thorn_coat.stats;
+    hurt(world, attacker, dmg * st.reflect * potency(world, target, 'thorn_coat'), target.id);
   }
 }
 
@@ -1121,6 +1312,7 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
   const impactSpeed = Math.hypot(attacker.vx || 0, attacker.vy || 0);
   const hardness = membraneHardness(target);
   const vuln = vulnerability(target);
+  const adrenal = adrenalFactor(attacker);
   let total = 0;
   let leech = 0;
   for (const lanceId of LANCES) {
@@ -1136,12 +1328,13 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
     // Lances are impact organs, not laser beams. Charge lances punch far above
     // steady swimming; saw lances (flat) grind at a fixed rate regardless of speed.
     const speedFactor = st.flat ? 1 : clamp((impactSpeed - (st.speedFloor || 0)) / st.speedScale, 0, st.speedCap || 3.2);
-    let dmg = st.damage * count * reachFraction * alignmentRaw * speedFactor * vuln * p * dt;
+    let dmg = st.damage * count * reachFraction * alignmentRaw * speedFactor * vuln * p * adrenal * dt;
     if (dmg <= 0) continue;
-    if (st.rupturePower * count < hardness && target.r > attacker.r * 1.35) dmg *= 0.22;
+    // A Rupture Auger ignores hardness; every other lance is blunted by tough skin.
+    if (!st.pierce && st.rupturePower * count < hardness && target.r > attacker.r * 1.35) dmg *= 0.22;
     total += dmg;
   }
-  if (total > 0) hurt(world, target, total, attacker.id);
+  if (total > 0) { hurt(world, target, total, attacker.id); afterDamage(world, attacker, target, total); }
   if (leech > 0) drainLeech(world, attacker, target, leech);
 }
 
@@ -1169,8 +1362,8 @@ function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
   const alignment = clamp((facing.x * nx + facing.y * ny + 1.15) / 2.15, 0.25, 1.0);
   const hardness = membraneHardness(target);
   if (rupturePower < hardness && target.r > attacker.r * 1.28) dps *= 0.12;
-  const dmg = dps * contactFraction * alignment * vulnerability(target) * dt;
-  if (dmg > 0) hurt(world, target, dmg, attacker.id);
+  const dmg = dps * contactFraction * alignment * vulnerability(target) * adrenalFactor(attacker) * dt;
+  if (dmg > 0) { hurt(world, target, dmg, attacker.id); afterDamage(world, attacker, target, dmg); }
   attacker.hunger = Math.max(0, attacker.hunger - dmg * 0.003);
   // A siphon rasp doesn't just shred — it drains the victim's stores into your cargo,
   // proportional to damage dealt. Leech organs drain at a flat rate with near-zero harm.
@@ -1202,6 +1395,129 @@ function drainLeech(world, attacker, target, amount) {
     if (moved > 0) { target.cargo[res] -= moved; attacker.cargo[res] += moved; pulled += moved; }
   }
   if (pulled > 0 && attacker.kind === 'player') world.events.push({ type: 'leech', entityId: attacker.id });
+}
+
+// Sides: the player and anything friendly (companions, charmed enemies, buds) are
+// one team; everything else is the other. Two bodies are hostile only across sides.
+function friendlySide(e) { return e.kind === 'player' || !!e.friendly; }
+function areHostile(a, b) { return a.id !== b.id && friendlySide(a) !== friendlySide(b); }
+
+// Overlap-triggered strain effects, evaluated per overlapping pair (a acting on b).
+function overlapAura(world, a, b, dt) {
+  if (!a.alive || !b.alive || !areHostile(a, b)) return;
+  // Corrosive Pellicle: passive acid to anything sharing your space.
+  if (hasOrg(a, 'corrosive_pellicle')) {
+    const dmg = ORGANELLES.corrosive_pellicle.stats.dps * orgCount(a, 'corrosive_pellicle') * potency(world, a, 'corrosive_pellicle') * dt;
+    hurt(world, b, dmg, a.id);
+    afterDamage(world, a, b, dmg);
+  }
+  // Phagocyte Maw: engulf a small, weakened NON-player body whole (never instakills the player).
+  if (hasOrg(a, 'phagocyte_maw') && b.alive && b.kind !== 'player') {
+    const st = ORGANELLES.phagocyte_maw.stats;
+    a.cooldowns ||= {};
+    if ((a.cooldowns.phagocyte || 0) <= 0 && b.hp <= caps(b).hp * st.hpFrac && b.r < a.r * st.sizeRatio) {
+      a.cargo.biomass = Math.min(caps(a).biomass, (a.cargo.biomass || 0) + st.biomassGain * potency(world, a, 'phagocyte_maw'));
+      a.cooldowns.phagocyte = st.cooldown;
+      if (a.kind === 'player') world.events.push({ type: 'engulf', entityId: a.id });
+      hurt(world, b, caps(b).hp + 999, a.id);
+    }
+  }
+}
+
+// Per-tick strain systems that scan other bodies, fields, or particles.
+function updateStrainSystems(world, dt) {
+  const living = world.entities.filter(e => e.alive);
+  for (const e of living) {
+    if (hasOrg(e, 'discharge_vesicle')) dischargePulse(world, e, living);
+    if (hasOrg(e, 'seeker_gland')) seekerAutoFire(world, e, living);
+    if (hasOrg(e, 'chemotaxis_cilia')) chemotaxisPull(world, e, dt);
+    if (hasOrg(e, 'orbital_spores')) orbitalDamage(world, e, living, dt);
+  }
+}
+
+function dischargePulse(world, e, living) {
+  const st = ORGANELLES.discharge_vesicle.stats;
+  e.cooldowns ||= {};
+  if ((e.cooldowns.discharge || 0) > 0 || (e.cargo.energy || 0) < st.energyCost) return;
+  const power = st.damage * orgCount(e, 'discharge_vesicle') * potency(world, e, 'discharge_vesicle');
+  let hit = false;
+  for (const o of living) {
+    if (!areHostile(e, o) || distWrap(e.x, e.y, o.x, o.y) > st.radius + o.r) continue;
+    hurt(world, o, power, e.id); afterDamage(world, e, o, power); hit = true;
+  }
+  if (hit) {
+    e.cargo.energy -= st.energyCost;
+    e.cooldowns.discharge = st.cooldown;
+    spawnToxicHazard(world, e.x, e.y, { kind: 'shock', sourceId: e.id, radius: st.radius, damage: 0, maxAge: 0.22, color: DNA_CATEGORY_COLORS.aura });
+    world.events.push({ type: 'discharge', entityId: e.id });
+  }
+}
+
+function seekerAutoFire(world, e, living) {
+  const st = ORGANELLES.seeker_gland.stats;
+  e.cooldowns ||= {};
+  if ((e.cooldowns.seeker || 0) > 0 || (e.cargo.energy || 0) < st.energyCost) return;
+  let best = null, bestD = st.range;
+  for (const o of living) { if (!areHostile(e, o)) continue; const d = distWrap(e.x, e.y, o.x, o.y); if (d < bestD) { bestD = d; best = o; } }
+  if (!best) return;
+  e.cargo.energy -= st.energyCost; e.cooldowns.seeker = st.cooldown;
+  const dir = norm(dxWrap(e.x, best.x), best.y - e.y);
+  const h = spawnToxicHazard(world, e.x + dir.x * (e.r + 8), e.y + dir.y * (e.r + 8), {
+    kind: 'seeker', sourceId: e.id, radius: 9, damage: st.damage * potency(world, e, 'seeker_gland'),
+    vx: dir.x * st.speed, vy: dir.y * st.speed, maxAge: st.maxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.projectile
+  });
+  h.homing = st.turn; h.speed = st.speed; h.side = friendlySide(e);
+  world.events.push({ type: 'seeker_launch', entityId: e.id });
+}
+
+function chemotaxisPull(world, e, dt) {
+  const st = ORGANELLES.chemotaxis_cilia.stats;
+  const pull = st.pull * orgCount(e, 'chemotaxis_cilia') * potency(world, e, 'chemotaxis_cilia') * dt;
+  for (const f of world.fields) {
+    const d = distWrap(e.x, e.y, f.x, f.y); if (d < 6 || d > st.radius) continue;
+    const dir = norm(dxWrap(f.x, e.x), e.y - f.y);
+    const step = Math.min(pull, d - 4);
+    f.x = wrapX(f.x + dir.x * step); f.y += dir.y * step;
+  }
+  for (const q of world.particles) {
+    const d = distWrap(e.x, e.y, q.x, q.y); if (d < 6 || d > st.radius) continue;
+    const dir = norm(dxWrap(q.x, e.x), e.y - q.y);
+    q.vx += dir.x * pull * 4; q.vy += dir.y * pull * 4;
+  }
+}
+
+function orbitalDamage(world, e, living, dt) {
+  const st = ORGANELLES.orbital_spores.stats;
+  const bodies = st.count * orgCount(e, 'orbital_spores');
+  const power = st.damage * potency(world, e, 'orbital_spores') * dt;
+  for (let k = 0; k < bodies; k++) {
+    const ang = world.t * st.spin + (k / bodies) * Math.PI * 2;
+    const ox = e.x + Math.cos(ang) * (e.r + st.orbitDist);
+    const oy = e.y + Math.sin(ang) * (e.r + st.orbitDist);
+    for (const o of living) {
+      if (!areHostile(e, o)) continue;
+      if (distWrap(ox, oy, o.x, o.y) <= st.radius + o.r) { hurt(world, o, power, e.id); afterDamage(world, e, o, power); }
+    }
+  }
+}
+
+// Harpoon Spine: an aimed, tethered projectile that yanks the struck body toward you.
+function harpoonPulse(world, entity, aimX = null, aimY = null) {
+  if (!hasOrg(entity, 'harpoon_spine')) return false;
+  const o = ORGANELLES.harpoon_spine.stats;
+  entity.cooldowns ||= {};
+  if ((entity.cooldowns.harpoon || 0) > 0 || !hasEnergy(entity, o.energyCost)) return false;
+  entity.cargo.energy -= o.energyCost; entity.cooldowns.harpoon = o.cooldown;
+  let ax = aimX ?? Math.cos(entity.phase), ay = aimY ?? Math.sin(entity.phase);
+  const n = norm(ax, ay); ax = n.x; ay = n.y;
+  entity.phase = Math.atan2(ay, ax);
+  const h = spawnToxicHazard(world, entity.x + ax * (entity.r + 12), entity.y + ay * (entity.r + 12), {
+    kind: 'harpoon', sourceId: entity.id, radius: 10, damage: o.damage * potency(world, entity, 'harpoon_spine'),
+    vx: ax * o.speed + entity.vx * 0.2, vy: ay * o.speed + entity.vy * 0.2, maxAge: o.maxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.projectile
+  });
+  h.pull = o.pull; h.side = friendlySide(entity);
+  world.events.push({ type: 'harpoon_launch', entityId: entity.id });
+  return true;
 }
 
 function spawnToxicHazard(world, x, y, opts = {}) {
@@ -1290,7 +1606,34 @@ function hurt(world, entity, amount, sourceId = null) {
     entity.alive = false;
     world.stats.deaths += 1;
     world.events.push({ type: 'death', entityId: entity.id, sourceId });
+    // Volatile Vacuole: the dying body detonates, regardless of what killed it.
+    if (hasOrg(entity, 'volatile_vacuole')) {
+      const st = ORGANELLES.volatile_vacuole.stats;
+      spawnToxicHazard(world, entity.x, entity.y, { kind: 'blast', sourceId: null, radius: st.radius, damage: st.damage * potency(world, entity, 'volatile_vacuole'), maxAge: st.age, color: DNA_CATEGORY_COLORS.risk, hitOnce: true });
+      if (entity.kind === 'player') world.events.push({ type: 'detonate', entityId: entity.id });
+    }
+    // On-kill riders belonging to the KILLER: necrotic bloom + fission budding.
+    const killer = sourceId && sourceId !== entity.id ? world.entities.find(x => x.id === sourceId && x.alive) : null;
+    if (killer) {
+      if (hasOrg(killer, 'necrosis_gland')) {
+        const st = ORGANELLES.necrosis_gland.stats;
+        spawnToxicHazard(world, entity.x, entity.y, { kind: 'spore_cloud', sourceId: killer.id, radius: st.radius, damage: st.damage * potency(world, killer, 'necrosis_gland'), maxAge: st.age, color: DNA_CATEGORY_COLORS.execute });
+      }
+      if (hasOrg(killer, 'fission_bud') && world.rng() < ORGANELLES.fission_bud.stats.chance * potency(world, killer, 'fission_bud')) {
+        budFriendly(world, killer, entity.x, entity.y);
+      }
+    }
   }
+}
+
+// Fission Bud: spawn a short-lived allied grazer that fights on the killer's side.
+function budFriendly(world, owner, x, y) {
+  const bud = spawnScavenger(world, { x: x + rand(world, -12, 12), y: y + rand(world, -12, 12) });
+  bud.friendly = (owner.kind === 'player' || owner.friendly);
+  bud.organelles.rasping_lamella = 1;
+  bud.friendLife = ORGANELLES.fission_bud.stats.life;
+  bud.color = '#7fffe0';
+  if (owner.kind === 'player') world.events.push({ type: 'bud', entityId: owner.id });
 }
 
 function removeDead(world) {
@@ -1380,8 +1723,9 @@ function applyStrain(world, e) {
   e.organelles[strain.org] = (e.organelles[strain.org] || 0) + 1;
   e.strain = strain.org;
   // This individual's private genome: it expresses (and will bequeath) this potency.
-  // Hunting the froth for a high-roll mutant is how you upgrade a trait.
-  e.strainPotency = 0.8 + world.rng() * 0.4;
+  // Normally distributed around 100% (sd 13%), so most mutants sit in the 80–120%
+  // band but rare specimens roll far higher — the god-roll you hunt the froth for.
+  e.strainPotency = clamp(gaussian(world.rng, 1.0, 0.13), 0.5, 1.8);
   e.color = strain.tint;
   // Give the strain the resources its signature organelle consumes, so the
   // mutant genuinely fights or metabolizes with the trait the player will loot.
@@ -1601,6 +1945,7 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (hasOrg(e, 'dash_vacuole')) actions.push({ id: 'dash', label: 'Dash', enabled: powered && (e.cargo.energy || 0) >= ORGANELLES.dash_vacuole.stats.energyCost });
   if (hasOrg(e, 'toxin_launcher')) { const acidStats = ORGANELLES.toxin_launcher.stats; actions.push({ id: 'acid', label: 'Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= acidStats.toxinCost && (e.cargo.energy || 0) >= acidStats.energyCost }); }
   if (hasOrg(e, 'spore_toxin_launcher')) { const st = ORGANELLES.spore_toxin_launcher.stats; actions.push({ id: 'sporeshot', label: 'Sporo-Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= st.toxinCost && (e.cargo.spores || 0) >= st.sporeCost && (e.cargo.energy || 0) >= st.energyCost }); }
+  if (hasOrg(e, 'harpoon_spine')) { const st = ORGANELLES.harpoon_spine.stats; actions.push({ id: 'harpoon', label: 'Harpoon Spine', enabled: powered && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'toxin_cloud')) actions.push({ id: 'cloud', label: 'Cloud', enabled: powered && (e.cargo.toxins || 0) >= ORGANELLES.toxin_cloud.stats.toxinCost && (e.cargo.energy || 0) >= ORGANELLES.toxin_cloud.stats.energyCost });
   actions.push({ id: 'yuki', label: 'Yuki', enabled: nearYuki(world, e) });
   return actions;
@@ -1816,12 +2161,31 @@ export function getRenderProjection(world) {
       });
     }
   }
+  // Orbital Spore-Bodies render as small circling daughter cells around their host.
+  const orbitalRender = [];
+  for (const e of world.entities) {
+    if (!e.alive || !hasOrg(e, 'orbital_spores')) continue;
+    const st = ORGANELLES.orbital_spores.stats;
+    const bodies = st.count * orgCount(e, 'orbital_spores');
+    for (let k = 0; k < bodies; k++) {
+      const ang = world.t * st.spin + (k / bodies) * Math.PI * 2;
+      orbitalRender.push({
+        id: `${e.id}_orb${k}`, kind: 'orbital_spore',
+        x: e.x + Math.cos(ang) * (e.r + st.orbitDist), y: e.y + Math.sin(ang) * (e.r + st.orbitDist),
+        vx: 0, vy: 0, r: st.radius, hp: 1, maxHp: 1,
+        color: DNA_CATEGORY_COLORS.orbital, controller: 'orbital', trophicRole: 'orbital',
+        friendly: friendlySide(e), phase: ang, feedIntent: false, repairIntent: false,
+        action: null, organelles: {}, hit: 0, oxygen: 0, oxygenTolerance: 0,
+        toxins: 0, toxinCap: 0, fallState: null, incubating: null
+      });
+    }
+  }
   return {
     version: VERSION,
     world: WORLD,
     t: world.t,
     environment: { oxygenSurface: oxygenAt(WORLD.canopy + 30), oxygenNursery: oxygenAt(WORLD.nurseryTop + 100), lightSurface: lightAt(WORLD.canopy + 30) },
-    entities: [...entityProjection, ...colonyRender],
+    entities: [...entityProjection, ...colonyRender, ...orbitalRender],
     fields: world.fields.map(f => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
     particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, potency: p.potency || null, age: p.age, maxAge: p.maxAge })),
@@ -1842,4 +2206,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly };

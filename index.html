@@ -67,7 +67,7 @@ let camera = {x:0,y:0,shake:0};
 let keys = new Set();
 let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
 let moveTouch = {id:null,x:0,y:0,active:false};
-let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,cloud:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false};
 let didGameOver = false;
 // Iframe focus gate: keyboard events are silently dropped until the document has focus.
 // Applies to itch.io embeds, Google Sites embeds, and any other iframe host.
@@ -91,7 +91,7 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,cloud:false};
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false};
   toast('World reset — new genome, Yuki shop re-locked.');
 }
 
@@ -139,7 +139,7 @@ function command(){
   const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
   let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
   const an=norm(ax,ay);
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,cloud:keys.has('v')||buttons.cloud,aimX:an.x,aimY:an.y};
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,aimX:an.x,aimY:an.y};
 }
 
 function loop(now){
@@ -158,6 +158,7 @@ function checkDeathEvent(){
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
   for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
   for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
+  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');}
 }
 
 function updateUI(){
@@ -181,7 +182,7 @@ function updateUI(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -189,7 +190,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
@@ -200,7 +201,7 @@ function renderShop(){
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';return `<div class="offer ${o.kind}${out}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${o.kind==='exchange'?exchangeCard(o):graftCard(o)}</div>`}
-const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff'};
+const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff',leech:'#8fe37a',aura:'#ff5a5a',control:'#6fd6ff',risk:'#ff2d7a',execute:'#ff8a3d',projectile:'#4db8ff',orbital:'#ffd24d'};
 function graftCard(o){
   let head=`<span class="cat">${o.kind}</span>`;
   if(o.kind==='sequence'){head='<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence at Yuki</span>';}
@@ -243,11 +244,13 @@ function drawFields(){
   }
 }
 
+function hexRgb(hex){if(!hex)return'188,255,111';const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
 function drawHazards(){
   for(const h of projection.hazards||[]){
     const life=clamp(1-h.age/h.maxAge,0,1); ctx.save(); ctx.globalAlpha=.85*life;
-    const base=h.kind==='toxic_projectile'?'188,255,111':'188,255,111';
-    if(h.kind==='toxic_projectile'){
+    const base=hexRgb(h.color);
+    const solid=h.kind==='toxic_projectile'||h.kind==='spore_projectile'||h.kind==='seeker'||h.kind==='harpoon';
+    if(solid){
       ctx.fillStyle=`rgba(${base},${.75*life})`; ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=1.4;
       ctx.beginPath(); ctx.arc(h.x,h.y,h.radius,0,Math.PI*2); ctx.fill(); ctx.stroke();
       ctx.strokeStyle=`rgba(${base},${.35*life})`; ctx.beginPath(); ctx.arc(h.x,h.y,h.radius+7,0,Math.PI*2); ctx.stroke();
@@ -306,6 +309,21 @@ function drawInternalOrganelles(e,ang){
   if(org.siphon_rasp)add('siphon','#ff7a3d',org.siphon_rasp,4.0,'diamond');
   if(org.leech_rasp)add('leechr','#8fe37a',org.leech_rasp,3.8,'diamond');
   if(org.leech_lance)add('leechl','#6fce8f',org.leech_lance,3.4,'tri');
+  if(org.rupture_auger)add('auger','#ff3d9a',org.rupture_auger,3.6,'tri');
+  if(org.adrenal_vesicle)add('adrenal','#ff2d7a',org.adrenal_vesicle,4.0,'dot');
+  if(org.thorn_coat)add('thorn','#ff6a6a',org.thorn_coat,3.4,'tri');
+  if(org.corrosive_pellicle)add('corrosive','#ff5a5a',org.corrosive_pellicle,3.6,'ring');
+  if(org.discharge_vesicle)add('discharge','#ffe86f',org.discharge_vesicle,4.2,'dot');
+  if(org.cryo_vesicle)add('cryo','#8fd6ff',org.cryo_vesicle,4.0,'diamond');
+  if(org.chemotaxis_cilia)add('chemo','#6fd6ff',org.chemotaxis_cilia,3.6,'ring');
+  if(org.phagocyte_maw)add('phago','#ff8a3d',org.phagocyte_maw,4.4,'bubble');
+  if(org.necrosis_gland)add('necro','#c88a4d',org.necrosis_gland,4.0,'dot');
+  if(org.volatile_vacuole)add('volatile','#ff4d6a',org.volatile_vacuole,4.4,'bubble');
+  if(org.seeker_gland)add('seeker','#4db8ff',org.seeker_gland,4.0,'rod');
+  if(org.harpoon_spine)add('harpoon','#3d9aff',org.harpoon_spine,3.6,'tri');
+  if(org.neuro_barb)add('neuro','#6faaff',org.neuro_barb,3.4,'tri');
+  if(org.orbital_spores)add('orbital','#ffd24d',org.orbital_spores,3.8,'dot');
+  if(org.fission_bud)add('fission','#ffc24d',org.fission_bud,4.0,'bubble');
   if(org.mitochondrion)add('mito','#ffac75',org.mitochondrion*2,5.2,'mito');
   if(org.companion_cell)add('companion','#7fffe0',org.companion_cell,4.2,'dot');
   ctx.save();
