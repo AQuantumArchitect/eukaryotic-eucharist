@@ -102,6 +102,41 @@ const PROCESSORS = Object.freeze(['anaerobic_processor', 'clean_processor', 'vir
 // hard it ramps with speed. Saw lances pin speed out entirely for flat grind.
 const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance', 'leech_lance', 'rupture_auger']);
 const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp']);
+// ── Symbiotic colony: independent friendly cells ────────────────────────────
+// The cheap, accessible alternative to becoming multicellular. A Multicell Chassis
+// fuses archived cells INTO your body and needs the mitochondrial Eucharist; a
+// symbiont is its own small cell that swims beside you and fights on your side —
+// expendable, bought for plain matter, no Eucharist required. Buy a few and you are
+// a swarm; graft the chassis and you are one large organism. Two different answers
+// to "stop being alone in the froth."
+const COMPANION_CAP = 4;
+const COMPANIONS = Object.freeze({
+  grazer: {
+    label: 'Grazer Swarm', color: '#8ef1c0', r: 13, bodyPlan: 'blob',
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 2, rasping_lamella: 1, storage_vacuole: 2, oxygen_tolerance: 3 },
+    cargo: { energy: 28, biomass: 16, lipids: 3 }
+  },
+  lancer: {
+    label: 'Lancer Swarm', color: '#9fd0ff', r: 16, bodyPlan: 'spiny',
+    organelles: { membrane: 2, basal_motility: 1, flagella: 1, membrane_intake: 1, anaerobic_processor: 2, lance_bristle: 1, storage_vacuole: 2, membrane_hardening: 1, oxygen_tolerance: 3 },
+    cargo: { energy: 46, biomass: 22, lipids: 8 }
+  },
+  hunter: {
+    label: 'Toxic Swarm', color: '#c9a2ff', r: 19, bodyPlan: 'jelly',
+    organelles: { membrane: 2, basal_motility: 1, flagella: 1, membrane_intake: 1, anaerobic_processor: 3, toxin_launcher: 1, rasping_lamella: 1, storage_vacuole: 3, exotic_vacuole: 1, oxygen_tolerance: 4 },
+    cargo: { energy: 62, biomass: 28, lipids: 10, toxins: 16 }
+  }
+});
+
+// Deep bodies: a body-plan tag drives a distinct silhouette in the renderer so the
+// deep stops being a field of identical blobs. Deep strains inherit a plan from
+// their signature organelle's category; wild deep cells default to a ciliate.
+const DEEP_BODY_BY_CATEGORY = Object.freeze({
+  lance: 'spiny', risk: 'spiny', rasp: 'amoeba', leech: 'amoeba', metabolic: 'ciliate',
+  launcher: 'jelly', aura: 'jelly', control: 'jelly', execute: 'maw',
+  projectile: 'ciliate', orbital: 'radial'
+});
+
 // Organelles that express an individually-rolled potency (see potency() / applyStrain).
 // Each mutant that carries one of these rolls its own multiplier when it spawns.
 const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance', 'rupture_auger', 'adrenal_vesicle', 'thorn_coat', 'corrosive_pellicle', 'discharge_vesicle', 'cryo_vesicle', 'chemotaxis_cilia', 'phagocyte_maw', 'necrosis_gland', 'volatile_vacuole', 'seeker_gland', 'harpoon_spine', 'neuro_barb', 'orbital_spores', 'fission_bud']);
@@ -407,6 +442,13 @@ export const OFFERINGS = Object.freeze([
   { id: 'orbital_spores', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Orbital Spore-Bodies', desc: 'Daughter cells circle you and grind anything they brush.', cost: { biomass: 22, dna: 1, spores: 2 }, organelle: 'orbital_spores', requiresDiscovery: 'orbital_spores', stackLimit: 3 },
   { id: 'fission_bud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Fission Bud', desc: 'Each kill may bud a short-lived allied grazer that fights at your side.', cost: { biomass: 22, dna: 1, crystals: 1 }, organelle: 'fission_bud', requiresDiscovery: 'fission_bud', stackLimit: 3 },
 
+  // Symbiotic colony: marshal a swarm of allied bacteria by synthesizing
+  // spore-pheromones. The entry swarm is a mid-game investment (spores need exotic
+  // storage); the armed swarms need mitochondrial pheromone synthesis — a late play.
+  { id: 'companion_grazer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Grazer Swarm', desc: 'A swarm of grazer bacteria herded by spore-pheromones. It grazes fields beside you and rasps whatever attacks the colony. The entry swarm.', cost: { biomass: 22, spores: 3 }, companion: 'grazer' },
+  { id: 'companion_lancer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Lancer Swarm', desc: 'A spined bacterial swarm driven by heavier pheromones — fast, it charges hostiles that near your colony. Needs mitochondrial pheromone synthesis.', cost: { biomass: 32, spores: 4, crystals: 1 }, requiresMito: true, companion: 'lancer' },
+  { id: 'companion_hunter', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Toxic Swarm', desc: 'A venomous bacterial swarm marshalled by the richest spore-pheromones, auto-firing toxic globs at your enemies. Your deadliest colony.', cost: { biomass: 44, spores: 5, dna: 1 }, requiresMito: true, companion: 'hunter' },
+
   { id: 'mitochondrial_eucharist', section: 'Eucharist Gate - Mitochondrial endosymbiosis', kind: 'sacrament', name: 'Mitochondrial Eucharist', desc: 'Yuki gives a living endosymbiont seed. Survive incubation; oxygen becomes power.', cost: { biomass: 24, lipids: 24, spores: 3, enzymes: 2, crystals: 2, dna: 1 }, requiresHostReady: true, effect: { beginEucharist: true } },
 
   { id: 'eucharist_archive', section: 'Tier 3 - DNA information', kind: 'eucharist', name: 'Eucharist Archive', desc: 'Record deep rupture DNA for future bodies.', cost: { dna: 1, energy: 18 }, requiresMito: true, organelle: 'eucharist_archive' },
@@ -567,6 +609,10 @@ function seedMatureEcosystem(world) {
     y: WORLD.deepTop + rand(world, 80, 1500),
     x: rand(world, 0, WORLD.w)
   });
+  for (let i = 0; i < 3; i++) spawnMetazoan(world, {
+    y: WORLD.deepTop + rand(world, 700, 2200),
+    x: rand(world, 0, WORLD.w)
+  });
 
   // Existing rupture fields and corpse slurry give the first seconds real choices.
   for (let i = 0; i < 22; i++) {
@@ -618,6 +664,14 @@ export function hasOrg(entity, org) { return (entity?.organelles?.[org] || 0) > 
 export function orgCount(entity, org) { return entity?.organelles?.[org] || 0; }
 export function hasMito(entity) { return orgCount(entity, 'mitochondrion') > 0; }
 function hasRasp(entity) { return RASP_ORGANS.some(o => hasOrg(entity, o)); }
+// Any organ that lets a body pick and pursue prey (used by NPC/companion targeting).
+function hasWeapon(entity) {
+  return hasRasp(entity) || LANCES.some(l => hasOrg(entity, l))
+    || hasOrg(entity, 'toxin_launcher') || hasOrg(entity, 'spore_toxin_launcher') || hasOrg(entity, 'harpoon_spine');
+}
+function companionCount(world, ownerId) {
+  return world.entities.filter(e => e.alive && e.controller === 'companion' && e.ownerId === ownerId).length;
+}
 
 function colonyOrgs(entity) {
   const merged = {};
@@ -711,7 +765,7 @@ function adrenalFactor(entity) {
 function speedOf(entity) {
   if ((entity.cargo.energy || 0) <= 0.01) return 0;
   if (orgCount(entity, 'basal_motility') <= 0 && orgCount(entity, 'flagella') <= 0) return 0;
-  let sp = entity.baseSpeed || (entity.controller === 'predator' ? 96 : entity.controller === 'protozoan' ? 82 : entity.controller === 'algae' ? 52 : 112);
+  let sp = entity.baseSpeed || (entity.controller === 'predator' ? 96 : entity.controller === 'protozoan' ? 82 : entity.controller === 'metazoan' ? 62 : entity.controller === 'companion' ? 110 : entity.controller === 'algae' ? 52 : 112);
   sp *= (0.72 + orgCount(entity, 'basal_motility') * 0.28);
   sp *= 1 + orgCount(entity, 'flagella') * ORGANELLES.flagella.stats.speedBonus;
   const c = caps(entity);
@@ -920,7 +974,8 @@ function updateNPCs(world, player, dt) {
       }
     }
 
-    if (prey && (e.controller === 'predator' || e.controller === 'protozoan')) {
+    const hunts = e.controller === 'predator' || e.controller === 'protozoan' || e.controller === 'metazoan' || e.controller === 'companion';
+    if (prey && hunts) {
       tx = prey.x; ty = prey.y; targetMode = 'prey';
       const preyDist = distWrap(e.x, e.y, prey.x, prey.y);
       if (powered && hasOrg(e, 'toxin_launcher') && preyDist < 520 && e.cargo.energy > ORGANELLES.toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.toxin_launcher.stats.toxinCost && world.rng() < 0.018) {
@@ -935,6 +990,18 @@ function updateNPCs(world, player, dt) {
       // With collision removed, predators should commit to standing on the target.
       // Rasping is overlap-based; orbiting just outside contact is explicitly wrong.
       if (powered && hasRasp(e) && preyDist < e.r + prey.r + 42) e.action = 'rasp';
+    }
+
+    // Symbionts leash to their owner: they hover near the player and only break off
+    // to fight prey that comes close. Stray too far and they abandon the hunt to catch up.
+    if (e.ownerId) {
+      const owner = world.entities.find(x => x.id === e.ownerId && x.alive);
+      if (owner) {
+        e.depthHome = owner.y;
+        const ownerDist = distWrap(e.x, e.y, owner.x, owner.y);
+        const chasing = targetMode === 'prey' && ownerDist < 300;
+        if (!chasing) { tx = owner.x; ty = owner.y; targetMode = ownerDist > 90 ? 'field' : 'home'; }
+      }
     }
 
     const oxygenDanger = oxygenAt(e.y) - oxygenTolerance(e);
@@ -1307,6 +1374,7 @@ function afterDamage(world, attacker, target, dmg) {
 
 function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
   if (!attacker.alive || !target.alive) return;
+  if (friendlySide(attacker) && friendlySide(target)) return; // no friendly fire (player, companions, buds, charmed)
   const facing = { x: Math.cos(attacker.phase), y: Math.sin(attacker.phase) };
   const alignmentRaw = facing.x * nx + facing.y * ny;
   const impactSpeed = Math.hypot(attacker.vx || 0, attacker.vy || 0);
@@ -1340,6 +1408,7 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
 
 function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
   if (!attacker.alive || !target.alive) return;
+  if (friendlySide(attacker) && friendlySide(target)) return; // no friendly fire
   const contactFraction = clamp(overlap / Math.min(attacker.r, target.r), 0, 1.35);
   let dps = 0;
   let rupturePower = 0;
@@ -1637,11 +1706,13 @@ function budFriendly(world, owner, x, y) {
 }
 
 function removeDead(world) {
+  let playerReformed = false;
   for (let i = world.entities.length - 1; i >= 0; i--) {
     const e = world.entities[i];
     if (e.alive) continue;
     bloomDeath(world, e);
     if (e.kind === 'player') {
+      playerReformed = true;
       // The player always re-forms in Yuki's tendrils at the top of the canopy —
       // the same place they began. Carried-but-unsequenced strain records survive
       // the death, so the long swim home to Yuki is where you bank your discoveries.
@@ -1660,6 +1731,14 @@ function removeDead(world) {
       world.entities.splice(i, 1);
     }
   }
+  // When the player dies, their independent colony scatters: symbionts and fission
+  // buds dissolve rather than orphaning to a player id that no longer exists.
+  if (playerReformed) {
+    for (let i = world.entities.length - 1; i >= 0; i--) {
+      const e = world.entities[i];
+      if (e.controller === 'companion' || e.friendLife > 0) world.entities.splice(i, 1);
+    }
+  }
 }
 
 function bloomDeath(world, e) {
@@ -1670,13 +1749,13 @@ function bloomDeath(world, e) {
   stock.energy = Math.max(0, (e.cargo.energy || 0) * 0.22);
   spawnResourceField(world, e.x, e.y, stock, { radius: e.r * (e.controller === 'algae' ? 3.0 : 2.2), density: e.controller === 'algae' ? 1.6 : 1.3, sourceKind: `${e.controller || e.kind}_corpse`, maxAge: e.kind === 'player' ? 30 : e.controller === 'algae' ? 42 : 24, maxRadius: e.controller === 'algae' ? 230 : 170 });
   if (e.controller === 'algae') world.stats.ruptures += 1;
-  if (e.kind !== 'player') {
+  if (e.kind !== 'player' && !e.friendly) {
     const deep = e.y - WORLD.canopy;
     if (deep > 780 && world.rng() < 0.7) spawnParticle(world, 'spores', e.x, e.y, Math.ceil(deep / 1400));
     if (deep > 1120 && world.rng() < 0.58) spawnParticle(world, choice(world, ['enzymes', 'crystals']), e.x, e.y, 1);
     const player = getPlayer(world);
-    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
-      const dp = spawnParticle(world, 'dna', e.x, e.y, e.controller === 'protozoan' ? 2 : 1);
+    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae' || e.controller === 'metazoan') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
+      const dp = spawnParticle(world, 'dna', e.x, e.y, e.controller === 'metazoan' ? 3 : e.controller === 'protozoan' ? 2 : 1);
       // Mutant strains shed information about their signature organelle: the DNA
       // is tagged with that organelle's id (the discovery key) and colored by its
       // category. Wild kills drop plain white DNA — currency, but no unlock.
@@ -1702,6 +1781,7 @@ function spawnTick(world, dt) {
     const r = world.rng();
     if (r < 0.44) spawnScavenger(world);
     else if (r < 0.88) spawnPredator(world);
+    else if (world.rng() < 0.14) spawnMetazoan(world); // rare deep colonial predator
     else spawnProtozoan(world);
   }
   if (world.spawn.exotic <= 0) {
@@ -1782,7 +1862,18 @@ function spawnPredator(world, opts = {}) {
   if (roll < 0.42) e.organelles.lance_bristle = 1;
   if (roll > 0.62) { e.organelles.toxin_launcher = 1; e.cargo.toxins = Math.max(e.cargo.toxins || 0, rand(world, 8, 18)); }
   applyStrain(world, e);
+  assignBody(e);
   world.entities.push(e); return e;
+}
+
+// A deep body's silhouette comes from its strain's category (or a default plan for
+// wild deep cells), so the deep reads as a menagerie instead of recolored blobs.
+function assignBody(e) {
+  if (e.strain && ORGANELLES[e.strain]) {
+    e.bodyPlan = DEEP_BODY_BY_CATEGORY[ORGANELLES[e.strain].category]
+      || (e.controller === 'protozoan' ? 'ciliate' : 'amoeba');
+  } else if (e.controller === 'protozoan') e.bodyPlan = 'ciliate';
+  else if (e.controller === 'predator') e.bodyPlan = 'amoeba';
 }
 
 function spawnProtozoan(world, opts = {}) {
@@ -1795,6 +1886,55 @@ function spawnProtozoan(world, opts = {}) {
     ruptureThreshold: 0.65
   });
   applyStrain(world, e);
+  assignBody(e);
+  world.entities.push(e); return e;
+}
+
+// Symbiont: an independent friendly cell recruited at Yuki. It swims beside the
+// player and fights on the player's side, but it is its own body — it can die.
+function spawnCompanion(world, owner, type) {
+  const def = COMPANIONS[type] || COMPANIONS.grazer;
+  const ang = world.rng() * Math.PI * 2;
+  const e = makeSoftBody(world, 'npc', owner.x + Math.cos(ang) * (owner.r + 20), owner.y + Math.sin(ang) * (owner.r + 20), {
+    r: def.r, color: def.color, controller: 'companion', trophicRole: 'symbiont', depthHome: owner.y,
+    organelles: { ...def.organelles }, cargo: { ...def.cargo }, oxygen: oxygenAt(owner.y) * 0.4, grace: 3.0
+  });
+  e.friendly = true;
+  e.ownerId = owner.id;
+  e.companionType = type;
+  e.bodyPlan = def.bodyPlan;
+  world.entities.push(e);
+  return e;
+}
+
+// Deep metazoan: the abyss's answer to the player's own colony. A large lead cell
+// with its own mitochondria, wearing a body of 2–4 somatic sub-cells (a real
+// e.colony, the same structure the player builds). Tanky, slow, and — because its
+// lead can mutate — a jackpot of exotic DNA when finally cracked open.
+function spawnMetazoan(world, opts = {}) {
+  const y = opts.y ?? (WORLD.deepTop + rand(world, 700, 2400));
+  const x = opts.x ?? rand(world, 0, WORLD.w);
+  const e = makeSoftBody(world, 'npc', x, y, {
+    r: rand(world, 42, 60), color: '#b060d0', controller: 'metazoan', trophicRole: 'colonial_predator', depthHome: y,
+    organelles: { membrane: 4, anaerobic_processor: 4, mitochondrion: 1, flagella: 2, lance_bristle: 1, rasping_lamella: 1, toxin_launcher: 1, storage_vacuole: 8, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 3 },
+    cargo: { biomass: rand(world, 70, 120), energy: rand(world, 90, 150), lipids: rand(world, 40, 80), toxins: rand(world, 10, 24) }, oxygen: oxygenAt(y),
+    ruptureThreshold: 0.7
+  });
+  // Build the multicellular body: each sub-cell is its own small cell with organs.
+  const segCount = 2 + Math.floor(world.rng() * 3);
+  e.colony = [];
+  for (let i = 0; i < segCount; i++) {
+    const segOrg = { membrane: 1 + Math.floor(world.rng() * 2), anaerobic_processor: 1 };
+    if (world.rng() < 0.5) segOrg.mitochondrion = 1; // some somatic cells keep their own mitochondria
+    const w = world.rng();
+    if (w < 0.33) segOrg.lance_bristle = 1; else if (w < 0.66) segOrg.rasping_lamella = 1; else segOrg.membrane_hardening = 1;
+    const sr = clamp(14 + (segOrg.membrane || 1) * 4, 12, 30);
+    const shp = 60 + (segOrg.membrane || 1) * 30;
+    e.colony.push({ id: id('seg'), label: 'Somatic Cell', organelles: segOrg, r: sr, hp: shp, maxHp: shp });
+  }
+  applyStrain(world, e); // the lead may mutate; its strain drops the exotic DNA
+  e.maxHp = caps(e).hp; e.hp = e.maxHp; // colony membranes fold into a big HP pool
+  e.bodyPlan = 'colonial';
   world.entities.push(e); return e;
 }
 
@@ -1812,11 +1952,12 @@ function bestFieldFor(entity, world) {
 }
 
 function bestBodyTarget(entity, world, player) {
-  if (!hasRasp(entity)) return null;
+  if (!hasWeapon(entity)) return null;
   let best = null, bestScore = -Infinity;
   for (const other of world.entities) {
     if (!other.alive || other.id === entity.id) continue;
     if (entity.friendly && other.kind === 'player') continue;
+    if (entity.friendly && other.friendly) continue; // allies never hunt allies
     if (other.friendly && entity.kind === 'player') continue;
     if (entity.controller === 'predator' && other.controller === 'protozoan') continue;
     const d = distWrap(entity.x, entity.y, other.x, other.y);
@@ -1967,15 +2108,17 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     const needsOrg = o.requiresOrganelle && !hasOrg(e, o.requiresOrganelle);
     const needsHost = !!o.requiresHostReady && !readiness.ready;
     const needsDiscovery = !!o.requiresDiscovery && !(world.discoveredSources || new Set()).has(o.requiresDiscovery);
+    const atCompanionCap = !!o.companion && companionCount(world, entityId) >= COMPANION_CAP;
     const incubating = o.id === 'mitochondrial_eucharist' && !!e.incubating;
     const affordable = hasStock(e.cargo, o.cost);
-    const locked = !!owned || !!maxed || needsMito || needsNoMito || needsOrg || needsHost || needsDiscovery || incubating || !affordable;
+    const locked = !!owned || !!maxed || needsMito || needsNoMito || needsOrg || needsHost || needsDiscovery || atCompanionCap || incubating || !affordable;
     const reasons = [];
     if (owned || maxed) reasons.push('already grafted or maxed');
     if (needsMito) reasons.push('requires mitochondrial Eucharist');
     if (needsNoMito) reasons.push('already integrated');
     if (needsOrg) reasons.push(`requires ${ORGANELLES[o.requiresOrganelle]?.name || o.requiresOrganelle}`);
     if (needsDiscovery) reasons.push(`undiscovered — harvest ${ORGANELLES[o.requiresDiscovery]?.name || o.requiresDiscovery} DNA`);
+    if (atCompanionCap) reasons.push(`colony full — max ${COMPANION_CAP} symbionts`);
     if (needsHost) reasons.push(...readiness.reasons.slice(0, 3));
     if (incubating) reasons.push('incubation underway');
     if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, o.cost))}`);
@@ -2062,6 +2205,16 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   if (!offering) return { ok: false, reason: 'missing offering' };
   const projected = getYukiOfferings(world, entityId).find(o => o.id === offeringId);
   if (!projected || projected.locked) return { ok: false, reason: projected?.reasons?.join('; ') || 'locked' };
+  // Symbiotic colony: recruit an independent friendly cell that swims and fights beside you.
+  if (offering.companion) {
+    subStock(entity.cargo, offering.cost || {});
+    spawnCompanion(world, entity, offering.companion);
+    entity.organelles.companion_cell = companionCount(world, entityId);
+    world.stats.spawnedCompanions += 1;
+    clampCargo(entity);
+    world.events.push({ type: 'companion', entityId, offeringId, companion: offering.companion });
+    return { ok: true, offeringId };
+  }
   subStock(entity.cargo, offering.cost || {});
   if (offering.gain) addStock(entity.cargo, offering.gain);
   if (offering.effect?.heal) entity.hp = Math.min(caps(entity).hp, entity.hp + offering.effect.heal);
@@ -2142,20 +2295,24 @@ function objectiveText(world, e) {
 }
 
 export function getRenderProjection(world) {
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;
+    // The same colony structure the player builds also wraps deep metazoans. Friendly
+    // colonies read teal; a hostile metazoan's somatic cells wear its own body color.
+    const side = friendlySide(e);
+    const segColor = side ? '#7fffe0' : (e.color || '#b060d0');
     for (let i = 0; i < e.colony.length; i++) {
       const seg = e.colony[i];
-      const ang = (i / e.colony.length) * Math.PI * 2;
+      const ang = (i / e.colony.length) * Math.PI * 2 + (world.t * 0.15) * (side ? 0 : 1);
       const dist = e.r + seg.r + 4;
       colonyRender.push({
         id: seg.id, kind: 'colony_segment',
         x: e.x + Math.cos(ang) * dist, y: e.y + Math.sin(ang) * dist,
         vx: 0, vy: 0, r: seg.r, hp: seg.hp, maxHp: seg.maxHp,
-        color: '#7fffe0', controller: 'colony', trophicRole: 'colony',
-        friendly: true, phase: 0, feedIntent: false, repairIntent: false,
+        color: segColor, controller: side ? 'colony' : 'metazoan_cell', trophicRole: 'colony',
+        bodyPlan: null, friendly: side, phase: ang, feedIntent: false, repairIntent: false,
         action: null, organelles: {}, hit: 0, oxygen: 0, oxygenTolerance: 0,
         toxins: 0, toxinCap: 0, fallState: null, incubating: null
       });
@@ -2206,4 +2363,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP };

@@ -158,7 +158,7 @@ function checkDeathEvent(){
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
   for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
   for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
-  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');}
+  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A symbiont joins your colony.');}
 }
 
 function updateUI(){
@@ -196,7 +196,7 @@ function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
 function renderShop(){
   const offers=K.getYukiOfferings(world); const groups=[]; for(const o of offers){let g=groups.find(x=>x.section===o.section);if(!g){g={section:o.section,items:[]};groups.push(g)}g.items.push(o)}
-  ui.shopBody.innerHTML = groups.map(g=>{const isT3=g.section.includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('2D')?'harvested from mutant strains':g.section.includes('Eucharist')?'host-readiness gate':isT3?'DNA after mitochondria':'matter survival'}</small></div>${libHtml}<div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`}).join('');
+  ui.shopBody.innerHTML = groups.map(g=>{const isT3=g.section.includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('2D')?'harvested from mutant strains':g.section.includes('2E')?'spore-pheromone bacterial swarms — mid/late':g.section.includes('Eucharist')?'host-readiness gate':isT3?'DNA after mitochondria':'matter survival'}</small></div>${libHtml}<div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`}).join('');
   for(const card of ui.shopBody.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){if(kind!=='sequence')toast(kind==='exchange'?'Yuki exchange complete.':kind==='sacrament'?'Eucharist begun.':'Yuki graft accepted.'); renderShop();} else toast(res.reason||'Locked.');};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
@@ -280,7 +280,7 @@ function drawEntity(e){
   if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(188,255,111,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(188,255,111,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
   if(e.strain&&e.kind!=='player'){ctx.save();ctx.globalAlpha=.45+.3*Math.sin(world.t*4+e.x);ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(e.x,e.y,r+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
   drawAppendages(e,ang);
-  ctx.save(); ctx.beginPath(); const pts=28; for(let i=0;i<pts;i++){const a=i/pts*Math.PI*2;const wob=Math.sin(a*3+world.t*5+e.phase)*r*(1-hp)*.09;const stretch=1+speed*.22, shrink=1-speed*.12;let x=Math.cos(a)*(r+wob)*stretch,y=Math.sin(a)*(r+wob)*shrink;const rx=x*Math.cos(ang)-y*Math.sin(ang),ry=x*Math.sin(ang)+y*Math.cos(ang); if(i===0)ctx.moveTo(e.x+rx,e.y+ry);else ctx.lineTo(e.x+rx,e.y+ry)} ctx.closePath(); ctx.fillStyle=e.hit>0?'#fff':e.color; ctx.globalAlpha=e.friendly?.96:.90; ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=e.kind==='player'?'#eaffff':e.friendly?'#7fffe0':'rgba(0,0,0,.45)';ctx.lineWidth=e.kind==='player'?2.5:1.5;ctx.stroke(); ctx.restore();
+  drawBody(e,ang,r,hp,speed);
   if(e.kind==='player') drawInternalOrganelles(e,ang);
   if(e.hp<e.maxHp*.98){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-r,e.y-r-10,r*2,4);ctx.fillStyle='#ff7897';ctx.fillRect(e.x-r,e.y-r-10,r*2*hp,4)}
 }
@@ -340,6 +340,66 @@ function drawInternalOrganelles(e,ang){
     else {ctx.beginPath();ctx.arc(0,0,p.size,0,Math.PI*2);ctx.fill();}
     ctx.restore();
   }
+  ctx.restore();
+}
+// Body-plan dispatcher: the deep is a menagerie, not a field of identical blobs.
+// Each plan draws a distinct silhouette; the player and surface cells keep the classic blob.
+function bodyFill(e){return e.hit>0?'#fff':e.color}
+function bodyStroke(e){return e.kind==='player'?'#eaffff':e.friendly?'#7fffe0':'rgba(0,0,0,.45)'}
+function drawBody(e,ang,r,hp,speed){
+  const plan=e.bodyPlan;
+  if(plan==='spiny'||plan==='radial') drawSpiny(e,ang,r,hp,speed);
+  else if(plan==='jelly') drawJelly(e,ang,r,hp,speed);
+  else if(plan==='ciliate') drawCiliate(e,ang,r,hp,speed);
+  else if(plan==='maw') drawMaw(e,ang,r,hp,speed);
+  else if(plan==='amoeba') drawAmoeba(e,ang,r,hp,speed);
+  else if(plan==='colonial') drawColonial(e,ang,r,hp,speed);
+  else drawBlob(e,ang,r,hp,speed);
+}
+function drawBlob(e,ang,r,hp,speed){
+  ctx.save(); ctx.beginPath(); const pts=28;
+  for(let i=0;i<pts;i++){const a=i/pts*Math.PI*2;const wob=Math.sin(a*3+world.t*5+e.phase)*r*(1-hp)*.09;const stretch=1+speed*.22, shrink=1-speed*.12;let x=Math.cos(a)*(r+wob)*stretch,y=Math.sin(a)*(r+wob)*shrink;const rx=x*Math.cos(ang)-y*Math.sin(ang),ry=x*Math.sin(ang)+y*Math.cos(ang); if(i===0)ctx.moveTo(e.x+rx,e.y+ry);else ctx.lineTo(e.x+rx,e.y+ry)}
+  ctx.closePath(); ctx.fillStyle=bodyFill(e); ctx.globalAlpha=e.friendly?.96:.90; ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=e.kind==='player'?2.5:1.5; ctx.stroke(); ctx.restore();
+}
+function drawAmoeba(e,ang,r,hp,speed){
+  ctx.save(); ctx.beginPath(); const pts=34, seed=e.x*.7;
+  for(let i=0;i<pts;i++){const a=i/pts*Math.PI*2;const lobe=Math.sin(a*3+seed)*.20+Math.sin(a*5-world.t*.8+seed)*.10+Math.sin(a*2+world.t*.5)*.06;const rr=r*(1+lobe);const x=Math.cos(a)*rr,y=Math.sin(a)*rr;if(i===0)ctx.moveTo(e.x+x,e.y+y);else ctx.lineTo(e.x+x,e.y+y)}
+  ctx.closePath(); ctx.fillStyle=bodyFill(e); ctx.globalAlpha=e.friendly?.96:.9; ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.5; ctx.stroke();
+  ctx.globalAlpha=.4; ctx.fillStyle='rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(e.x,e.y,r*.32,0,Math.PI*2); ctx.fill(); ctx.restore();
+}
+function drawSpiny(e,ang,r,hp,speed){
+  ctx.save(); const n=10; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.4; ctx.fillStyle=bodyFill(e);
+  for(let i=0;i<n;i++){const a=ang+i/n*Math.PI*2+world.t*.15;const inner=r*.9,outer=r*1.55+Math.sin(world.t*3+i)*2;ctx.globalAlpha=.9;ctx.beginPath();ctx.moveTo(e.x+Math.cos(a-.13)*inner,e.y+Math.sin(a-.13)*inner);ctx.lineTo(e.x+Math.cos(a)*outer,e.y+Math.sin(a)*outer);ctx.lineTo(e.x+Math.cos(a+.13)*inner,e.y+Math.sin(a+.13)*inner);ctx.closePath();ctx.fill();ctx.stroke();}
+  ctx.globalAlpha=e.friendly?.96:.92; ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; ctx.stroke(); ctx.restore();
+}
+function drawJelly(e,ang,r,hp,speed){
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(ang+Math.PI/2);
+  ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.5; ctx.globalAlpha=.5;
+  for(let i=-2;i<=2;i++){const bx=i*r*.34;ctx.beginPath();ctx.moveTo(bx,r*.15);ctx.bezierCurveTo(bx+Math.sin(world.t*3+i)*6,r*.9,bx-Math.sin(world.t*2+i)*7,r*1.4,bx+Math.sin(world.t*2.5+i)*5,r*1.95);ctx.stroke();}
+  ctx.globalAlpha=e.friendly?.9:.8; ctx.fillStyle=bodyFill(e);
+  ctx.beginPath(); ctx.arc(0,0,r,Math.PI,0); ctx.quadraticCurveTo(r*.55,r*.5,0,r*.32); ctx.quadraticCurveTo(-r*.55,r*.5,-r,0); ctx.closePath(); ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+  ctx.restore();
+}
+function drawCiliate(e,ang,r,hp,speed){
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(ang); const rx=r*1.28, ry=r*.76;
+  ctx.strokeStyle=bodyStroke(e); ctx.globalAlpha=.42; ctx.lineWidth=1; const n=24;
+  for(let i=0;i<n;i++){const a=i/n*Math.PI*2;const px=Math.cos(a)*rx,py=Math.sin(a)*ry;const beat=2+Math.sin(world.t*11+i)*1.6;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+Math.cos(a)*beat,py+Math.sin(a)*beat);ctx.stroke();}
+  ctx.globalAlpha=e.friendly?.96:.9; ctx.fillStyle=bodyFill(e); ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.5; ctx.stroke();
+  ctx.globalAlpha=.28; ctx.fillStyle='rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(-rx*.22,0,ry*.32,0,Math.PI*2); ctx.fill(); ctx.restore();
+}
+function drawMaw(e,ang,r,hp,speed){
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(ang); const gape=.5+.35*Math.abs(Math.sin(world.t*4+e.x));
+  ctx.beginPath(); ctx.arc(0,0,r,gape,Math.PI*2-gape); ctx.lineTo(0,0); ctx.closePath();
+  ctx.fillStyle=bodyFill(e); ctx.globalAlpha=e.friendly?.96:.9; ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.5; ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(Math.cos(gape)*r,Math.sin(gape)*r); ctx.lineTo(0,0); ctx.lineTo(Math.cos(-gape)*r,Math.sin(-gape)*r); ctx.stroke(); ctx.restore();
+}
+function drawColonial(e,ang,r,hp,speed){
+  ctx.save(); const lobes=5; ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.5; ctx.fillStyle=bodyFill(e);
+  for(let i=0;i<lobes;i++){const a=ang+i/lobes*Math.PI*2+world.t*.1;const lx=e.x+Math.cos(a)*r*.44,ly=e.y+Math.sin(a)*r*.44;ctx.globalAlpha=e.friendly?.9:.8;ctx.beginPath();ctx.arc(lx,ly,r*.56,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.stroke();}
+  ctx.globalAlpha=.96; ctx.beginPath(); ctx.arc(e.x,e.y,r*.62,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+  ctx.globalAlpha=.5; ctx.fillStyle='rgba(245,212,122,.55)';
+  for(let i=0;i<3;i++){const a=world.t*.4+i*2.1;ctx.beginPath();ctx.ellipse(e.x+Math.cos(a)*r*.3,e.y+Math.sin(a)*r*.24,5,3,a,0,Math.PI*2);ctx.fill();}
   ctx.restore();
 }
 function drawAppendages(e,ang){
