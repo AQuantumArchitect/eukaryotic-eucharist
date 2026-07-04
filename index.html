@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Eukaryotic Eucharist v1.3.3 - Predator Flow Balance</title>
+<style>
+:root{--bg:#050611;--panel:rgba(7,9,22,.86);--line:rgba(158,240,189,.20);--text:#f7f4ff;--muted:#aeb1c7;--good:#9ef0bd;--bad:#ff7897;--gold:#f5d47a;--blue:#86d2ff;--violet:#d6a2ff}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}.vitals{position:absolute;left:10px;right:10px;top:55px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}.vital{border-radius:14px;padding:8px 9px;height:42px}.vtop{display:flex;justify-content:space-between;gap:8px;font-size:10px;font-weight:950;color:#fff}.vtop span:first-child{color:var(--muted);text-transform:uppercase}.track{height:7px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:5px;border:1px solid rgba(255,255,255,.08)}.fill{height:100%;width:0%;border-radius:99px;background:#fff}.hp .fill{background:linear-gradient(90deg,#ff6c8e,#ffb5c4)}.energy .fill{background:linear-gradient(90deg,#86d2ff,#f5d47a)}.depth .fill{background:linear-gradient(90deg,#9ef0bd,#d6a2ff)}.oxygen .fill{background:linear-gradient(90deg,#bfe8ff,#ffffff)}.chips{position:absolute;left:10px;right:10px;top:106px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.chip{border-radius:13px;padding:7px 8px;min-width:0;background:rgba(6,8,18,.70);border:1px solid rgba(255,255,255,.10)}.chipTop{display:flex;justify-content:space-between;font-size:9px;font-weight:950;text-transform:uppercase;color:var(--muted);gap:5px}.chip i{display:block;height:5px;border-radius:99px;margin-top:5px;background:rgba(255,255,255,.10);overflow:hidden}.chip b{display:block;height:100%;width:0%;border-radius:99px}.status{position:absolute;left:12px;right:12px;top:184px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;right:12px;top:154px;width:330px;border-radius:18px;padding:12px}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:100;pointer-events:none}.shop{pointer-events:auto;width:min(780px,calc(100vw - 420px));max-height:min(780px,calc(100vh - 56px));overflow:auto;border-radius:24px;padding:16px;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72);scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.shopHead{display:flex;justify-content:space-between;gap:14px;position:sticky;top:-16px;padding:10px 0 10px;background:linear-gradient(180deg,rgba(8,8,22,.98),rgba(8,8,22,.88));z-index:2}.shop h1{margin:0 0 4px;color:var(--good);font-size:20px}.shop p{margin:0;color:var(--muted);font-size:11px;line-height:1.35}.close{color:var(--bad);font-size:12px;font-weight:950;border:1px solid rgba(255,120,151,.3);border-radius:9px;padding:5px 9px;height:max-content;cursor:pointer}.section{margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.12)}.section:first-of-type{border-top:0;margin-top:4px;padding-top:0}.sectionTitle{display:flex;justify-content:space-between;gap:10px;margin:0 0 8px;color:var(--good);font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.07em}.sectionTitle small{letter-spacing:0;text-transform:none;color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.offer{border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);padding:10px;min-height:102px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}.offer.exchange{border-color:rgba(158,240,189,.32);background:linear-gradient(90deg,rgba(158,240,189,.075),rgba(134,210,255,.04));min-height:78px;padding:9px 10px}.offer.exchange.out-biomass{border-color:rgba(137,239,142,.46);background:linear-gradient(90deg,rgba(137,239,142,.14),rgba(137,239,142,.035))}.offer.exchange.out-lipids{border-color:rgba(245,212,122,.50);background:linear-gradient(90deg,rgba(245,212,122,.15),rgba(245,212,122,.035))}.offer.exchange.out-energy{border-color:rgba(134,210,255,.54);background:linear-gradient(90deg,rgba(134,210,255,.16),rgba(134,210,255,.035))}.offer.exchange.out-toxins{border-color:rgba(188,255,111,.50);background:linear-gradient(90deg,rgba(188,255,111,.14),rgba(188,255,111,.035))}.offer.exchange.out-hp{border-color:rgba(255,120,151,.44);background:linear-gradient(90deg,rgba(255,120,151,.13),rgba(255,120,151,.03))}.offer.exchange.out-detox{border-color:rgba(214,162,255,.44);background:linear-gradient(90deg,rgba(214,162,255,.13),rgba(214,162,255,.03))}.exchangeGrid{grid-template-columns:1fr}.offer.exchange .odesc{display:none}.offer.organelle{border-color:rgba(134,210,255,.25);background:rgba(134,210,255,.045)}.offer.theme-general{border-color:rgba(134,210,255,.30);background:linear-gradient(135deg,rgba(134,210,255,.080),rgba(255,255,255,.030))}.offer.theme-algae{border-color:rgba(137,239,142,.34);background:linear-gradient(135deg,rgba(137,239,142,.090),rgba(191,232,255,.040))}.offer.theme-attack{border-color:rgba(255,120,151,.35);background:linear-gradient(135deg,rgba(255,120,151,.090),rgba(188,255,111,.035))}.offer.eucharist{border-color:rgba(245,212,122,.32);background:rgba(245,212,122,.055)}.offer.colony{border-color:rgba(214,162,255,.32);background:rgba(214,162,255,.055)}.offer.ready{border-color:rgba(158,240,189,.48);box-shadow:inset 0 0 0 1px rgba(158,240,189,.08),0 10px 28px rgba(0,0,0,.22)}.offer.ready:hover{transform:translateY(-1px);background:rgba(158,240,189,.085)}.offer.lock{opacity:.42;cursor:not-allowed;filter:saturate(.55)}.exchangeFlow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}.pill{border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);white-space:nowrap}.pill.costP{color:#ffd8df}.pill.gainP{color:#dfffe4}.flowArrow{font-weight:950;color:var(--gold);opacity:.9}.buyCue{margin-top:8px;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--good)}.cat{font-size:8px;font-weight:950;color:var(--gold);text-transform:uppercase;border:1px solid rgba(245,212,122,.28);border-radius:99px;padding:2px 6px;width:max-content;margin-bottom:5px}.oname{font-weight:950;font-size:12px;color:#fff}.odesc{color:var(--muted);font-size:10px;line-height:1.28;margin-top:3px}.cost{font-size:10px;font-weight:900;color:var(--good);margin-top:7px}.req{font-size:10px;font-weight:900;color:var(--bad);margin-top:7px;line-height:1.25}.toast{position:absolute;left:50%;bottom:154px;transform:translateX(-50%);display:none;border-radius:999px;padding:10px 16px;font-size:12px;font-weight:850;z-index:120}.law{position:absolute;left:10px;right:10px;bottom:154px;border-radius:15px;padding:8px 10px;font-size:10px;color:var(--muted);text-align:center;display:none}.gameOver{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,6,17,.82);z-index:120;pointer-events:auto}.gameOver .box{width:min(520px,calc(100vw - 36px));border-radius:24px;padding:28px;text-align:center}.gameOver h1{margin:0 0 8px;color:var(--bad)}.gameOver p{margin:0 0 18px;color:var(--muted)}.gameOver button{border:0;border-radius:999px;background:var(--good);padding:12px 20px;font-weight:950;color:#071008}
+@media(max-width:900px){.desktopPanel,.controls,.status{display:none}.touch{display:block}.shopFab{display:block}.chips{top:103px;grid-template-columns:repeat(4,1fr)}.canopyBar small{display:none}.law{display:block}.overlay{align-items:flex-end;justify-content:center;padding:0;background:rgba(3,4,12,.30)}.shop{width:100vw;max-height:79vh;border-radius:26px 26px 0 0;border-left:0;border-right:0;border-bottom:0;padding:14px 14px calc(16px + env(safe-area-inset-bottom))}.shopHead{top:-14px}.grid{grid-template-columns:1fr}.offer{min-height:84px}.prompt{top:151px;font-size:11px}.toast{bottom:153px}}
+@media(max-width:480px){.chipTop{font-size:8px}.chip{padding:6px 6px}.actions{grid-template-columns:repeat(2,68px);gap:8px}.act{height:55px}.joy{width:116px;height:116px}.vitals{gap:5px}.vital{padding:7px 7px}.vtop{font-size:9px}}
+body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping .shopFab{display:none}body.shopping .chips,body.shopping .vitals,body.shopping .canopyBar{z-index:110;filter:none;opacity:1}body.shopping .prompt{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" aria-label="Eukaryotic Eucharist v1.3.3 predator flow balance canvas"></canvas>
+  <div class="hud">
+    <div class="canopyBar card">All Praise Yuki <small>metabolism to information</small></div>
+    <div class="vitals">
+      <div class="vital hp card"><div class="vtop"><span>HP</span><span id="hpText">0</span></div><div class="track"><div class="fill" id="hpFill"></div></div></div>
+      <div class="vital energy card"><div class="vtop"><span>ATP</span><span id="energyText">0</span></div><div class="track"><div class="fill" id="energyFill"></div></div></div>
+      <div class="vital depth card"><div class="vtop"><span>Depth</span><span id="depthText">0</span></div><div class="track"><div class="fill" id="depthFill"></div></div></div>
+      <div class="vital oxygen card"><div class="vtop"><span>O2</span><span id="o2Text">0</span></div><div class="track"><div class="fill" id="o2Fill"></div></div></div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="status card" id="status"><strong>v1.3.3</strong> predator flow balance</div>
+    <div class="desktopPanel card"><h3>Body graph</h3><div class="orgList" id="orgList"></div></div>
+    <div class="controls card"><h4>Projected controls</h4><div id="controls"></div></div>
+    <div class="prompt card" id="prompt"></div>
+    <button id="shopFab" class="shopFab">Yuki</button>
+    <div class="law card">Bodies feed by fields. Bodies attack only through organs. Eucharist asks for one DNA record.</div>
+    <div class="touch" id="touch">
+      <div class="joy" id="joy"><div class="knob" id="knob"></div></div>
+      <div class="actions" id="actions"></div>
+    </div>
+    <div class="toast card" id="toast"></div>
+  </div>
+  <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1>Yuki Graft Chamber</h1><p id="shopIntro">Tier 1 survives as anaerobic scavenger. Tier 2 adapts with exotics. Eucharist integrates mitochondria. Tier 3 accepts DNA.</p></div><div class="close" id="closeShop">Close</div></div><div id="shopBody"></div></div></div>
+  <div class="gameOver" id="gameOver"><div class="box card"><h1>Membrane Cleaved</h1><p>The world did not reset. Your corpse bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
+</div>
+<script type="module">
+import * as K from './src/graph_kernel.mjs';
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
+const ui = {
+  hpText: el('hpText'), hpFill: el('hpFill'), energyText: el('energyText'), energyFill: el('energyFill'), depthText: el('depthText'), depthFill: el('depthFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), chips: el('chips'), status: el('status'), orgList: el('orgList'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
+};
+function el(id){return document.getElementById(id)}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function fmt(v){return Math.floor(v).toString()}
+function pct(v,m){return `${clamp((v/(m||1))*100,0,100).toFixed(1)}%`}
+function wrapX(x){const w=K.WORLD.w; x%=w; if(x<0)x+=w; return x}
+function dxWrap(ax,bx){let dx=bx-ax; if(dx>K.WORLD.w/2)dx-=K.WORLD.w; if(dx<-K.WORLD.w/2)dx+=K.WORLD.w; return dx}
+function dist2(ax,ay,bx,by){const dx=dxWrap(ax,bx),dy=by-ay;return dx*dx+dy*dy}
+function norm(x,y){const d=Math.hypot(x,y)||1;return{x:x/d,y:y/d,d}}
+
+let currentSeed = Math.floor(Math.random()*1e9);
+let world = K.createWorld({seed: currentSeed});
+let projection = K.getRenderProjection(world);
+let hud = K.getHudProjection(world);
+let last = performance.now();
+let camera = {x:0,y:0,shake:0};
+let keys = new Set();
+let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
+let moveTouch = {id:null,x:0,y:0,active:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,cloud:false};
+let didGameOver = false;
+function resetWorld(seed = Math.floor(Math.random()*1e9)){
+  currentSeed = seed;
+  world = K.createWorld({seed: currentSeed});
+  projection = K.getRenderProjection(world);
+  hud = K.getHudProjection(world);
+  closeShop();
+  ui.gameOver.style.display='none';
+  didGameOver=false;
+  pointer.down=false; pointer.right=false;
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,cloud:false};
+  toast('World reset to mature initial ecology.');
+}
+
+function resize(){canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize,{passive:true}); resize();
+
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys.add(k);
+  if(k==='e'){
+    if(ui.shopOverlay.style.display==='flex') closeShop();
+    else if(hud?.nearYuki) openShop();
+  }
+  if(k==='p') resetWorld();
+  if(k==='k') { K.killPlayer(world); toast('Self-lysis: corpse bloom released.'); }
+  if(e.key==='Escape') closeShop();
+});
+addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+canvas.addEventListener('pointermove',e=>{pointer.x=e.clientX;pointer.y=e.clientY});
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('auxclick',e=>{ if(e.button===2) e.preventDefault(); });
+canvas.addEventListener('pointerdown',e=>{e.preventDefault(); if(e.button===2)pointer.right=true;else pointer.down=true;pointer.x=e.clientX;pointer.y=e.clientY});
+canvas.addEventListener('mousedown',e=>{ if(e.button===2){e.preventDefault(); pointer.right=true; pointer.x=e.clientX; pointer.y=e.clientY;} });
+addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
+addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
+addEventListener('blur',()=>{pointer.down=false;pointer.right=false});
+ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Return to the canopy to commune with Yuki.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
+
+function setupJoy(){
+  const joy=ui.joy, knob=ui.knob;
+  joy.addEventListener('pointerdown',e=>{moveTouch.id=e.pointerId; joy.setPointerCapture(e.pointerId); moveTouch.active=true; joyMove(e);});
+  joy.addEventListener('pointermove',e=>{if(moveTouch.id===e.pointerId)joyMove(e)});
+  joy.addEventListener('pointerup',e=>{if(moveTouch.id===e.pointerId){moveTouch.id=null;moveTouch.x=0;moveTouch.y=0;moveTouch.active=false;knob.style.transform='translate(0,0)'}});
+  joy.addEventListener('pointercancel',e=>{if(moveTouch.id===e.pointerId){moveTouch.id=null;moveTouch.x=0;moveTouch.y=0;moveTouch.active=false;knob.style.transform='translate(0,0)'}});
+}
+function joyMove(e){const r=ui.joy.getBoundingClientRect();const cx=r.left+r.width/2,cy=r.top+r.height/2;const n=norm(e.clientX-cx,e.clientY-cy);const mag=clamp(n.d/(r.width*.42),0,1);moveTouch.x=n.x*mag;moveTouch.y=n.y*mag;ui.knob.style.transform=`translate(${n.x*mag*36}px,${n.y*mag*36}px)`}
+setupJoy();
+
+function command(){
+  let mx=0,my=0;
+  if(keys.has('w')||keys.has('arrowup'))my-=1;if(keys.has('s')||keys.has('arrowdown'))my+=1;if(keys.has('a')||keys.has('arrowleft'))mx-=1;if(keys.has('d')||keys.has('arrowright'))mx+=1;
+  if(moveTouch.active){mx+=moveTouch.x;my+=moveTouch.y}
+  const n=norm(mx,my); if(Math.abs(mx)+Math.abs(my)<.05){n.x=0;n.y=0}
+  const player=projection.entities.find(e=>e.id===world.playerId);
+  const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
+  let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
+  const an=norm(ax,ay);
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,cloud:keys.has('v')||buttons.cloud,aimX:an.x,aimY:an.y};
+}
+
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000||1/60); last=now;
+  if(ui.shopOverlay.style.display!=='flex') K.step(world, command(), dt);
+  projection=K.getRenderProjection(world); hud=K.getHudProjection(world);
+  const player=projection.entities.find(e=>e.id===world.playerId);
+  if(player){camera.x=player.x-innerWidth*.5;camera.y=clamp(player.y-innerHeight*.53,0,K.WORLD.h-innerHeight);}
+  draw(); updateUI(); checkDeathEvent(); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function checkDeathEvent(){
+  if(projection.events.some(e=>e.type==='death'&&e.entityId===world.playerId)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
+}
+
+function updateUI(){
+  if(!hud)return;
+  ui.hpText.textContent=`${fmt(hud.hp.value)}/${fmt(hud.hp.max)}`; ui.hpFill.style.width=pct(hud.hp.value,hud.hp.max);
+  const energy=hud.resources.find(r=>r.id==='energy'); ui.energyText.textContent=`${fmt(energy.value)}/${fmt(energy.max)}`; ui.energyFill.style.width=pct(energy.value,energy.max);
+  ui.depthText.textContent=fmt(hud.depth.value); ui.depthFill.style.width=pct(hud.depth.value,hud.depth.max);
+  ui.o2Text.textContent=`${Math.round(hud.oxygen.value*100)}/${Math.round(hud.oxygen.tolerance*100)}`; ui.o2Fill.style.width=pct(hud.oxygen.value,hud.oxygen.max); ui.o2Fill.style.opacity=hud.oxygen.value>hud.oxygen.tolerance?1:.72;
+  const visible = ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna'];
+  ui.chips.innerHTML = visible.map(id=>{const r=hud.resources.find(x=>x.id===id);return `<div class="chip"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i></div>`}).join('');
+  const metab = hud.metabolism ? ` · ferment matrices ${hud.metabolism.fermentationLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
+  ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}`;
+  ui.prompt.style.display=hud.nearYuki?'block':'none'; ui.prompt.textContent='Yuki nearby: press E or tap Yuki';
+  ui.orgList.innerHTML = hud.organelles.map(o=>`<div class="org on"><b>${o.name}${o.count>1?' x'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}</div>`).join('');
+  updateActionButtons(hud.actions);
+  updateControls(hud.actions);
+  if(ui.shopOverlay.style.display==='flex') renderShop();
+}
+
+function updateActionButtons(actions){
+  const map = new Map(actions.map(a=>[a.id,a]));
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
+  ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
+  for(const b of ui.actions.querySelectorAll('.act')){
+    const id=b.dataset.act;
+    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki)openShop();else toast('Yuki is above.'); return;} buttons[id]=true; b.classList.add('active');};
+    b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
+  }
+}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>o.id==='lance_bristle');const acid=map.get('acid');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R','Rasp overlap',!!map.get('rasp')],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
+function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
+function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
+function renderShop(){
+  const offers=K.getYukiOfferings(world); const groups=[]; for(const o of offers){let g=groups.find(x=>x.section===o.section);if(!g){g={section:o.section,items:[]};groups.push(g)}g.items.push(o)}
+  ui.shopBody.innerHTML = groups.map(g=>`<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('Eucharist')?'host-readiness gate':g.section.includes('Tier 3')?'DNA after mitochondria':'matter survival'}</small></div><div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`).join('');
+  for(const card of ui.shopBody.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){toast(kind==='exchange'?'Yuki exchange complete.':kind==='sacrament'?'Eucharist begun.':'Yuki graft accepted.'); renderShop();} else toast(res.reason||'Locked.');};
+}
+function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';return `<div class="offer ${o.kind}${out}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${o.kind==='exchange'?exchangeCard(o):graftCard(o)}</div>`}
+function graftCard(o){return `<div><span class="cat">${o.kind}</span><div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to graft</div>`}</div>`}
+function exchangeCard(o){return `<div><span class="cat">exchange</span><div class="oname">${o.name}</div><div class="exchangeFlow">${resourcePills(o.cost,'costP')}${resourcePills(exchangeOutput(o),'gainP',true)}</div></div><div>${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to exchange</div>`}</div>`}
+function resLabel(k){return k==='energy'?'ATP':k}
+function resourcePills(stock,cls,arrow=false){const items=Object.entries(stock||{}).filter(([k,v])=>k!=='oxygen'&&v>0);const pills=items.map(([k,v])=>`<span class="pill ${cls}">${cls==='costP'?'−':'+'}${fmt(v)} ${resLabel(k)}</span>`).join('');return `${arrow?'<span class="flowArrow">→</span>':''}${pills||'<span class="pill gainP">service</span>'}`}
+function exchangeMainOutput(o){if(o.output)return o.output;if(o.gain)return Object.keys(o.gain)[0]||'service';if(o.effect?.heal)return 'hp';if(o.effect?.detox)return 'detox';return 'service'}
+function exchangeOutput(o){const out={...(o.gain||{})};if(o.effect?.heal)out.HP=o.effect.heal;if(o.effect?.detox)out.detox=o.effect.detox;if(o.effect?.oxygenVent)out.O2=Math.round(o.effect.oxygenVent*100);return out}
+
+function worldToScreenX(x){let sx=x-camera.x; if(sx<-innerWidth*.5)sx+=K.WORLD.w; if(sx>innerWidth*1.5)sx-=K.WORLD.w; return sx}
+function draw(){
+  ctx.clearRect(0,0,innerWidth,innerHeight); ctx.save(); ctx.translate(-camera.x,-camera.y); drawWorld(); for(const off of [-K.WORLD.w,0,K.WORLD.w]){ctx.save();ctx.translate(off,0); drawFields(); drawHazards(); drawParticles(); drawEntities(); ctx.restore()} ctx.restore(); drawVignette();
+}
+function drawWorld(){
+  const g=ctx.createLinearGradient(0,0,0,K.WORLD.h);
+  g.addColorStop(0,'#f3f2c8'); g.addColorStop(.045,'#29452d'); g.addColorStop(.15,'#142039'); g.addColorStop(.33,'#111527'); g.addColorStop(.58,'#110917'); g.addColorStop(1,'#020208');
+  ctx.fillStyle=g; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.h);
+  // Oxygen/light strata: surface is bright and poisonous, nursery is calmer, rupture layer is red/purple.
+  const light=ctx.createLinearGradient(0,0,0,K.WORLD.canopy+900); light.addColorStop(0,'rgba(255,240,165,.24)'); light.addColorStop(.35,'rgba(191,232,255,.16)'); light.addColorStop(1,'rgba(191,232,255,0)'); ctx.fillStyle=light; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.canopy+900);
+  ctx.fillStyle='rgba(134,210,255,.055)'; ctx.fillRect(-K.WORLD.w,K.WORLD.canopy,K.WORLD.w*3,620);
+  ctx.fillStyle='rgba(158,240,189,.035)'; ctx.fillRect(-K.WORLD.w,K.WORLD.nurseryTop,K.WORLD.w*3,K.WORLD.nurseryBottom-K.WORLD.nurseryTop);
+  ctx.fillStyle='rgba(255,120,151,.040)'; ctx.fillRect(-K.WORLD.w,K.WORLD.ruptureTop,K.WORLD.w*3,K.WORLD.ruptureBottom-K.WORLD.ruptureTop);
+  drawYukiCanopy();
+  ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1; ctx.font='bold 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.17)';
+  const labels=[[K.WORLD.canopy+60,'oxygen canopy'],[K.WORLD.nurseryTop,'anaerobic nursery'],[K.WORLD.ruptureTop,'rupture layer'],[K.WORLD.deepTop,'deep predator dark']];
+  for(const [y,label] of labels){ctx.beginPath();ctx.moveTo(-K.WORLD.w,y);ctx.lineTo(K.WORLD.w*2,y);ctx.stroke();ctx.fillText(label,18,y-8)}
+  for(let y=K.WORLD.canopy+520;y<K.WORLD.h;y+=520){ctx.beginPath();ctx.moveTo(-K.WORLD.w,y);ctx.lineTo(K.WORLD.w*2,y);ctx.stroke();ctx.fillText('Z '+Math.round(y-K.WORLD.canopy),16,y-7)}
+}
+function drawYukiCanopy(){
+  ctx.save(); ctx.fillStyle='rgba(58,190,97,.28)'; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.canopy); ctx.strokeStyle='rgba(158,240,189,.35)'; ctx.lineWidth=8; ctx.beginPath(); for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=90){const y=K.WORLD.canopy-16+Math.sin(x*.011+world.t)*15; if(x===-K.WORLD.w)ctx.moveTo(x,y);else ctx.quadraticCurveTo(x+45,y+Math.sin(x*.02)*32,x+90,y)} ctx.stroke();
+  for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=75){const len=42+24*Math.sin(x*.03+world.t*.7); ctx.strokeStyle='rgba(158,240,189,.22)'; ctx.lineWidth=2+Math.sin(x)*1; ctx.beginPath(); ctx.moveTo(x,K.WORLD.canopy-12); ctx.bezierCurveTo(x+12,K.WORLD.canopy+len*.3,x-18,K.WORLD.canopy+len*.65,x+8,K.WORLD.canopy+len); ctx.stroke(); ctx.fillStyle='rgba(158,240,189,.34)'; ctx.beginPath(); ctx.arc(x+8,K.WORLD.canopy+len,4+Math.sin(x)*1.5,0,Math.PI*2); ctx.fill(); }
+  ctx.restore();
+}
+function drawFields(){
+  for(const f of projection.fields){const total=Object.values(f.stock).reduce((a,b)=>a+Math.max(0,b||0),0); if(total<=0)continue; const tox=f.stock.toxins||0, lip=f.stock.lipids||0, bio=f.stock.biomass||0; const base=tox>bio+lip?'188,255,111':lip>bio?'245,212,122':'137,239,142'; const alpha=clamp(total/120,.12,.36); const rg=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.radius); rg.addColorStop(0,`rgba(${base},${alpha})`); rg.addColorStop(.72,`rgba(${base},${alpha*.33})`); rg.addColorStop(1,`rgba(${base},0)`); ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(f.x,f.y,f.radius,0,Math.PI*2); ctx.fill(); if(tox>1){ctx.strokeStyle='rgba(188,255,111,.28)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(f.x,f.y,f.radius*.7,0,Math.PI*2);ctx.stroke()} if(lip>1){ctx.fillStyle='rgba(245,212,122,.20)'; for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(f.x+Math.cos(i*2.1+world.t)*f.radius*.32,f.y+Math.sin(i*1.7-world.t)*f.radius*.24,Math.min(9,f.radius*.12),0,Math.PI*2);ctx.fill()}}
+  }
+}
+
+function drawHazards(){
+  for(const h of projection.hazards||[]){
+    const life=clamp(1-h.age/h.maxAge,0,1); ctx.save(); ctx.globalAlpha=.85*life;
+    const base=h.kind==='toxic_projectile'?'188,255,111':'188,255,111';
+    if(h.kind==='toxic_projectile'){
+      ctx.fillStyle=`rgba(${base},${.75*life})`; ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(h.x,h.y,h.radius,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle=`rgba(${base},${.35*life})`; ctx.beginPath(); ctx.arc(h.x,h.y,h.radius+7,0,Math.PI*2); ctx.stroke();
+    } else {
+      const rg=ctx.createRadialGradient(h.x,h.y,0,h.x,h.y,h.radius); rg.addColorStop(0,`rgba(${base},${.36*life})`); rg.addColorStop(.65,`rgba(${base},${.18*life})`); rg.addColorStop(1,`rgba(${base},0)`); ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(h.x,h.y,h.radius,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=`rgba(${base},${.28*life})`; ctx.setLineDash([5,7]); ctx.beginPath(); ctx.arc(h.x,h.y,h.radius*.72,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(const p of projection.particles){ctx.save();ctx.globalAlpha=clamp(1-p.age/p.maxAge,0,1);ctx.translate(p.x,p.y);ctx.rotate(world.t*1.8+p.x);ctx.fillStyle=p.color;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=1.3;
+    if(p.kind==='dna'){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=2;ctx.beginPath();for(let i=-2;i<=2;i++){ctx.moveTo(i*4,-8);ctx.lineTo(-i*4,8)}ctx.stroke();}
+    else if(p.kind==='spores'){ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.45)';for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(Math.cos(i*Math.PI/2)*3,Math.sin(i*Math.PI/2)*3,1.3,0,Math.PI*2);ctx.fill();}}
+    else if(p.kind==='enzymes'){ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(8,0);ctx.lineTo(0,9);ctx.lineTo(-8,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.45)';ctx.beginPath();ctx.moveTo(-5,0);ctx.lineTo(5,0);ctx.moveTo(0,-5);ctx.lineTo(0,5);ctx.stroke();}
+    else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
+    ctx.restore()}
+}
+function drawEntities(){for(const e of projection.entities){drawEntity(e)}}
+function drawEntity(e){
+  const speed=clamp(Math.hypot(e.vx,e.vy)/260,0,1); const hp=clamp(e.hp/e.maxHp,0,1); const r=e.r; const ang=e.phase||0;
+  if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
+  if(e.action==='rasp'){ctx.strokeStyle='rgba(255,180,110,.72)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,r+5,ang-.9,ang+.9);ctx.stroke()}
+  if(e.repairIntent){ctx.strokeStyle='rgba(245,212,122,.55)';ctx.lineWidth=2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+10,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
+  if(e.oxygen>e.oxygenTolerance){ctx.strokeStyle='rgba(191,232,255,.70)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,r+4+Math.sin(world.t*14)*2,0,Math.PI*2);ctx.stroke()}
+  if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(188,255,111,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(188,255,111,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
+  drawAppendages(e,ang);
+  ctx.save(); ctx.beginPath(); const pts=28; for(let i=0;i<pts;i++){const a=i/pts*Math.PI*2;const wob=Math.sin(a*3+world.t*5+e.phase)*r*(1-hp)*.09;const stretch=1+speed*.22, shrink=1-speed*.12;let x=Math.cos(a)*(r+wob)*stretch,y=Math.sin(a)*(r+wob)*shrink;const rx=x*Math.cos(ang)-y*Math.sin(ang),ry=x*Math.sin(ang)+y*Math.cos(ang); if(i===0)ctx.moveTo(e.x+rx,e.y+ry);else ctx.lineTo(e.x+rx,e.y+ry)} ctx.closePath(); ctx.fillStyle=e.hit>0?'#fff':e.color; ctx.globalAlpha=e.friendly?.96:.90; ctx.fill(); ctx.globalAlpha=1; ctx.strokeStyle=e.kind==='player'?'#eaffff':e.friendly?'#7fffe0':'rgba(0,0,0,.45)';ctx.lineWidth=e.kind==='player'?2.5:1.5;ctx.stroke(); ctx.restore();
+  if(e.kind==='player') drawInternalOrganelles(e,ang);
+  if(e.hp<e.maxHp*.98){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-r,e.y-r-10,r*2,4);ctx.fillStyle='#ff7897';ctx.fillRect(e.x-r,e.y-r-10,r*2*hp,4)}
+}
+function drawInternalOrganelles(e,ang){
+  const org=e.organelles||{};
+  const parts=[];
+  function add(id,color,count=1,size=4,shape='dot'){for(let i=0;i<count;i++)parts.push({id,color,size,shape})}
+  add('core','#ffffff',1,4.8,'core');
+  if(org.membrane_intake)add('intake','#86d2ff',Math.min(6,org.membrane_intake),3.2,'ring');
+  if(org.membrane_hardening)add('hardening','#d9d3c1',Math.min(6,org.membrane_hardening),3.1,'dot');
+  if(org.basal_motility)add('motor','#9ef0bd',Math.min(3,org.basal_motility),3.1,'dot');
+  if(org.cytostome)add('cytostome','#86d2ff',org.cytostome,4.2,'ring');
+  if(org.storage_vacuole)add('storage','#89ef8e',Math.min(7,org.storage_vacuole+1),3.8,'bubble');
+  if(org.exotic_vacuole)add('exotic','#d6a2ff',Math.min(6,org.exotic_vacuole+1),3.5,'diamond');
+  if(org.anaerobic_processor)add('anaerobic','#86d2ff',Math.min(8,org.anaerobic_processor),3.7,'rod');
+  if(org.lipid_repair_loom)add('repair','#f5d47a',org.lipid_repair_loom,4.2,'dot');
+  if(org.toxin_launcher)add('launcher','#bcff6f',org.toxin_launcher+1,4.2,'rod');
+  if(org.lance_bristle)add('lance','#ffac75',org.lance_bristle,3.4,'tri');
+  if(org.mitochondrion)add('mito','#ffac75',org.mitochondrion*2,5.2,'mito');
+  if(org.companion_cell)add('companion','#7fffe0',org.companion_cell,4.2,'dot');
+  ctx.save();
+  ctx.beginPath(); ctx.arc(e.x,e.y,e.r*.82,0,Math.PI*2); ctx.clip();
+  for(let i=0;i<parts.length;i++){
+    const p=parts[i]; const a=ang+i*2.399+Math.sin(world.t*.35+i)*.10; const ring=(i%5)/5; const rr=e.r*(.12+.58*ring); const x=e.x+Math.cos(a)*rr; const y=e.y+Math.sin(a)*rr*.78;
+    ctx.save(); ctx.translate(x,y); ctx.rotate(a+world.t*.3); ctx.globalAlpha=.82; ctx.fillStyle=p.color; ctx.strokeStyle='rgba(255,255,255,.42)'; ctx.lineWidth=1;
+    if(p.shape==='ring'){ctx.globalAlpha=.72;ctx.beginPath();ctx.arc(0,0,p.size,0,Math.PI*2);ctx.stroke();}
+    else if(p.shape==='bubble'){ctx.globalAlpha=.45;ctx.beginPath();ctx.arc(0,0,p.size+1,0,Math.PI*2);ctx.fill();ctx.stroke();}
+    else if(p.shape==='diamond'){ctx.beginPath();ctx.moveTo(0,-p.size);ctx.lineTo(p.size,0);ctx.lineTo(0,p.size);ctx.lineTo(-p.size,0);ctx.closePath();ctx.fill();}
+    else if(p.shape==='rod'){ctx.beginPath();ctx.ellipse(0,0,p.size*1.65,p.size*.55,0,0,Math.PI*2);ctx.fill();}
+    else if(p.shape==='tri'){ctx.beginPath();ctx.moveTo(p.size*1.6,0);ctx.lineTo(-p.size,p.size*.8);ctx.lineTo(-p.size,-p.size*.8);ctx.closePath();ctx.fill();}
+    else if(p.shape==='mito'){ctx.beginPath();ctx.ellipse(0,0,p.size*1.5,p.size*.72,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.28)';ctx.beginPath();ctx.moveTo(-p.size*.8,0);ctx.bezierCurveTo(-p.size*.25,-p.size*.5,p.size*.25,p.size*.5,p.size*.8,0);ctx.stroke();}
+    else {ctx.beginPath();ctx.arc(0,0,p.size,0,Math.PI*2);ctx.fill();}
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawAppendages(e,ang){
+  const org=e.organelles||{}; if(org.flagella){const n=org.flagella;for(let i=0;i<n;i++){const a=ang+Math.PI+(i-(n-1)/2)*.22;ctx.strokeStyle='rgba(158,240,189,.34)';ctx.lineWidth=1.7;ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*e.r*.7,e.y+Math.sin(a)*e.r*.7);ctx.bezierCurveTo(e.x+Math.cos(a)*(e.r+14),e.y+Math.sin(a)*(e.r+14),e.x+Math.cos(a+.4*Math.sin(world.t*8+i))*(e.r+27),e.y+Math.sin(a+.4*Math.sin(world.t*8+i))*(e.r+27),e.x+Math.cos(a+.8*Math.sin(world.t*8+i))*(e.r+42),e.y+Math.sin(a+.8*Math.sin(world.t*8+i))*(e.r+42));ctx.stroke()}}
+  if(org.rasping_lamella){ctx.strokeStyle='rgba(255,172,117,.45)';ctx.lineWidth=2;for(let i=0;i<10;i++){const a=i/10*Math.PI*2+world.t*.7;ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*e.r*.92,e.y+Math.sin(a)*e.r*.92);ctx.lineTo(e.x+Math.cos(a)*(e.r+6),e.y+Math.sin(a)*(e.r+6));ctx.stroke()}}
+  if(org.lance_bristle){const n=org.lance_bristle;ctx.strokeStyle='rgba(255,220,170,.82)';ctx.fillStyle='rgba(255,172,117,.78)';ctx.lineWidth=2.4;for(let i=0;i<n;i++){const la=ang+(i-(n-1)/2)*.28;const base=e.r*.72;const len=42+Math.min(32,n*8);const x1=e.x+Math.cos(la)*base,y1=e.y+Math.sin(la)*base,x2=e.x+Math.cos(la)*(base+len),y2=e.y+Math.sin(la)*(base+len);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.save();ctx.translate(x2,y2);ctx.rotate(la);ctx.beginPath();ctx.moveTo(9,0);ctx.lineTo(-6,5);ctx.lineTo(-6,-5);ctx.closePath();ctx.fill();ctx.restore();}}
+  if(org.mitochondrion){ctx.fillStyle='rgba(245,212,122,.55)';for(let i=0;i<org.mitochondrion;i++){const a=i/org.mitochondrion*Math.PI*2+world.t*.3;ctx.beginPath();ctx.ellipse(e.x+Math.cos(a)*e.r*.42,e.y+Math.sin(a)*e.r*.34,6,3,a,0,Math.PI*2);ctx.fill()}}
+  if(org.toxin_launcher){ctx.fillStyle='rgba(188,255,111,.48)';ctx.beginPath();ctx.arc(e.x-Math.cos(ang)*e.r*.35,e.y-Math.sin(ang)*e.r*.35,5,0,Math.PI*2);ctx.fill()}
+  if(org.photosystem){ctx.strokeStyle='rgba(137,239,142,.38)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,e.r+3,0,Math.PI*2);ctx.stroke()}
+  if(org.lipid_repair_loom){ctx.fillStyle='rgba(245,212,122,.35)';ctx.beginPath();ctx.arc(e.x+Math.cos(ang+1.8)*e.r*.35,e.y+Math.sin(ang+1.8)*e.r*.35,4,0,Math.PI*2);ctx.fill()}
+  if(org.oxygen_vacuole){ctx.fillStyle='rgba(191,232,255,.28)';const n=org.oxygen_vacuole;for(let i=0;i<Math.min(6,n);i++){const a=i/n*Math.PI*2+world.t*.2;ctx.beginPath();ctx.arc(e.x+Math.cos(a)*e.r*.35,e.y+Math.sin(a)*e.r*.32,4,0,Math.PI*2);ctx.fill()}}
+}
+
+function drawVignette(){const p=projection.entities.find(e=>e.id===world.playerId);if(!p)return;const z=p.y-K.WORLD.canopy;const intensity=clamp((z-280)/1500,0,.86);if(intensity<=0)return;const cx=worldToScreenX(p.x),cy=p.y-camera.y;const rad=Math.max(120,Math.min(innerWidth,innerHeight)*.82*(1-intensity*.45));const g=ctx.createRadialGradient(cx,cy,30,cx,cy,rad);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.55,`rgba(5,6,17,${intensity*.30})`);g.addColorStop(1,`rgba(5,6,17,${intensity})`);ctx.fillStyle=g;ctx.fillRect(0,0,innerWidth,innerHeight)}
+</script>
+</body>
+</html>
