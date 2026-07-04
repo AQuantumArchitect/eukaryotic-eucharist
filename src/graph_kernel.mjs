@@ -138,6 +138,16 @@ const DEEP_BODY_BY_CATEGORY = Object.freeze({
   projectile: 'ciliate', orbital: 'radial'
 });
 
+// Exotics are not just graft-currency — they are combustible verbs. Each one fuels
+// an active (or automatic) ability that rides an organelle you already carry, so
+// spending spores/enzymes/crystals is a moment-to-moment tactical choice.
+const CONSUMABLES = Object.freeze({
+  bloomDash: { spore: 1, impulseMult: 1.6, cloudRadius: 74, cloudDamage: 14, cloudAge: 2.0 }, // spores: dash → burst + spore cloud
+  engulf: { enzyme: 1, energyCost: 2, sizeRatio: 1.15, hpFrac: 0.6, cooldown: 1.0, biomassBase: 10, biomassPerR: 1.2 }, // enzymes: instakill-digest
+  ward: { crystal: 1, energyCost: 3, dur: 5.0, hardness: 0.5, reflect: 0.5, cooldown: 6.0 }, // crystals: armor + reflect + pierce
+  surge: { enzyme: 1, threshold: 0.12, convert: 18, efficiency: 3.6, cooldown: 5.0 } // enzymes: auto emergency biomass→ATP
+});
+
 // Organelles that express an individually-rolled potency (see potency() / applyStrain).
 // Each mutant that carries one of these rolls its own multiplier when it spawns.
 const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance', 'rupture_auger', 'adrenal_vesicle', 'thorn_coat', 'corrosive_pellicle', 'discharge_vesicle', 'cryo_vesicle', 'chemotaxis_cilia', 'phagocyte_maw', 'necrosis_gland', 'volatile_vacuole', 'seeker_gland', 'harpoon_spine', 'neuro_barb', 'orbital_spores', 'fission_bud', 'pheromone_gland']);
@@ -741,7 +751,8 @@ function oxygenTolerance(entity) {
 
 function membraneHardness(entity) {
   return orgCount(entity, 'membrane') * ORGANELLES.membrane.stats.hardness
-    + orgCount(entity, 'membrane_hardening') * ORGANELLES.membrane_hardening.stats.hardnessBonus;
+    + orgCount(entity, 'membrane_hardening') * ORGANELLES.membrane_hardening.stats.hardnessBonus
+    + ((entity.warded || 0) > 0 ? CONSUMABLES.ward.hardness : 0); // crystalline ward
 }
 
 function membranePorosity(entity) {
@@ -906,6 +917,7 @@ export function step(world, commands = {}, dt = 1 / 60) {
     if (e.charmTimer > 0) { e.charmTimer = Math.max(0, e.charmTimer - dt); if (e.charmTimer === 0) e.friendly = false; }
     if (e.friendLife > 0) { e.friendLife = Math.max(0, e.friendLife - dt); if (e.friendLife === 0 && e.alive) hurt(world, e, caps(e).hp + 999, null); }
     if (e.marked > 0) { e.marked = Math.max(0, e.marked - dt); if (e.marked === 0) e.markedBy = null; }
+    if (e.warded > 0) e.warded = Math.max(0, e.warded - dt);
     e.r = targetRadius(e);
     clampCargo(e);
   }
@@ -943,17 +955,29 @@ function applyPlayerCommands(world, player, commands, dt) {
     player.feedIntent = !!commands.feed;
     player.repairIntent = !!commands.repair;
     if (commands.dash && hasOrg(player, 'dash_vacuole') && player.cargo.energy >= ORGANELLES.dash_vacuole.stats.energyCost) {
-      const sp = ORGANELLES.dash_vacuole.stats.impulse;
+      let sp = ORGANELLES.dash_vacuole.stats.impulse;
+      // Bloom Dash: spend a spore for a stronger burst that vents a spore cloud behind you.
+      const bd = CONSUMABLES.bloomDash;
+      if ((player.cargo.spores || 0) >= bd.spore) {
+        player.cargo.spores -= bd.spore;
+        sp *= bd.impulseMult;
+        const h = spawnToxicHazard(world, player.x, player.y, { kind: 'spore_cloud', sourceId: player.id, radius: bd.cloudRadius, damage: bd.cloudDamage, maxAge: bd.cloudAge, color: DNA_CATEGORY_COLORS.launcher });
+        h.side = friendlySide(player);
+        world.events.push({ type: 'bloom_dash', entityId: player.id });
+      } else {
+        world.events.push({ type: 'dash', entityId: player.id });
+      }
       player.vx += (move.x || Math.cos(player.phase)) * sp;
       player.vy += (move.y || Math.sin(player.phase)) * sp;
       player.cargo.energy -= ORGANELLES.dash_vacuole.stats.energyCost;
-      world.events.push({ type: 'dash', entityId: player.id });
     }
     if (commands.rasp && hasRasp(player) && player.cargo.energy > 0) player.action = 'rasp';
     if (commands.acid && hasOrg(player, 'toxin_launcher')) acidPulse(world, player, commands.aimX, commands.aimY);
     if (commands.sporeshot && hasOrg(player, 'spore_toxin_launcher')) sporePulse(world, player, commands.aimX, commands.aimY);
     if (commands.harpoon && hasOrg(player, 'harpoon_spine')) harpoonPulse(world, player, commands.aimX, commands.aimY);
     if (commands.mark && hasOrg(player, 'pheromone_gland')) markPulse(world, player, commands.aimX, commands.aimY);
+    if (commands.engulf && hasOrg(player, 'phagocyte_maw')) engulfPulse(world, player);
+    if (commands.ward && hasOrg(player, 'membrane_hardening')) wardPulse(world, player);
     if (commands.cloud && hasOrg(player, 'toxin_cloud')) toxinCloud(world, player);
   }
 
@@ -1150,6 +1174,20 @@ function updateEnvironmentAndMetabolism(world, dt) {
           e.cargo.energy = Math.max(0, e.cargo.energy - lst.energyCost * usedBiomass);
         }
       }
+    }
+
+    // Enzymatic Surge: when ATP runs critically low, a catalytic cell spends one
+    // enzyme to flash-digest biomass into ATP — an automatic emergency respiration.
+    const surge = CONSUMABLES.surge;
+    e.cooldowns ||= {};
+    if ((e.cargo.energy || 0) < caps(e).energy * surge.threshold && hasOrg(e, 'catalytic_processor')
+      && (e.cargo.enzymes || 0) >= surge.enzyme && (e.cargo.biomass || 0) > 2 && (e.cooldowns.surge || 0) <= 0) {
+      const used = Math.min(e.cargo.biomass, surge.convert);
+      e.cargo.biomass -= used;
+      e.cargo.enzymes -= surge.enzyme;
+      e.cargo.energy = Math.min(caps(e).energy, (e.cargo.energy || 0) + used * surge.efficiency);
+      e.cooldowns.surge = surge.cooldown;
+      if (e.kind === 'player') world.events.push({ type: 'surge', entityId: e.id });
     }
 
     // Oxygen overload is tick damage unless tolerated or burned by mitochondria.
@@ -1350,7 +1388,8 @@ function updateHazards(world, dt) {
       }
       h.hitIds.add(e.id);
       world.stats.toxicHits += 1;
-      if (isProjectile) { burst = true; break; }
+      if (isProjectile && !h.pierce) { burst = true; break; } // overcharged shots pierce through
+      else if (isProjectile) continue; // keep flying, but only hit each body once
     }
     if (burst || h.age > h.maxAge || h.y < WORLD.canopy - 40 || h.y > WORLD.h + 80) {
       if (h.kind === 'toxic_projectile') {
@@ -1428,6 +1467,10 @@ function afterDamage(world, attacker, target, dmg) {
   if (hasOrg(target, 'thorn_coat') && attacker.alive && attacker.id !== target.id) {
     const st = ORGANELLES.thorn_coat.stats;
     hurt(world, attacker, dmg * st.reflect * potency(world, target, 'thorn_coat'), target.id);
+  }
+  // Crystalline Ward reflects a share of incoming damage while it holds.
+  if ((target.warded || 0) > 0 && attacker.alive && attacker.id !== target.id) {
+    hurt(world, attacker, dmg * CONSUMABLES.ward.reflect, target.id);
   }
 }
 
@@ -1682,6 +1725,44 @@ function markPulse(world, entity, aimX = null, aimY = null) {
   return true;
 }
 
+// Engulf (enzyme-fueled instakill): the phagocyte maw digests an overlapping hostile
+// that is smaller than you or already wounded — spend one enzyme, gain its biomass.
+function engulfPulse(world, e) {
+  if (!hasOrg(e, 'phagocyte_maw')) return false;
+  const o = CONSUMABLES.engulf;
+  e.cooldowns ||= {};
+  if ((e.cooldowns.engulf || 0) > 0 || (e.cargo.enzymes || 0) < o.enzyme || !hasEnergy(e, o.energyCost)) return false;
+  let best = null, bestScore = -Infinity;
+  for (const b of world.entities) {
+    if (!b.alive || b.id === e.id || !areHostile(e, b)) continue;
+    if (distWrap(e.x, e.y, b.x, b.y) > e.r + b.r) continue;
+    const eligible = b.r < e.r * o.sizeRatio || b.hp <= caps(b).hp * o.hpFrac;
+    if (!eligible) continue;
+    const score = b.r - distWrap(e.x, e.y, b.x, b.y) * 0.02;
+    if (score > bestScore) { bestScore = score; best = b; }
+  }
+  if (!best) return false;
+  e.cargo.enzymes -= o.enzyme; e.cargo.energy -= o.energyCost; e.cooldowns.engulf = o.cooldown;
+  const gain = o.biomassBase + best.r * o.biomassPerR;
+  e.cargo.biomass = Math.min(caps(e).biomass, (e.cargo.biomass || 0) + gain);
+  hurt(world, best, caps(best).hp + 999, e.id);
+  world.events.push({ type: 'engulf', entityId: e.id });
+  return true;
+}
+
+// Ward (crystal-fueled): spend a crystal to lattice the membrane for a few seconds —
+// harder skin, reflected damage, and your shots pierce while the ward holds.
+function wardPulse(world, e) {
+  if (!hasOrg(e, 'membrane_hardening')) return false;
+  const o = CONSUMABLES.ward;
+  e.cooldowns ||= {};
+  if ((e.cooldowns.ward || 0) > 0 || (e.cargo.crystals || 0) < o.crystal || !hasEnergy(e, o.energyCost)) return false;
+  e.cargo.crystals -= o.crystal; e.cargo.energy -= o.energyCost; e.cooldowns.ward = o.cooldown;
+  e.warded = o.dur;
+  world.events.push({ type: 'ward', entityId: e.id });
+  return true;
+}
+
 // Foraging return: a symbiont near its host hands over surplus biomass and lipids,
 // keeping a small reserve to fuel itself. This is what makes the grazer swarm an economy.
 function deliverToOwner(world, e, owner, dt) {
@@ -1724,11 +1805,12 @@ function acidPulse(world, entity, aimX = null, aimY = null) {
   let ax = aimX ?? Math.cos(entity.phase), ay = aimY ?? Math.sin(entity.phase);
   const n = norm(ax, ay); ax = n.x; ay = n.y;
   entity.phase = Math.atan2(ay, ax);
-  spawnToxicHazard(world, entity.x + ax * (entity.r + 18), entity.y + ay * (entity.r + 18), {
+  const th = spawnToxicHazard(world, entity.x + ax * (entity.r + 18), entity.y + ay * (entity.r + 18), {
     kind: 'toxic_projectile', sourceId: entity.id, radius: 11, damage: o.projectileDamage,
     vx: ax * o.projectileSpeed + entity.vx * 0.25, vy: ay * o.projectileSpeed + entity.vy * 0.25,
     maxAge: 0.78, hitOnce: true
   });
+  if ((entity.warded || 0) > 0) th.pierce = true; // overcharged: warded shots punch through
   world.events.push({ type: 'toxic_launch', entityId: entity.id });
   return true;
 }
@@ -1748,12 +1830,13 @@ function sporePulse(world, entity, aimX = null, aimY = null) {
   let ax = aimX ?? Math.cos(entity.phase), ay = aimY ?? Math.sin(entity.phase);
   const n = norm(ax, ay); ax = n.x; ay = n.y;
   entity.phase = Math.atan2(ay, ax);
-  spawnToxicHazard(world, entity.x + ax * (entity.r + 20), entity.y + ay * (entity.r + 20), {
+  const sh = spawnToxicHazard(world, entity.x + ax * (entity.r + 20), entity.y + ay * (entity.r + 20), {
     kind: 'spore_projectile', sourceId: entity.id, radius: 14, damage: o.projectileDamage * potency(world, entity, 'spore_toxin_launcher'),
     color: DNA_CATEGORY_COLORS.launcher,
     vx: ax * o.projectileSpeed + entity.vx * 0.25, vy: ay * o.projectileSpeed + entity.vy * 0.25,
     maxAge: 0.9, hitOnce: true
   });
+  if ((entity.warded || 0) > 0) sh.pierce = true; // overcharged: warded shots punch through
   world.events.push({ type: 'spore_launch', entityId: entity.id });
   return true;
 }
@@ -2242,6 +2325,8 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (hasOrg(e, 'spore_toxin_launcher')) { const st = ORGANELLES.spore_toxin_launcher.stats; actions.push({ id: 'sporeshot', label: 'Sporo-Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= st.toxinCost && (e.cargo.spores || 0) >= st.sporeCost && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'harpoon_spine')) { const st = ORGANELLES.harpoon_spine.stats; actions.push({ id: 'harpoon', label: 'Harpoon Spine', enabled: powered && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'pheromone_gland')) { const st = ORGANELLES.pheromone_gland.stats; actions.push({ id: 'mark', label: 'Mark Target', enabled: powered && (e.cargo.energy || 0) >= st.energyCost && (e.cargo.spores || 0) >= st.sporeCost }); }
+  if (hasOrg(e, 'phagocyte_maw')) { const o = CONSUMABLES.engulf; actions.push({ id: 'engulf', label: 'Engulf', enabled: powered && (e.cargo.enzymes || 0) >= o.enzyme && (e.cargo.energy || 0) >= o.energyCost }); }
+  if (hasOrg(e, 'membrane_hardening')) { const o = CONSUMABLES.ward; actions.push({ id: 'ward', label: 'Crystal Ward', enabled: powered && (e.cargo.crystals || 0) >= o.crystal && (e.cargo.energy || 0) >= o.energyCost }); }
   if (hasOrg(e, 'toxin_cloud')) actions.push({ id: 'cloud', label: 'Cloud', enabled: powered && (e.cargo.toxins || 0) >= ORGANELLES.toxin_cloud.stats.toxinCost && (e.cargo.energy || 0) >= ORGANELLES.toxin_cloud.stats.energyCost });
   actions.push({ id: 'yuki', label: 'Yuki', enabled: nearYuki(world, e) });
   return actions;
@@ -2451,7 +2536,7 @@ function objectiveText(world, e) {
 }
 
 export function getRenderProjection(world) {
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;
@@ -2519,4 +2604,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES };

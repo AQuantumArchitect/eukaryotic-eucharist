@@ -67,7 +67,7 @@ let camera = {x:0,y:0,shake:0};
 let keys = new Set();
 let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
 let moveTouch = {id:null,x:0,y:0,active:false};
-let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false};
 let didGameOver = false;
 // Iframe focus gate: keyboard events are silently dropped until the document has focus.
 // Applies to itch.io embeds, Google Sites embeds, and any other iframe host.
@@ -91,7 +91,7 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false};
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false};
   toast('World reset — new genome, Yuki shop re-locked.');
 }
 
@@ -139,7 +139,7 @@ function command(){
   const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
   let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
   const an=norm(ax,ay);
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,aimX:an.x,aimY:an.y};
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,aimX:an.x,aimY:an.y};
 }
 
 function loop(now){
@@ -158,7 +158,7 @@ function checkDeathEvent(){
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
   for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
   for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
-  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A swarm joins your colony.');else if(ev.type==='mark_launch') toast('Death-pheromone launched — swarm, converge.');else if(ev.type==='marked'&&ev.by===world.playerId) toast('Target marked for the swarm.');}
+  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A swarm joins your colony.');else if(ev.type==='mark_launch') toast('Death-pheromone launched — swarm, converge.');else if(ev.type==='marked'&&ev.by===world.playerId) toast('Target marked for the swarm.');else if(ev.type==='bloom_dash') toast('Bloom dash — spore cloud vented.');else if(ev.type==='ward') toast('Crystalline ward raised — shots pierce.');else if(ev.type==='surge') toast('Enzymatic surge — emergency ATP.');}
 }
 
 function updateUI(){
@@ -182,7 +182,7 @@ function updateUI(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -190,7 +190,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
@@ -280,6 +280,7 @@ function drawEntity(e){
   if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(188,255,111,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(188,255,111,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
   if(e.strain&&e.kind!=='player'){ctx.save();ctx.globalAlpha=.45+.3*Math.sin(world.t*4+e.x);ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(e.x,e.y,r+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
   if(e.marked>0){ctx.save();const spin=world.t*2.2;ctx.strokeStyle='#ff2d5a';ctx.lineWidth=2.4;ctx.globalAlpha=.5+.4*Math.abs(Math.sin(world.t*6));const rr=r+11;for(let q=0;q<4;q++){const a=spin+q*Math.PI/2;ctx.beginPath();ctx.arc(e.x,e.y,rr,a-.35,a+.35);ctx.stroke();ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*(rr-5),e.y+Math.sin(a)*(rr-5));ctx.lineTo(e.x+Math.cos(a)*(rr+5),e.y+Math.sin(a)*(rr+5));ctx.stroke();}ctx.restore();}
+  if(e.warded>0){ctx.save();ctx.strokeStyle='#ff5dba';ctx.globalAlpha=.5+.35*Math.abs(Math.sin(world.t*7));ctx.lineWidth=2;const rr=r+5;ctx.beginPath();for(let q=0;q<7;q++){const a=world.t*.8+q/7*Math.PI*2;const rad=rr+(q%2?3:0);const x=e.x+Math.cos(a)*rad,y=e.y+Math.sin(a)*rad;if(q===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.closePath();ctx.stroke();ctx.restore();}
   drawAppendages(e,ang);
   drawBody(e,ang,r,hp,speed);
   if(e.kind==='player') drawInternalOrganelles(e,ang);
