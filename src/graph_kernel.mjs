@@ -181,8 +181,7 @@ export const OFFERINGS = Object.freeze([
 
   { id: 'eucharist_archive', section: 'Tier 3 - DNA information', kind: 'eucharist', name: 'Eucharist Archive', desc: 'Record deep rupture DNA for future bodies.', cost: { dna: 1, energy: 18 }, requiresMito: true, organelle: 'eucharist_archive' },
   { id: 'mitochondrial_stack', section: 'Tier 3 - DNA information', kind: 'eucharist', name: 'Mitochondrial Stack', desc: 'Grow additional mitochondria after the first sacred integration.', cost: { dna: 1, lipids: 26 }, requiresMito: true, effect: { addMito: true } },
-  { id: 'companion_cell', section: 'Tier 3 - DNA information', kind: 'colony', name: 'Companion Cell Bud', desc: 'Grow a small allied grazer from archived deep information.', cost: { dna: 3, biomass: 36, energy: 24 }, requiresMito: true, organelle: 'companion_cell' },
-  { id: 'multicell_chassis', section: 'Tier 3 - DNA information', kind: 'colony', name: 'Multicell Chassis', desc: 'A larger post-mitochondrial machine. Expensive and unstable.', cost: { dna: 6, biomass: 64, lipids: 45, energy: 42 }, requiresMito: true, organelle: 'multicell_chassis' }
+  { id: 'multicell_chassis', section: 'Tier 3 - DNA information', kind: 'colony', name: 'Multicell Chassis', desc: 'A larger post-mitochondrial body plan. Expands your lead cell.', cost: { dna: 6, biomass: 64, lipids: 45, energy: 42 }, requiresMito: true, organelle: 'multicell_chassis' }
 ]);
 
 function mulberry32(seed) {
@@ -241,13 +240,14 @@ export function createWorld(options = {}) {
     hazards: [],
     events: [],
     stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
+    cellLibrary: [],
     spawn: { algae: 0, npc: 0, exotic: 0, seed: 0 },
     playerId: null
   };
   const player = makeSoftBody(world, 'player', WORLD.w / 2, WORLD.nurseryBottom - 120, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: WORLD.nurseryBottom - 120,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: 0.15
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: 0.15
   });
   world.playerId = player.id;
   world.entities.push(player);
@@ -323,7 +323,8 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     oxygen: opts.oxygen ?? oxygenAt(y),
     hunger: rand(world, 0.25, 0.9), targetId: null, feedIntent: false, repairIntent: false, action: null, alive: true, hit: 0,
     phase: rand(world, 0, Math.PI * 2), radiusPulse: rand(world, 0.6, 1.5), friendly: opts.friendly || false,
-    fallState: opts.fallState || null, incubating: null, grace: opts.grace ?? 0, cooldowns: {}
+    fallState: opts.fallState || null, incubating: null, grace: opts.grace ?? 0, cooldowns: {},
+    colony: opts.colony ? opts.colony.map(s => ({ ...s })) : []
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
   body.maxHp = caps(body).hp;
@@ -337,28 +338,40 @@ export function hasOrg(entity, org) { return (entity?.organelles?.[org] || 0) > 
 export function orgCount(entity, org) { return entity?.organelles?.[org] || 0; }
 export function hasMito(entity) { return orgCount(entity, 'mitochondrion') > 0; }
 
+function colonyOrgs(entity) {
+  const merged = {};
+  for (const seg of (entity.colony || [])) {
+    for (const [k, v] of Object.entries(seg.organelles || {})) {
+      merged[k] = (merged[k] || 0) + v;
+    }
+  }
+  return merged;
+}
+
 function caps(entity) {
-  const membrane = orgCount(entity, 'membrane');
-  const mito = orgCount(entity, 'mitochondrion');
-  const storage = orgCount(entity, 'storage_vacuole');
-  const exotic = orgCount(entity, 'exotic_vacuole');
-  const dnaSlots = orgCount(entity, 'dna_memory_vesicle');
-  const hard = orgCount(entity, 'membrane_hardening');
+  const extra = colonyOrgs(entity);
+  const oc = (id) => (entity.organelles[id] || 0) + (extra[id] || 0);
+  const membrane = oc('membrane');
+  const mito = oc('mitochondrion');
+  const storage = oc('storage_vacuole');
+  const exotic = oc('exotic_vacuole');
+  const dnaSlots = oc('dna_memory_vesicle');
+  const hard = oc('membrane_hardening');
   const s = ORGANELLES.storage_vacuole.stats;
   const x = ORGANELLES.exotic_vacuole.stats;
   const m = ORGANELLES.membrane.stats;
   const ov = ORGANELLES.oxygen_vacuole.stats;
   return {
-    hp: membrane * m.hp + hard * 8 + orgCount(entity, 'multicell_chassis') * 70,
+    hp: membrane * m.hp + hard * 8 + oc('multicell_chassis') * 70,
     energy: storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus,
-    biomass: storage * s.biomass + orgCount(entity, 'multicell_chassis') * 80,
+    biomass: storage * s.biomass + oc('multicell_chassis') * 80,
     lipids: storage * s.lipids + mito * 30,
-    toxins: storage * s.toxins + orgCount(entity, 'toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus,
+    toxins: storage * s.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus,
     spores: exotic * x.spores,
     enzymes: exotic * x.enzymes,
     crystals: exotic * x.crystals,
     dna: dnaSlots * ORGANELLES.dna_memory_vesicle.stats.dna,
-    oxygen: membrane * m.oxygenCap + orgCount(entity, 'oxygen_vacuole') * ov.oxygenCapBonus
+    oxygen: membrane * m.oxygenCap + oc('oxygen_vacuole') * ov.oxygenCapBonus
   };
 }
 
@@ -754,8 +767,48 @@ function updateEucharistIncubation(world, e, dt) {
     e.cargo.energy = Math.min(caps(e).energy, e.cargo.energy + 38);
     e.hp = Math.min(caps(e).hp, e.hp + 28);
     world.stats.eucharists += 1;
+    if (e.kind === 'player' && world.cellLibrary) {
+      world.cellLibrary.push(snapshotCell(e, world));
+    }
     world.events.push({ type: 'eucharist_complete', entityId: e.id });
   }
+}
+
+function classifyBlueprint(orgs, n) {
+  const flagella  = (orgs.flagella || 0);
+  const combat    = (orgs.rasping_lamella || 0) + (orgs.lance_bristle || 0) + (orgs.toxin_launcher || 0);
+  const storage   = (orgs.storage_vacuole || 0) + (orgs.exotic_vacuole || 0);
+  const armor     = (orgs.membrane_hardening || 0) + (orgs.lipid_repair_loom || 0);
+  const scores    = { motile: flagella * 2, combat: combat * 2.5, cargo: storage, armored: armor * 2 };
+  const top = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+  if (top[1] < 2) return `Archive Cell ${n}`;
+  if (top[0] === 'motile')  return 'Motile Swimmer';
+  if (top[0] === 'combat')  return (orgs.toxin_launcher || 0) >= 1 ? 'Toxic Lancer' : 'Combat Form';
+  if (top[0] === 'cargo')   return 'Cargo Cell';
+  if (top[0] === 'armored') return 'Armored Form';
+  return `Archive Cell ${n}`;
+}
+
+function snapshotCell(entity, world) {
+  const n = world.cellLibrary.length + 1;
+  return {
+    id: id('bp'),
+    label: classifyBlueprint(entity.organelles, n),
+    organelles: { ...entity.organelles },
+    capturedAt: world.t
+  };
+}
+
+function attachColonyCell(player, blueprint) {
+  const maxHp = 60 + (blueprint.organelles.membrane || 0) * 30;
+  const r = clamp(16 + (blueprint.organelles.storage_vacuole || 0) * 2, 12, 32);
+  player.colony.push({
+    id: blueprint.id,
+    label: blueprint.label,
+    organelles: { ...blueprint.organelles },
+    r, hp: maxHp, maxHp
+  });
+  player.r = Math.min(player.r + r * 0.6, player.baseR + 28);
 }
 
 function repairFromLipids(world, entity, dt) {
@@ -948,7 +1001,20 @@ function toxinCloud(world, entity) {
 
 function hurt(world, entity, amount, sourceId = null) {
   entity.hp -= amount;
-  if (amount > 0) entity.hit = 0.18;
+  if (amount > 0) {
+    entity.hit = 0.18;
+    if (entity.colony && entity.colony.length > 0) {
+      for (let i = entity.colony.length - 1; i >= 0; i--) {
+        const seg = entity.colony[i];
+        seg.hp = Math.max(0, seg.hp - amount * 0.4);
+        if (seg.hp <= 0) {
+          entity.colony.splice(i, 1);
+          entity.r = Math.max(entity.baseR, entity.r - seg.r * 0.6);
+          world.events.push({ type: 'colony_segment_lost', label: seg.label });
+        }
+      }
+    }
+  }
   if (entity.hp <= 0 && entity.alive) {
     entity.alive = false;
     world.stats.deaths += 1;
@@ -964,9 +1030,12 @@ function removeDead(world) {
     if (e.kind === 'player') {
       const next = makeSoftBody(world, 'player', e.x + 38, Math.max(WORLD.nurseryTop, e.y - 160), {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: WORLD.nurseryTop + 230,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: oxygenAt(Math.max(WORLD.nurseryTop, e.y - 160)), grace: 2.0
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(Math.max(WORLD.nurseryTop, e.y - 160)), grace: 2.0
       });
-      if (hasOrg(e, 'eucharist_archive')) next.organelles.eucharist_archive = 1;
+      if (hasOrg(e, 'eucharist_archive')) {
+        next.organelles.eucharist_archive = 1;
+        next.colony = e.colony ? e.colony.map(s => ({ ...s })) : [];
+      }
       world.entities[i] = next;
       world.playerId = next.id;
     } else {
@@ -991,7 +1060,7 @@ function bloomDeath(world, e) {
     // DNA can exist before mitochondria; the Eucharist asks for one deep record.
     // It remains scarce because it only appears from deep rupture events and still
     // requires a DNA Memory Vesicle to carry.
-    if (player && deep > 2400 && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
+    if (player && deep > 1800 && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
       spawnParticle(world, 'dna', e.x, e.y, e.controller === 'protozoan' ? 2 : 1);
     }
   }
@@ -1213,7 +1282,8 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 export function getYukiOfferings(world, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   const readiness = hostReadiness(e);
-  return OFFERINGS.map(o => {
+  const activeColony = (e.colony || []).length;
+  const staticOfferings = OFFERINGS.map(o => {
     const def = o.organelle ? ORGANELLES[o.organelle] : null;
     const limit = o.stackLimit || def?.max || (def?.stackable ? 99 : 1);
     const owned = o.organelle && !def?.stackable && orgCount(e, o.organelle) >= limit;
@@ -1235,14 +1305,51 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, o.cost))}`);
     return { ...o, costText: fmtStock(o.cost), locked, affordable, reasons, owned, maxed, tier3: o.section.includes('Tier 3'), readiness: o.id === 'mitochondrial_eucharist' ? readiness : null };
   });
+  const deployCost = { dna: 1, biomass: 32, energy: 20 };
+  const attachOfferings = (world.cellLibrary || []).map(bp => {
+    const alreadyAttached = (e.colony || []).some(s => s.id === bp.id);
+    const tooMany = activeColony >= 3;
+    const noMito = !hasMito(e);
+    const affordable = hasStock(e.cargo, deployCost);
+    const locked = noMito || !affordable || tooMany || alreadyAttached;
+    const reasons = [];
+    if (noMito) reasons.push('requires mitochondrial Eucharist');
+    if (tooMany) reasons.push('colony full — max 3 cells');
+    if (alreadyAttached) reasons.push('already part of your body');
+    if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, deployCost))}`);
+    const orgSummary = Object.entries(bp.organelles).filter(([, v]) => v > 0)
+      .map(([k, v]) => v > 1 ? `${k}×${v}` : k).join(', ');
+    return {
+      id: `attach_${bp.id}`, section: 'Tier 3 - DNA information', kind: 'colony',
+      name: `Attach: ${bp.label}`,
+      desc: `Fuse your archived ${bp.label} to your body. Organs: ${orgSummary}`,
+      cost: deployCost, costText: fmtStock(deployCost),
+      locked, affordable, reasons, tier3: true, owned: false, maxed: false, readiness: null
+    };
+  });
+  return [...staticOfferings, ...attachOfferings];
 }
 
 function missingStock(cargo, cost = {}) { const m = {}; for (const [k, v] of Object.entries(cost)) if (k !== 'oxygen' && (cargo[k] || 0) < v) m[k] = v - (cargo[k] || 0); return m; }
 
 export function buyOffering(world, offeringId, entityId = world.playerId) {
   const entity = world.entities.find(x => x.id === entityId);
+  if (!entity) return { ok: false, reason: 'missing entity' };
+  if (offeringId.startsWith('attach_')) {
+    const blueprintId = offeringId.slice(7);
+    const blueprint = (world.cellLibrary || []).find(b => b.id === blueprintId);
+    if (!blueprint) return { ok: false, reason: 'blueprint not found' };
+    if ((entity.colony || []).some(s => s.id === blueprint.id)) return { ok: false, reason: 'already part of your body' };
+    if ((entity.colony || []).length >= 3) return { ok: false, reason: 'colony full — max 3 cells' };
+    const deployCost = { dna: 1, biomass: 32, energy: 20 };
+    if (!hasStock(entity.cargo, deployCost)) return { ok: false, reason: `needs ${fmtStock(missingStock(entity.cargo, deployCost))}` };
+    subStock(entity.cargo, deployCost);
+    attachColonyCell(entity, blueprint);
+    world.events.push({ type: 'buy', entityId, offeringId });
+    return { ok: true, offeringId };
+  }
   const offering = OFFERINGS.find(o => o.id === offeringId);
-  if (!entity || !offering) return { ok: false, reason: 'missing entity or offering' };
+  if (!offering) return { ok: false, reason: 'missing offering' };
   const projected = getYukiOfferings(world, entityId).find(o => o.id === offeringId);
   if (!projected || projected.locked) return { ok: false, reason: projected?.reasons?.join('; ') || 'locked' };
   subStock(entity.cargo, offering.cost || {});
@@ -1259,7 +1366,6 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   }
   if (offering.organelle) {
     entity.organelles[offering.organelle] = (entity.organelles[offering.organelle] || 0) + 1;
-    if (offering.organelle === 'companion_cell') spawnCompanion(world, entity);
     if (offering.organelle === 'multicell_chassis') { entity.r += 8; entity.hp = Math.min(caps(entity).hp, entity.hp + 70); }
   }
   clampCargo(entity);
@@ -1267,10 +1373,6 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   return { ok: true, offeringId };
 }
 
-function spawnCompanion(world, player) {
-  const e = makeSoftBody(world, 'npc', player.x + 55, player.y + 20, { r: 18, color: '#7fffe0', controller: 'scavenger', friendly: true, depthHome: player.y, organelles: { membrane: 1, cytostome: 1, flagella: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1, anaerobic_processor: 1 }, cargo: { biomass: 8, energy: 20 }, oxygen: player.oxygen });
-  world.entities.push(e); world.stats.spawnedCompanions += 1;
-}
 
 export function getHudProjection(world, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
@@ -1291,7 +1393,9 @@ export function getHudProjection(world, entityId = world.playerId) {
     tier: hasMito(e) ? 3 : 2,
     hostReadiness: readiness,
     incubating: e.incubating ? { ...e.incubating } : null,
-    objective: objectiveText(world, e)
+    objective: objectiveText(world, e),
+    cellLibrary: world.cellLibrary || [],
+    colony: (e.colony || []).map(s => ({ label: s.label, hp: s.hp, maxHp: s.maxHp, r: s.r }))
   };
 }
 
@@ -1308,19 +1412,49 @@ function zoneName(y) {
 function objectiveText(world, e) {
   if (e.incubating) return 'Eucharist incubating. Keep lipids and energy available; avoid oxygen overload.';
   if (!hasOrg(e, 'lipid_repair_loom')) return 'Anaerobic scavenger: field feeding and default anaerobic processing. You have no attack yet; ATP gates every action. Scavenge rupture edges and return to Yuki for Tier 2 organs.';
-  if (!hasMito(e)) return 'Build host-worthiness from repair, exotics, one DNA record, and depth survival. Mitochondria are not bought.';
-  if ((e.cargo.dna || 0) < 3) return 'Mitochondria online. Oxygen and lipids are power; deep ruptures now shed DNA information.';
-  if (!hasOrg(e, 'eucharist_archive')) return 'Return to Yuki with DNA to open the Eucharist Archive.';
-  return 'Archive online. Build companions and multicell machinery from deep information.';
+  const lib = world.cellLibrary || [];
+  if (!hasMito(e)) {
+    if (lib.length > 0) return `Second form. Build a specialized body — your archived ${lib[lib.length - 1].label} awaits attachment at Yuki.`;
+    return 'Build host-worthiness from repair, exotics, one DNA record, and depth survival. Mitochondria are not bought.';
+  }
+  if (lib.length === 0) {
+    if ((e.cargo.dna || 0) < 3) return 'Mitochondria online. Oxygen and lipids are power; deep ruptures now shed DNA information.';
+    if (!hasOrg(e, 'eucharist_archive')) return 'Return to Yuki with DNA to open the Eucharist Archive.';
+    return 'Archive online. Your form will be preserved at the next Eucharist.';
+  }
+  const colony = e.colony || [];
+  if (colony.length >= 3) return 'Colony complete. Lead your composite organism into the deep.';
+  if (lib.length === 1) return 'Form archived. Attach your legacy at Yuki\'s chamber, or die to begin your second specialization.';
+  if (lib.length >= 2) return 'Colony growing. Attach your preserved forms to build a multicellular body.';
+  return 'Archive online. Your form will be preserved at the next Eucharist.';
 }
 
 export function getRenderProjection(world) {
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const colonyRender = [];
+  for (const e of world.entities) {
+    if (!e.colony || !e.colony.length) continue;
+    for (let i = 0; i < e.colony.length; i++) {
+      const seg = e.colony[i];
+      const ang = (i / e.colony.length) * Math.PI * 2;
+      const dist = e.r + seg.r + 4;
+      colonyRender.push({
+        id: seg.id, kind: 'colony_segment',
+        x: e.x + Math.cos(ang) * dist, y: e.y + Math.sin(ang) * dist,
+        vx: 0, vy: 0, r: seg.r, hp: seg.hp, maxHp: seg.maxHp,
+        color: '#7fffe0', controller: 'colony', trophicRole: 'colony',
+        friendly: true, phase: 0, feedIntent: false, repairIntent: false,
+        action: null, organelles: {}, hit: 0, oxygen: 0, oxygenTolerance: 0,
+        toxins: 0, toxinCap: 0, fallState: null, incubating: null
+      });
+    }
+  }
   return {
     version: VERSION,
     world: WORLD,
     t: world.t,
     environment: { oxygenSurface: oxygenAt(WORLD.canopy + 30), oxygenNursery: oxygenAt(WORLD.nurseryTop + 100), lightSurface: lightAt(WORLD.canopy + 30) },
-    entities: world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null })),
+    entities: [...entityProjection, ...colonyRender],
     fields: world.fields.map(f => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
     particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, age: p.age, maxAge: p.maxAge })),
@@ -1341,4 +1475,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs };

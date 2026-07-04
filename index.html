@@ -25,7 +25,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
     </div>
     <div class="chips" id="chips"></div>
     <div class="status card" id="status"><strong>v1.3.3</strong> predator flow balance</div>
-    <div class="desktopPanel card"><h3>Body graph</h3><div class="orgList" id="orgList"></div></div>
+    <div class="desktopPanel card"><h3>Body graph</h3><div class="orgList" id="orgList"></div><div id="colonySection" style="display:none;margin-top:10px"><h3 style="color:#d6a2ff">Colony</h3><div class="orgList" id="colonyList"></div></div></div>
     <div class="controls card"><h4>Projected controls</h4><div id="controls"></div></div>
     <div class="prompt card" id="prompt"></div>
     <button id="shopFab" class="shopFab">Yuki</button>
@@ -47,7 +47,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
 const ui = {
-  hpText: el('hpText'), hpFill: el('hpFill'), energyText: el('energyText'), energyFill: el('energyFill'), depthText: el('depthText'), depthFill: el('depthFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), chips: el('chips'), status: el('status'), orgList: el('orgList'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
+  hpText: el('hpText'), hpFill: el('hpFill'), energyText: el('energyText'), energyFill: el('energyFill'), depthText: el('depthText'), depthFill: el('depthFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), chips: el('chips'), status: el('status'), orgList: el('orgList'), colonySection: el('colonySection'), colonyList: el('colonyList'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
 };
 function el(id){return document.getElementById(id)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -152,6 +152,8 @@ requestAnimationFrame(loop);
 
 function checkDeathEvent(){
   if(projection.events.some(e=>e.type==='death'&&e.entityId===world.playerId)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
+  if(projection.events.some(e=>e.type==='eucharist_complete')) toast('Form archived. Attach your legacy at Yuki\'s chamber.');
+  for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
 }
 
 function updateUI(){
@@ -166,6 +168,7 @@ function updateUI(){
   ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}`;
   ui.prompt.style.display=hud.nearYuki?'block':'none'; ui.prompt.textContent='Yuki nearby: press E or tap Yuki';
   ui.orgList.innerHTML = hud.organelles.map(o=>`<div class="org on"><b>${o.name}${o.count>1?' x'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}</div>`).join('');
+  if(hud.colony&&hud.colony.length>0){ui.colonySection.style.display='';ui.colonyList.innerHTML=hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="org on"><b>${s.label}</b><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('');}else{ui.colonySection.style.display='none';}
   updateActionButtons(hud.actions);
   updateControls(hud.actions);
   if(ui.shopOverlay.style.display==='flex') renderShop();
@@ -187,9 +190,10 @@ function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
 function renderShop(){
   const offers=K.getYukiOfferings(world); const groups=[]; for(const o of offers){let g=groups.find(x=>x.section===o.section);if(!g){g={section:o.section,items:[]};groups.push(g)}g.items.push(o)}
-  ui.shopBody.innerHTML = groups.map(g=>`<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('Eucharist')?'host-readiness gate':g.section.includes('Tier 3')?'DNA after mitochondria':'matter survival'}</small></div><div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`).join('');
+  ui.shopBody.innerHTML = groups.map(g=>{const isT3=g.section.includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('Eucharist')?'host-readiness gate':isT3?'DNA after mitochondria':'matter survival'}</small></div>${libHtml}<div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`}).join('');
   for(const card of ui.shopBody.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){toast(kind==='exchange'?'Yuki exchange complete.':kind==='sacrament'?'Eucharist begun.':'Yuki graft accepted.'); renderShop();} else toast(res.reason||'Locked.');};
 }
+function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';return `<div class="offer ${o.kind}${out}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${o.kind==='exchange'?exchangeCard(o):graftCard(o)}</div>`}
 function graftCard(o){return `<div><span class="cat">${o.kind}</span><div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to graft</div>`}</div>`}
 function exchangeCard(o){return `<div><span class="cat">exchange</span><div class="oname">${o.name}</div><div class="exchangeFlow">${resourcePills(o.cost,'costP')}${resourcePills(exchangeOutput(o),'gainP',true)}</div></div><div>${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to exchange</div>`}</div>`}
