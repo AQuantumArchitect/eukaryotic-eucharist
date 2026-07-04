@@ -53,9 +53,7 @@ const DNA_CATEGORY_COLORS = Object.freeze({
 const STRAINS = Object.freeze({
   algae: [
     { org: 'lipogenic_processor', tint: '#c9e86f' },
-    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
-    { org: 'leech_rasp', tint: '#8fe37a' },
-    { org: 'leech_lance', tint: '#6fce8f' }
+    { org: 'lipid_repair_loom', tint: '#4fbf6f' }
   ],
   predator: [
     { org: 'virulent_processor', tint: '#ff6a4d' },
@@ -66,6 +64,8 @@ const STRAINS = Object.freeze({
     { org: 'catalytic_processor', tint: '#7fe0d0' },
     { org: 'clean_processor', tint: '#c8b6ff' },
     { org: 'saw_lance', tint: '#9a8fb0' },
+    { org: 'leech_rasp', tint: '#8fe37a' },
+    { org: 'leech_lance', tint: '#6fce8f' },
     { org: 'spore_toxin_launcher', tint: '#b06dff' }
   ]
 });
@@ -79,7 +79,8 @@ const PROCESSORS = Object.freeze(['anaerobic_processor', 'clean_processor', 'vir
 // hard it ramps with speed. Saw lances pin speed out entirely for flat grind.
 const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance', 'leech_lance']);
 const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp']);
-// Organelles whose per-run potency is rolled fresh each playthrough (see world.organelleRolls).
+// Organelles that express an individually-rolled potency (see potency() / applyStrain).
+// Each mutant that carries one of these rolls its own multiplier when it spawns.
 const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance']);
 
 export const ORGANELLES = Object.freeze({
@@ -343,35 +344,43 @@ export function pressureAt(y) {
 }
 
 // Discovered exotic-organelle unlocks persist across deaths and browser sessions.
-// Wrapped in try/catch because the smoke test runs in Node, where localStorage
-// is absent — persistence is a no-op there, discoveries just live for the run.
+// Each unlock stores the POTENCY of the individual whose genes you sequenced, so a
+// discovery is a Map orgId -> multiplier, not a bare set. Wrapped in try/catch
+// because the smoke test runs in Node (no localStorage) — persistence is a no-op there.
 function loadDiscoveries() {
   try {
-    const saved = JSON.parse(localStorage.getItem('ee_discoveries') || '[]');
-    return new Set(Array.isArray(saved) ? saved.filter(s => typeof s === 'string') : []);
-  } catch (_) { return new Set(); }
+    const saved = JSON.parse(localStorage.getItem('ee_discoveries') || '{}');
+    const m = new Map();
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      for (const [k, v] of Object.entries(saved)) if (typeof v === 'number') m.set(k, v);
+    } else if (Array.isArray(saved)) {
+      for (const k of saved) if (typeof k === 'string') m.set(k, 1); // migrate legacy set-form saves
+    }
+    return m;
+  } catch (_) { return new Map(); }
 }
 
 function saveDiscoveries(world) {
-  try { localStorage.setItem('ee_discoveries', JSON.stringify([...world.discoveredSources])); } catch (_) {}
+  try { localStorage.setItem('ee_discoveries', JSON.stringify(Object.fromEntries(world.discoveredSources))); } catch (_) {}
 }
 
 // A true fresh start (the reset-world button) wipes the persisted unlocks too, so
 // the Yuki shop returns to its locked, first-run state.
 function freshDiscoveries() {
   try { localStorage.removeItem('ee_discoveries'); } catch (_) {}
-  return new Set();
+  return new Map();
 }
 
-// Each playthrough rolls a private genome: every variable organelle gets a potency
-// multiplier (80%..120%), so the trait you unlock this run is never quite the one
-// you unlocked last run. Deterministic from the world seed.
-function rollOrganelles(rng) {
-  const rolls = {};
-  for (const oid of VARIABLE_ORGANS) rolls[oid] = 0.8 + rng() * 0.4;
-  return rolls;
+// Potency is not a per-run constant — it belongs to an individual. A mutant NPC
+// expresses the roll stamped on its own body when it spawned; the player expresses
+// the potency of whichever genome they sequenced at Yuki. This is the genetic
+// selection: better individuals in the froth carry better genes to harvest.
+function potency(world, entity, oid) {
+  if (entity && entity.strain === oid && typeof entity.strainPotency === 'number') return entity.strainPotency;
+  const d = world && world.discoveredSources;
+  if (d && typeof d.get === 'function') { const v = d.get(oid); if (typeof v === 'number') return v; }
+  return 1;
 }
-function pot(world, oid) { return (world && world.organelleRolls && world.organelleRolls[oid]) || 1; }
 
 export function createWorld(options = {}) {
   nextId = 1;
@@ -388,7 +397,6 @@ export function createWorld(options = {}) {
     stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
     cellLibrary: [],
     discoveredSources: options.fresh ? freshDiscoveries() : loadDiscoveries(),
-    organelleRolls: rollOrganelles(rng),
     spawn: { algae: 0, npc: 0, exotic: 0, seed: 0 },
     playerId: null
   };
@@ -397,7 +405,7 @@ export function createWorld(options = {}) {
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
     organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
-  player.carriedStrains = new Set();
+  player.carriedStrains = new Map();
   world.playerId = player.id;
   world.entities.push(player);
   seedMatureEcosystem(world);
@@ -872,7 +880,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
         const st = ORGANELLES[procId].stats;
         const efficiency = st.energyPerBiomass * (1.16 - 0.34 * biomassFill);
         // Catalytic processors run faster the more enzymes you carry, spending a trickle.
-        const rate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * pot(world, procId);
+        const rate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * potency(world, e, procId);
         const room = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
         if (room <= 0) break;
         const desiredATP = Math.min(level * rate * volumeCurve * dt, room);
@@ -895,7 +903,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lipidRoom = Math.max(0, caps(e).lipids - (e.cargo.lipids || 0));
       const biomassAvail = Math.max(0, (e.cargo.biomass || 0) - 2);
       if (lipidRoom > 0.02 && biomassAvail > 0.05 && (e.cargo.energy || 0) > lst.energyCost) {
-        const biomassUse = Math.min(biomassAvail, lst.biomassPerSecond * lipoLevel * pot(world, 'lipogenic_processor') * dt);
+        const biomassUse = Math.min(biomassAvail, lst.biomassPerSecond * lipoLevel * potency(world, e, 'lipogenic_processor') * dt);
         const lipidsMade = Math.min(lipidRoom, biomassUse * lst.lipidPerBiomass);
         if (lipidsMade > 0) {
           const usedBiomass = lipidsMade / lst.lipidPerBiomass;
@@ -998,7 +1006,7 @@ function repairFromLipids(world, entity, dt) {
   const o = ORGANELLES.lipid_repair_loom.stats;
   if ((entity.cargo.lipids || 0) <= 0.02 || (entity.cargo.energy || 0) <= 0.02 || entity.hp >= caps(entity).hp) return false;
   const room = caps(entity).hp - entity.hp;
-  const hps = o.hpPerSecond * pot(world, 'lipid_repair_loom');
+  const hps = o.hpPerSecond * potency(world, entity, 'lipid_repair_loom');
   const repair = Math.min(room, hps * orgCount(entity, 'lipid_repair_loom') * dt);
   const lipidCost = repair / hps * o.lipidCost;
   const energyCost = repair / hps * o.energyCost;
@@ -1122,7 +1130,7 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
     const reach = attacker.r + target.r + st.length * Math.min(1.65, 0.85 + count * 0.28);
     if (distance > reach || alignmentRaw < st.alignmentFloor) continue;
     const reachFraction = clamp((reach - distance) / Math.max(12, st.length), 0, 1.15);
-    const p = pot(world, lanceId);
+    const p = potency(world, attacker, lanceId);
     // A leech proboscis draws resources whenever it's engaged, regardless of its tiny bite.
     if (st.leechRate) leech += st.leechRate * count * p * reachFraction * dt;
     // Lances are impact organs, not laser beams. Charge lances punch far above
@@ -1149,7 +1157,7 @@ function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
       const rc = orgCount(attacker, raspId);
       if (rc <= 0) continue;
       const rst = ORGANELLES[raspId].stats;
-      const p = pot(world, raspId);
+      const p = potency(world, attacker, raspId);
       dps += rst.dps * rc * p;
       rupturePower += rst.rupturePower * rc;
       if (rst.stealFraction) siphon += rst.stealFraction * p;
@@ -1244,7 +1252,7 @@ function sporePulse(world, entity, aimX = null, aimY = null) {
   const n = norm(ax, ay); ax = n.x; ay = n.y;
   entity.phase = Math.atan2(ay, ax);
   spawnToxicHazard(world, entity.x + ax * (entity.r + 20), entity.y + ay * (entity.r + 20), {
-    kind: 'spore_projectile', sourceId: entity.id, radius: 14, damage: o.projectileDamage * pot(world, 'spore_toxin_launcher'),
+    kind: 'spore_projectile', sourceId: entity.id, radius: 14, damage: o.projectileDamage * potency(world, entity, 'spore_toxin_launcher'),
     color: DNA_CATEGORY_COLORS.launcher,
     vx: ax * o.projectileSpeed + entity.vx * 0.25, vy: ay * o.projectileSpeed + entity.vy * 0.25,
     maxAge: 0.9, hitOnce: true
@@ -1298,7 +1306,7 @@ function removeDead(world) {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
         cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
-      next.carriedStrains = new Set(e.carriedStrains || []);
+      next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
         next.organelles.eucharist_archive = 1;
         next.colony = e.colony ? e.colony.map(s => ({ ...s })) : [];
@@ -1331,6 +1339,7 @@ function bloomDeath(world, e) {
       // category. Wild kills drop plain white DNA — currency, but no unlock.
       if (e.strain && ORGANELLES[e.strain]) {
         dp.source = e.strain;
+        dp.potency = e.strainPotency || 1;
         dp.color = DNA_CATEGORY_COLORS[ORGANELLES[e.strain].category] || COLORS.dna;
       }
     }
@@ -1370,6 +1379,9 @@ function applyStrain(world, e) {
   const strain = pool[Math.floor(world.rng() * pool.length)];
   e.organelles[strain.org] = (e.organelles[strain.org] || 0) + 1;
   e.strain = strain.org;
+  // This individual's private genome: it expresses (and will bequeath) this potency.
+  // Hunting the froth for a high-roll mutant is how you upgrade a trait.
+  e.strainPotency = 0.8 + world.rng() * 0.4;
   e.color = strain.tint;
   // Give the strain the resources its signature organelle consumes, so the
   // mutant genuinely fights or metabolizes with the trait the player will loot.
@@ -1518,13 +1530,18 @@ function collectParticles(world, entity) {
     if (p.kind === 'dna') {
       world.stats.dnaRead += p.value;
       // A strain-tagged DNA record is only a *sample* when eaten — it rides along in
-      // carriedStrains. Nothing unlocks until you carry it back and let Yuki sequence
-      // it (buyOffering 'sequence_dna'). Die before then and the sample is lost.
-      if (entity.kind === 'player' && p.source && ORGANELLES[p.source] && world.discoveredSources && !world.discoveredSources.has(p.source)) {
-        entity.carriedStrains ||= new Set();
-        if (!entity.carriedStrains.has(p.source)) {
-          entity.carriedStrains.add(p.source);
-          world.events.push({ type: 'sample', source: p.source, name: ORGANELLES[p.source].name });
+      // carriedStrains (a Map orgId -> best potency seen). Nothing unlocks until you
+      // carry it home and let Yuki sequence it. Selection: you only bother carrying a
+      // sample if its genome beats what you already carry OR already have unlocked, so
+      // hunting a better mutant lets you upgrade an existing trait. Die and it's lost.
+      if (entity.kind === 'player' && p.source && ORGANELLES[p.source]) {
+        entity.carriedStrains ||= new Map();
+        const rolled = typeof p.potency === 'number' ? p.potency : 1;
+        const current = Math.max(entity.carriedStrains.get(p.source) || 0, world.discoveredSources.get(p.source) || 0);
+        if (rolled > current + 1e-6) {
+          entity.carriedStrains.set(p.source, rolled);
+          const known = world.discoveredSources.has(p.source);
+          world.events.push({ type: 'sample', source: p.source, name: ORGANELLES[p.source].name, potency: rolled, upgrade: known });
         }
       }
     }
@@ -1618,16 +1635,20 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     if (incubating) reasons.push('incubation underway');
     if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, o.cost))}`);
     const category = o.organelle ? ORGANELLES[o.organelle]?.category || null : null;
-    const potency = (o.organelle && VARIABLE_ORGANS.includes(o.organelle)) ? pot(world, o.organelle) : null;
-    return { ...o, costText: fmtStock(o.cost), locked, affordable, reasons, owned, maxed, undiscovered: needsDiscovery, category, potency, tier3: o.section.includes('Tier 3'), readiness: o.id === 'mitochondrial_eucharist' ? readiness : null };
+    // Sequenced potency of this trait (the genome you locked in), plus the best
+    // sample you're currently carrying — so the shop can flag an available upgrade.
+    const potencyVal = (o.organelle && world.discoveredSources && world.discoveredSources.get) ? world.discoveredSources.get(o.organelle) ?? null : null;
+    const carriedPotency = (o.organelle && e.carriedStrains && e.carriedStrains.get) ? e.carriedStrains.get(o.organelle) ?? null : null;
+    return { ...o, costText: fmtStock(o.cost), locked, affordable, reasons, owned, maxed, undiscovered: needsDiscovery, category, potency: potencyVal, carriedPotency, tier3: o.section.includes('Tier 3'), readiness: o.id === 'mitochondrial_eucharist' ? readiness : null };
   });
-  // Yuki sequences the strain records you carried home: one offering that flushes
-  // all pending samples into permanent unlocks. This is where discovery happens.
-  const carried = [...(e.carriedStrains || [])].filter(s => ORGANELLES[s] && !(world.discoveredSources || new Set()).has(s));
+  // Yuki sequences the strain records you carried home: one offering that flushes all
+  // pending samples into permanent unlocks (or upgrades an already-known trait if the
+  // sample rolled higher). This is where discovery happens.
+  const carried = [...((e.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
   const sequenceOfferings = carried.length ? [{
     id: 'sequence_dna', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'sequence',
     name: `Sequence Genome (${carried.length})`,
-    desc: `Yuki reads the strain records you carried home and unlocks them forever: ${carried.map(s => ORGANELLES[s].name).join(', ')}.`,
+    desc: `Yuki reads the strain records you carried home and locks them into your lineage: ${carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ')}.`,
     cost: { energy: 6 }, costText: fmtStock({ energy: 6 }),
     locked: !hasStock(e.cargo, { energy: 6 }), affordable: hasStock(e.cargo, { energy: 6 }),
     reasons: hasStock(e.cargo, { energy: 6 }) ? [] : [`needs ${fmtStock(missingStock(e.cargo, { energy: 6 }))}`],
@@ -1664,16 +1685,16 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   const entity = world.entities.find(x => x.id === entityId);
   if (!entity) return { ok: false, reason: 'missing entity' };
   if (offeringId === 'sequence_dna') {
-    const carried = [...(entity.carriedStrains || [])].filter(s => ORGANELLES[s] && !world.discoveredSources.has(s));
+    const carried = [...((entity.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
     if (!carried.length) return { ok: false, reason: 'no new strain records to sequence' };
     const cost = { energy: 6 };
     if (!hasStock(entity.cargo, cost)) return { ok: false, reason: `needs ${fmtStock(missingStock(entity.cargo, cost))}` };
     subStock(entity.cargo, cost);
-    for (const s of carried) {
-      world.discoveredSources.add(s);
+    for (const [s, mult] of carried) {
+      const upgrade = world.discoveredSources.has(s);
+      world.discoveredSources.set(s, mult); // sample only carried if it beats current, so always locks the better genome
       entity.carriedStrains.delete(s);
-      const mult = pot(world, s);
-      world.events.push({ type: 'discovery', source: s, name: ORGANELLES[s].name, potency: mult });
+      world.events.push({ type: 'discovery', source: s, name: ORGANELLES[s].name, potency: mult, upgrade });
     }
     saveDiscoveries(world);
     world.events.push({ type: 'buy', entityId, offeringId });
@@ -1739,8 +1760,8 @@ export function getHudProjection(world, entityId = world.playerId) {
     incubating: e.incubating ? { ...e.incubating } : null,
     objective: objectiveText(world, e),
     cellLibrary: world.cellLibrary || [],
-    discoveredSources: [...(world.discoveredSources || [])],
-    carriedStrains: [...(e.carriedStrains || [])].map(s => ({ id: s, name: ORGANELLES[s]?.name || s, category: ORGANELLES[s]?.category || null })),
+    discoveredSources: [...((world.discoveredSources || new Map()).entries())].map(([id, potency]) => ({ id, name: ORGANELLES[id]?.name || id, category: ORGANELLES[id]?.category || null, potency })),
+    carriedStrains: [...((e.carriedStrains || new Map()).entries())].map(([id, potency]) => ({ id, name: ORGANELLES[id]?.name || id, category: ORGANELLES[id]?.category || null, potency, upgrade: (world.discoveredSources || new Map()).has(id) })),
     colony: (e.colony || []).map(s => ({ label: s.label, hp: s.hp, maxHp: s.maxHp, r: s.r }))
   };
 }
@@ -1803,7 +1824,7 @@ export function getRenderProjection(world) {
     entities: [...entityProjection, ...colonyRender],
     fields: world.fields.map(f => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
-    particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, age: p.age, maxAge: p.maxAge })),
+    particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, potency: p.potency || null, age: p.age, maxAge: p.maxAge })),
     events: world.events.slice()
   };
 }
@@ -1821,4 +1842,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, pot, drainLeech, YUKI_SPAWN };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN };

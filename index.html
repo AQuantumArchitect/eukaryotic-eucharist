@@ -156,8 +156,8 @@ function checkDeathEvent(){
   if(projection.events.some(e=>e.type==='death'&&e.entityId===world.playerId)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
   if(projection.events.some(e=>e.type==='eucharist_complete')) toast('Form archived. Attach your legacy at Yuki\'s chamber.');
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
-  for(const ev of projection.events){if(ev.type==='sample') toast(`Genetic sample: ${ev.name}. Carry it to Yuki to sequence.`);}
-  for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} sequenced — unlocked${ev.potency?` at ${Math.round(ev.potency*100)}% potency`:''}.`);}
+  for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
+  for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
 }
 
 function updateUI(){
@@ -204,7 +204,7 @@ const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b
 function graftCard(o){
   let head=`<span class="cat">${o.kind}</span>`;
   if(o.kind==='sequence'){head='<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence at Yuki</span>';}
-  else if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';const pot=(!o.undiscovered&&o.potency)?`<span class="cat" style="border-color:${c}66;color:${c};margin-left:4px">${Math.round(o.potency*100)}% potency</span>`:'';const unlocked=o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${unlocked}${pot}`;}
+  else if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';const pot=(!o.undiscovered&&o.potency)?`<span class="cat" style="border-color:${c}66;color:${c};margin-left:4px">${Math.round(o.potency*100)}% potency</span>`:'';const unlocked=o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>';const upg=(o.carriedPotency&&(!o.potency||o.carriedPotency>o.potency))?`<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a;margin-left:4px">▲ ${Math.round(o.carriedPotency*100)}% carried — sequence to ${o.potency?'upgrade':'unlock'}</span>`:'';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${unlocked}${pot}${upg}`;}
   const cue=o.kind==='sequence'?'Tap to sequence':'Tap to graft';
   return `<div>${head}<div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">${cue}</div>`}</div>`;
 }
