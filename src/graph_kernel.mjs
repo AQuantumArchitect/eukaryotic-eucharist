@@ -49,7 +49,8 @@ const DNA_CATEGORY_COLORS = Object.freeze({
   risk: '#ff2d7a',
   execute: '#ff8a3d',
   projectile: '#4db8ff',
-  orbital: '#ffd24d'
+  orbital: '#ffd24d',
+  swarm: '#5fe0a0'
 });
 
 // Each species carries a pool of mutant strains. A strain grafts one signature
@@ -109,7 +110,7 @@ const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp
 // expendable, bought for plain matter, no Eucharist required. Buy a few and you are
 // a swarm; graft the chassis and you are one large organism. Two different answers
 // to "stop being alone in the froth."
-const COMPANION_CAP = 4;
+const COMPANION_CAP = 6; // hard ceiling; the real cap scales with Pheromone Gland count (swarmCap)
 const COMPANIONS = Object.freeze({
   grazer: {
     label: 'Grazer Swarm', color: '#8ef1c0', r: 13, bodyPlan: 'blob',
@@ -139,7 +140,7 @@ const DEEP_BODY_BY_CATEGORY = Object.freeze({
 
 // Organelles that express an individually-rolled potency (see potency() / applyStrain).
 // Each mutant that carries one of these rolls its own multiplier when it spawns.
-const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance', 'rupture_auger', 'adrenal_vesicle', 'thorn_coat', 'corrosive_pellicle', 'discharge_vesicle', 'cryo_vesicle', 'chemotaxis_cilia', 'phagocyte_maw', 'necrosis_gland', 'volatile_vacuole', 'seeker_gland', 'harpoon_spine', 'neuro_barb', 'orbital_spores', 'fission_bud']);
+const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance', 'rupture_auger', 'adrenal_vesicle', 'thorn_coat', 'corrosive_pellicle', 'discharge_vesicle', 'cryo_vesicle', 'chemotaxis_cilia', 'phagocyte_maw', 'necrosis_gland', 'volatile_vacuole', 'seeker_gland', 'harpoon_spine', 'neuro_barb', 'orbital_spores', 'fission_bud', 'pheromone_gland']);
 
 export const ORGANELLES = Object.freeze({
   membrane: {
@@ -364,6 +365,11 @@ export const ORGANELLES = Object.freeze({
     desc: 'Each kill may bud off a short-lived allied grazer that fights at your side before dissolving back into the froth.',
     stats: { chance: 0.5, life: 12 }
   },
+  pheromone_gland: {
+    name: 'Pheromone Gland', tier: 3, action: 'mark', stackable: true, max: 2, category: 'swarm',
+    desc: 'A signaling organ harvested from deep swarm-directors. It marshals a colony of allied bacteria, and paints a target with a sticky death-pheromone that your swarm converges on. Each gland conducts a larger swarm.',
+    stats: { markDur: 6.0, markSpeed: 640, markMaxAge: 0.95, sporeCost: 1, energyCost: 2.5, cooldown: 1.2, deliverRate: 7.0, capPerGland: 3 }
+  },
   mitochondrion: {
     name: 'Integrated Mitochondrion', tier: 'gate', action: null,
     desc: 'Not purchased. Achieved through Yuki\'s Eucharist. Turns oxygen and lipids into high ATP.',
@@ -442,13 +448,14 @@ export const OFFERINGS = Object.freeze([
   { id: 'orbital_spores', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Orbital Spore-Bodies', desc: 'Daughter cells circle you and grind anything they brush.', cost: { biomass: 22, dna: 1, spores: 2 }, organelle: 'orbital_spores', requiresDiscovery: 'orbital_spores', stackLimit: 3 },
   { id: 'fission_bud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Fission Bud', desc: 'Each kill may bud a short-lived allied grazer that fights at your side.', cost: { biomass: 22, dna: 1, crystals: 1 }, organelle: 'fission_bud', requiresDiscovery: 'fission_bud', stackLimit: 3 },
 
-  // Symbiotic colony: marshal a swarm of allied bacteria by synthesizing
-  // spore-pheromones. The entry swarm is a mid-game investment (spores need exotic
-  // storage); the armed swarms teach the colony a gene you harvested from the froth
-  // — gated by DNA discovery, not a hard structural rule.
-  { id: 'companion_grazer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Grazer Swarm', desc: 'A swarm of grazer bacteria herded by spore-pheromones. It grazes fields beside you and rasps whatever attacks the colony. The entry swarm.', cost: { biomass: 22, spores: 3 }, companion: 'grazer' },
-  { id: 'companion_lancer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Lancer Swarm', desc: 'A spined bacterial swarm driven by heavier pheromones — fast, it charges hostiles that near your colony. Its spine is grown from a wild charge-lance gene you sequenced.', cost: { biomass: 32, spores: 4, crystals: 1 }, requiresDiscovery: 'velocity_lance', companion: 'lancer' },
-  { id: 'companion_hunter', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Toxic Swarm', desc: 'A venomous bacterial swarm marshalled by the richest spore-pheromones, auto-firing toxic globs at your enemies. Its venom is bred from a sporo-toxic gene you sequenced.', cost: { biomass: 44, spores: 5, dna: 1 }, requiresDiscovery: 'spore_toxin_launcher', companion: 'hunter' },
+  // Symbiotic colony: nothing here works without the Pheromone Gland — the swarm-
+  // conducting organ you harvest from a deep swarm-director. Graft the gland, then
+  // its spore-pheromones marshal swarms of allied bacteria. Each swarm type also
+  // teaches the colony a weapon gene you sequenced from the froth.
+  { id: 'pheromone_gland', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'organelle', name: 'Pheromone Gland', desc: 'The swarm-conducting organ, harvested from a deep swarm-director. Graft it to marshal a colony and to paint targets with a sticky death-pheromone. More glands conduct a larger swarm.', cost: { biomass: 20, dna: 1, spores: 2 }, organelle: 'pheromone_gland', requiresDiscovery: 'pheromone_gland', stackLimit: 2 },
+  { id: 'companion_grazer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Grazer Swarm', desc: 'A swarm of grazer bacteria herded by your pheromones. It grazes fields beside you, returns the harvest to your body, and rasps whatever attacks the colony. The entry swarm.', cost: { biomass: 22, spores: 3 }, requiresOrganelle: 'pheromone_gland', companion: 'grazer' },
+  { id: 'companion_lancer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Lancer Swarm', desc: 'A spined bacterial swarm driven by heavier pheromones — fast, it charges hostiles that near your colony. Its spine is grown from a wild charge-lance gene you sequenced.', cost: { biomass: 32, spores: 4, crystals: 1 }, requiresOrganelle: 'pheromone_gland', requiresDiscovery: 'velocity_lance', companion: 'lancer' },
+  { id: 'companion_hunter', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Toxic Swarm', desc: 'A venomous bacterial swarm marshalled by the richest pheromones, auto-firing toxic globs at your enemies. Its venom is bred from a sporo-toxic gene you sequenced.', cost: { biomass: 44, spores: 5, dna: 1 }, requiresOrganelle: 'pheromone_gland', requiresDiscovery: 'spore_toxin_launcher', companion: 'hunter' },
 
   { id: 'mitochondrial_eucharist', section: 'Eucharist Gate - Mitochondrial endosymbiosis', kind: 'sacrament', name: 'Mitochondrial Eucharist', desc: 'Yuki gives a living endosymbiont seed. Survive incubation; oxygen becomes power.', cost: { biomass: 24, lipids: 24, spores: 3, enzymes: 2, crystals: 2, dna: 1 }, requiresHostReady: true, effect: { beginEucharist: true } },
 
@@ -614,6 +621,10 @@ function seedMatureEcosystem(world) {
     y: WORLD.deepTop + rand(world, 700, 2200),
     x: rand(world, 0, WORLD.w)
   });
+  for (let i = 0; i < 2; i++) spawnBrood(world, {
+    y: WORLD.deepTop + rand(world, 500, 2000),
+    x: rand(world, 0, WORLD.w)
+  });
 
   // Existing rupture fields and corpse slurry give the first seconds real choices.
   for (let i = 0; i < 22; i++) {
@@ -672,6 +683,10 @@ function hasWeapon(entity) {
 }
 function companionCount(world, ownerId) {
   return world.entities.filter(e => e.alive && e.controller === 'companion' && e.ownerId === ownerId).length;
+}
+// The colony you can conduct scales with your Pheromone Glands: no gland, no swarm.
+function swarmCap(entity) {
+  return Math.min(COMPANION_CAP, orgCount(entity, 'pheromone_gland') * ORGANELLES.pheromone_gland.stats.capPerGland);
 }
 
 function colonyOrgs(entity) {
@@ -766,7 +781,7 @@ function adrenalFactor(entity) {
 function speedOf(entity) {
   if ((entity.cargo.energy || 0) <= 0.01) return 0;
   if (orgCount(entity, 'basal_motility') <= 0 && orgCount(entity, 'flagella') <= 0) return 0;
-  let sp = entity.baseSpeed || (entity.controller === 'predator' ? 96 : entity.controller === 'protozoan' ? 82 : entity.controller === 'metazoan' ? 62 : entity.controller === 'companion' ? 110 : entity.controller === 'algae' ? 52 : 112);
+  let sp = entity.baseSpeed || (entity.controller === 'predator' ? 96 : entity.controller === 'protozoan' ? 82 : entity.controller === 'metazoan' ? 62 : entity.controller === 'brood' ? 66 : entity.controller === 'swarm_agent' ? 122 : entity.controller === 'companion' ? 110 : entity.controller === 'algae' ? 52 : 112);
   sp *= (0.72 + orgCount(entity, 'basal_motility') * 0.28);
   sp *= 1 + orgCount(entity, 'flagella') * ORGANELLES.flagella.stats.speedBonus;
   const c = caps(entity);
@@ -837,6 +852,7 @@ function vulnerability(entity) {
   if (entity.feedIntent) v += 0.18 + orgCount(entity, 'cytostome') * ORGANELLES.cytostome.stats.vulnerabilityBonus;
   if (entity.action === 'rasp') v += ORGANELLES.rasping_lamella.stats.vulnerabilityBonus;
   if (entity.repairIntent) v += 0.10;
+  if ((entity.marked || 0) > 0) v += 0.50; // marked for death — the swarm's prey bleeds faster
   return v;
 }
 
@@ -889,6 +905,7 @@ export function step(world, commands = {}, dt = 1 / 60) {
     if (e.chill > 0) { e.chill = Math.max(0, e.chill - dt); if (e.chill === 0) e.chillMult = 1; }
     if (e.charmTimer > 0) { e.charmTimer = Math.max(0, e.charmTimer - dt); if (e.charmTimer === 0) e.friendly = false; }
     if (e.friendLife > 0) { e.friendLife = Math.max(0, e.friendLife - dt); if (e.friendLife === 0 && e.alive) hurt(world, e, caps(e).hp + 999, null); }
+    if (e.marked > 0) { e.marked = Math.max(0, e.marked - dt); if (e.marked === 0) e.markedBy = null; }
     e.r = targetRadius(e);
     clampCargo(e);
   }
@@ -936,6 +953,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (commands.acid && hasOrg(player, 'toxin_launcher')) acidPulse(world, player, commands.aimX, commands.aimY);
     if (commands.sporeshot && hasOrg(player, 'spore_toxin_launcher')) sporePulse(world, player, commands.aimX, commands.aimY);
     if (commands.harpoon && hasOrg(player, 'harpoon_spine')) harpoonPulse(world, player, commands.aimX, commands.aimY);
+    if (commands.mark && hasOrg(player, 'pheromone_gland')) markPulse(world, player, commands.aimX, commands.aimY);
     if (commands.cloud && hasOrg(player, 'toxin_cloud')) toxinCloud(world, player);
   }
 
@@ -975,7 +993,7 @@ function updateNPCs(world, player, dt) {
       }
     }
 
-    const hunts = e.controller === 'predator' || e.controller === 'protozoan' || e.controller === 'metazoan' || e.controller === 'companion';
+    const hunts = ['predator', 'protozoan', 'metazoan', 'companion', 'brood', 'swarm_agent'].includes(e.controller);
     if (prey && hunts) {
       tx = prey.x; ty = prey.y; targetMode = 'prey';
       const preyDist = distWrap(e.x, e.y, prey.x, prey.y);
@@ -987,6 +1005,10 @@ function updateNPCs(world, player, dt) {
       }
       if (powered && hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && world.rng() < 0.02) {
         harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+      }
+      // A swarm-director paints its prey with a death-pheromone so its own swarm converges.
+      if (powered && hasOrg(e, 'pheromone_gland') && preyDist < 520 && (e.cargo.spores || 0) >= ORGANELLES.pheromone_gland.stats.sporeCost && (prey.marked || 0) <= 0 && world.rng() < 0.014) {
+        markPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
       }
       // With collision removed, predators should commit to standing on the target.
       // Rasping is overlap-based; orbiting just outside contact is explicitly wrong.
@@ -1002,6 +1024,8 @@ function updateNPCs(world, player, dt) {
         const ownerDist = distWrap(e.x, e.y, owner.x, owner.y);
         const chasing = targetMode === 'prey' && ownerDist < 300;
         if (!chasing) { tx = owner.x; ty = owner.y; targetMode = ownerDist > 90 ? 'field' : 'home'; }
+        // Foraging return: a grazing symbiont hauls surplus matter home to its host.
+        if (e.controller === 'companion' && ownerDist < owner.r + e.r + 44) deliverToOwner(world, e, owner, dt);
       }
     }
 
@@ -1282,6 +1306,13 @@ function updateHazards(world, dt) {
       const d = distWrap(h.x, h.y, e.x, e.y);
       if (d > h.radius + e.r) continue;
       if (h.hitOnce && h.hitIds.has(e.id)) continue;
+      // Death-pheromone blob: paints the first hostile it touches (no damage), then bursts.
+      if (h.kind === 'mark_blob') {
+        e.marked = h.markDur; e.markedBy = h.sourceId;
+        h.hitIds.add(e.id);
+        world.events.push({ type: 'marked', entityId: e.id, by: h.sourceId });
+        burst = true; break;
+      }
       const isProjectile = h.kind === 'toxic_projectile' || h.kind === 'spore_projectile' || h.kind === 'seeker' || h.kind === 'harpoon';
       const overlap = clamp((h.radius + e.r - d) / Math.max(8, h.radius), 0, 1.4);
       hurt(world, e, h.damage * overlap * dt * (isProjectile ? 18 : 1), h.sourceId || h.id);
@@ -1502,7 +1533,20 @@ function updateStrainSystems(world, dt) {
     if (hasOrg(e, 'seeker_gland')) seekerAutoFire(world, e, living);
     if (hasOrg(e, 'chemotaxis_cilia')) chemotaxisPull(world, e, dt);
     if (hasOrg(e, 'orbital_spores')) orbitalDamage(world, e, living, dt);
+    // A Pheromone Gland conducts a swarm. The player conducts by raising swarms at
+    // Yuki; a wild director (brood) conducts by budding its own escort here.
+    if (hasOrg(e, 'pheromone_gland') && e.kind !== 'player' && !e.friendly) conductSwarm(world, e);
   }
+}
+
+function conductSwarm(world, e) {
+  e.cooldowns ||= {};
+  if ((e.cooldowns.conduct || 0) > 0) return;
+  const cap = 3 * orgCount(e, 'pheromone_gland');
+  const have = world.entities.filter(x => x.alive && x.controller === 'swarm_agent' && x.ownerId === e.id).length;
+  if (have >= cap) return;
+  spawnSwarmAgent(world, e);
+  e.cooldowns.conduct = 3.5;
 }
 
 function dischargePulse(world, e, living) {
@@ -1588,6 +1632,46 @@ function harpoonPulse(world, entity, aimX = null, aimY = null) {
   h.pull = o.pull; h.side = friendlySide(entity);
   world.events.push({ type: 'harpoon_launch', entityId: entity.id });
   return true;
+}
+
+// Pheromone Gland: launch a sticky death-pheromone blob. The first hostile it hits
+// is "marked" — the owner's swarm converges on it and it bleeds faster (vulnerability).
+function markPulse(world, entity, aimX = null, aimY = null) {
+  if (!hasOrg(entity, 'pheromone_gland')) return false;
+  const o = ORGANELLES.pheromone_gland.stats;
+  entity.cooldowns ||= {};
+  if ((entity.cooldowns.mark || 0) > 0) return false;
+  if (!hasEnergy(entity, o.energyCost) || (entity.cargo.spores || 0) < o.sporeCost) return false;
+  entity.cargo.spores -= o.sporeCost; entity.cargo.energy -= o.energyCost; entity.cooldowns.mark = o.cooldown;
+  let ax = aimX ?? Math.cos(entity.phase), ay = aimY ?? Math.sin(entity.phase);
+  const n = norm(ax, ay); ax = n.x; ay = n.y;
+  entity.phase = Math.atan2(ay, ax);
+  const h = spawnToxicHazard(world, entity.x + ax * (entity.r + 12), entity.y + ay * (entity.r + 12), {
+    kind: 'mark_blob', sourceId: entity.id, radius: 12, damage: 0,
+    vx: ax * o.markSpeed + entity.vx * 0.2, vy: ay * o.markSpeed + entity.vy * 0.2, maxAge: o.markMaxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.swarm
+  });
+  h.side = friendlySide(entity); h.markDur = o.markDur * potency(world, entity, 'pheromone_gland');
+  world.events.push({ type: 'mark_launch', entityId: entity.id });
+  return true;
+}
+
+// Foraging return: a symbiont near its host hands over surplus biomass and lipids,
+// keeping a small reserve to fuel itself. This is what makes the grazer swarm an economy.
+function deliverToOwner(world, e, owner, dt) {
+  const rate = ORGANELLES.pheromone_gland.stats.deliverRate;
+  const cap = caps(owner);
+  let moved = 0;
+  for (const [res, keep] of [['biomass', 6], ['lipids', 2]]) {
+    const surplus = (e.cargo[res] || 0) - keep;
+    if (surplus <= 0.2) continue;
+    const room = Math.max(0, (cap[res] ?? 0) - (owner.cargo[res] || 0));
+    const amt = Math.min(surplus, room, rate * dt);
+    if (amt > 0) { e.cargo[res] -= amt; owner.cargo[res] += amt; moved += amt; }
+  }
+  if (moved > 0 && owner.kind === 'player') {
+    e.cooldowns ||= {};
+    if ((e.cooldowns.deliver || 0) <= 0) { world.events.push({ type: 'deliver', entityId: owner.id }); e.cooldowns.deliver = 2.5; }
+  }
 }
 
 function spawnToxicHazard(world, x, y, opts = {}) {
@@ -1755,8 +1839,8 @@ function bloomDeath(world, e) {
     if (deep > 780 && world.rng() < 0.7) spawnParticle(world, 'spores', e.x, e.y, Math.ceil(deep / 1400));
     if (deep > 1120 && world.rng() < 0.58) spawnParticle(world, choice(world, ['enzymes', 'crystals']), e.x, e.y, 1);
     const player = getPlayer(world);
-    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae' || e.controller === 'metazoan') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
-      const dp = spawnParticle(world, 'dna', e.x, e.y, e.controller === 'metazoan' ? 3 : e.controller === 'protozoan' ? 2 : 1);
+    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae' || e.controller === 'metazoan' || e.controller === 'brood') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
+      const dp = spawnParticle(world, 'dna', e.x, e.y, e.controller === 'metazoan' ? 3 : (e.controller === 'protozoan' || e.controller === 'brood') ? 2 : 1);
       // Mutant strains shed information about their signature organelle: the DNA
       // is tagged with that organelle's id (the discovery key) and colored by its
       // category. Wild kills drop plain white DNA — currency, but no unlock.
@@ -1783,6 +1867,7 @@ function spawnTick(world, dt) {
     if (r < 0.44) spawnScavenger(world);
     else if (r < 0.88) spawnPredator(world);
     else if (world.rng() < 0.14) spawnMetazoan(world); // rare deep colonial predator
+    else if (world.rng() < 0.14) spawnBrood(world);    // rare deep swarm-director
     else spawnProtozoan(world);
   }
   if (world.spawn.exotic <= 0) {
@@ -1939,6 +2024,40 @@ function spawnMetazoan(world, opts = {}) {
   world.entities.push(e); return e;
 }
 
+// One member of a director's swarm: a small, fast, hostile grazer that leashes to its
+// brood and rushes the brood's prey. Persists as a wild cell if its director dies.
+function spawnSwarmAgent(world, brood) {
+  const ang = world.rng() * Math.PI * 2;
+  const e = makeSoftBody(world, 'npc', brood.x + Math.cos(ang) * (brood.r + 14), brood.y + Math.sin(ang) * (brood.r + 14), {
+    r: rand(world, 8, 11), color: brood.color || '#5fe0a0', controller: 'swarm_agent', trophicRole: 'swarm_agent', depthHome: brood.y,
+    organelles: { membrane: 1, basal_motility: 1, anaerobic_processor: 1, rasping_lamella: 1 },
+    cargo: { energy: rand(world, 10, 20), biomass: rand(world, 3, 8) }, oxygen: oxygenAt(brood.y), grace: 1.0
+  });
+  e.ownerId = brood.id; e.bodyPlan = 'blob';
+  world.entities.push(e); return e;
+}
+
+// Deep swarm-director: a cell that conducts its own hostile swarm and paints you with
+// death-pheromones. Its signature gene IS the Pheromone Gland — hunt it to take swarm-
+// command for yourself. It seeds an escort immediately and buds more over time.
+function spawnBrood(world, opts = {}) {
+  const y = opts.y ?? (WORLD.deepTop + rand(world, 500, 2200));
+  const x = opts.x ?? rand(world, 0, WORLD.w);
+  const e = makeSoftBody(world, 'npc', x, y, {
+    r: rand(world, 34, 46), color: '#5fe0a0', controller: 'brood', trophicRole: 'swarm_director', depthHome: y,
+    organelles: { membrane: 3, anaerobic_processor: 3, mitochondrion: 1, flagella: 1, rasping_lamella: 1, toxin_launcher: 1, pheromone_gland: 1, storage_vacuole: 5, exotic_vacuole: 3, dna_memory_vesicle: 2, membrane_hardening: 2 },
+    cargo: { biomass: rand(world, 50, 90), energy: rand(world, 80, 130), lipids: rand(world, 30, 60), toxins: rand(world, 8, 18), spores: rand(world, 6, 12) }, oxygen: oxygenAt(y),
+    ruptureThreshold: 0.66
+  });
+  e.strain = 'pheromone_gland'; // the DNA you hunt it for
+  e.strainPotency = clamp(gaussian(world.rng, 1.0, 0.13), 0.5, 1.8);
+  e.maxHp = caps(e).hp; e.hp = e.maxHp;
+  e.bodyPlan = 'brood';
+  world.entities.push(e);
+  for (let i = 0; i < 2; i++) spawnSwarmAgent(world, e);
+  return e;
+}
+
 function bestFieldFor(entity, world) {
   let best = null, bestScore = -Infinity;
   for (const f of world.fields) {
@@ -1965,7 +2084,9 @@ function bestBodyTarget(entity, world, player) {
     const fallingValue = other.controller === 'algae' && (other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 4.0 : 0;
     const sizeValue = other.r / Math.max(10, entity.r);
     const weak = other.hp / Math.max(1, caps(other).hp) < 0.55 ? 1.3 : 0;
-    const score = fallingValue + sizeValue * 1.2 + weak - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    // Death-pheromone: the swarm converges on whatever its own director marked.
+    const marked = ((other.marked || 0) > 0 && other.markedBy === entity.ownerId) ? 6.0 : 0;
+    const score = fallingValue + sizeValue * 1.2 + weak + marked - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   return best;
@@ -2088,6 +2209,7 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (hasOrg(e, 'toxin_launcher')) { const acidStats = ORGANELLES.toxin_launcher.stats; actions.push({ id: 'acid', label: 'Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= acidStats.toxinCost && (e.cargo.energy || 0) >= acidStats.energyCost }); }
   if (hasOrg(e, 'spore_toxin_launcher')) { const st = ORGANELLES.spore_toxin_launcher.stats; actions.push({ id: 'sporeshot', label: 'Sporo-Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= st.toxinCost && (e.cargo.spores || 0) >= st.sporeCost && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'harpoon_spine')) { const st = ORGANELLES.harpoon_spine.stats; actions.push({ id: 'harpoon', label: 'Harpoon Spine', enabled: powered && (e.cargo.energy || 0) >= st.energyCost }); }
+  if (hasOrg(e, 'pheromone_gland')) { const st = ORGANELLES.pheromone_gland.stats; actions.push({ id: 'mark', label: 'Mark Target', enabled: powered && (e.cargo.energy || 0) >= st.energyCost && (e.cargo.spores || 0) >= st.sporeCost }); }
   if (hasOrg(e, 'toxin_cloud')) actions.push({ id: 'cloud', label: 'Cloud', enabled: powered && (e.cargo.toxins || 0) >= ORGANELLES.toxin_cloud.stats.toxinCost && (e.cargo.energy || 0) >= ORGANELLES.toxin_cloud.stats.energyCost });
   actions.push({ id: 'yuki', label: 'Yuki', enabled: nearYuki(world, e) });
   return actions;
@@ -2109,7 +2231,7 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     const needsOrg = o.requiresOrganelle && !hasOrg(e, o.requiresOrganelle);
     const needsHost = !!o.requiresHostReady && !readiness.ready;
     const needsDiscovery = !!o.requiresDiscovery && !(world.discoveredSources || new Set()).has(o.requiresDiscovery);
-    const atCompanionCap = !!o.companion && companionCount(world, entityId) >= COMPANION_CAP;
+    const atCompanionCap = !!o.companion && companionCount(world, entityId) >= swarmCap(e);
     const incubating = o.id === 'mitochondrial_eucharist' && !!e.incubating;
     const affordable = hasStock(e.cargo, o.cost);
     const locked = !!owned || !!maxed || needsMito || needsNoMito || needsOrg || needsHost || needsDiscovery || atCompanionCap || incubating || !affordable;
@@ -2119,7 +2241,7 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     if (needsNoMito) reasons.push('already integrated');
     if (needsOrg) reasons.push(`requires ${ORGANELLES[o.requiresOrganelle]?.name || o.requiresOrganelle}`);
     if (needsDiscovery) reasons.push(`undiscovered — harvest ${ORGANELLES[o.requiresDiscovery]?.name || o.requiresDiscovery} DNA`);
-    if (atCompanionCap) reasons.push(`colony full — max ${COMPANION_CAP} symbionts`);
+    if (atCompanionCap) reasons.push(swarmCap(e) <= 0 ? 'requires a Pheromone Gland to conduct a swarm' : `colony full — your ${orgCount(e, 'pheromone_gland')} gland(s) conduct ${swarmCap(e)} swarms`);
     if (needsHost) reasons.push(...readiness.reasons.slice(0, 3));
     if (incubating) reasons.push('incubation underway');
     if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, o.cost))}`);
@@ -2296,7 +2418,7 @@ function objectiveText(world, e) {
 }
 
 export function getRenderProjection(world) {
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;
@@ -2364,4 +2486,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability };

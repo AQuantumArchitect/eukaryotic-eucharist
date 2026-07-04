@@ -67,7 +67,7 @@ let camera = {x:0,y:0,shake:0};
 let keys = new Set();
 let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
 let moveTouch = {id:null,x:0,y:0,active:false};
-let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false};
 let didGameOver = false;
 // Iframe focus gate: keyboard events are silently dropped until the document has focus.
 // Applies to itch.io embeds, Google Sites embeds, and any other iframe host.
@@ -91,7 +91,7 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false};
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false};
   toast('World reset — new genome, Yuki shop re-locked.');
 }
 
@@ -139,7 +139,7 @@ function command(){
   const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
   let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
   const an=norm(ax,ay);
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,aimX:an.x,aimY:an.y};
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,aimX:an.x,aimY:an.y};
 }
 
 function loop(now){
@@ -158,7 +158,7 @@ function checkDeathEvent(){
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
   for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
   for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
-  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A symbiont joins your colony.');}
+  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A swarm joins your colony.');else if(ev.type==='mark_launch') toast('Death-pheromone launched — swarm, converge.');else if(ev.type==='marked'&&ev.by===world.playerId) toast('Target marked for the swarm.');}
 }
 
 function updateUI(){
@@ -182,7 +182,7 @@ function updateUI(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['cloud','V','Cloud'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -190,7 +190,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
@@ -201,7 +201,7 @@ function renderShop(){
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';return `<div class="offer ${o.kind}${out}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${o.kind==='exchange'?exchangeCard(o):graftCard(o)}</div>`}
-const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff',leech:'#8fe37a',aura:'#ff5a5a',control:'#6fd6ff',risk:'#ff2d7a',execute:'#ff8a3d',projectile:'#4db8ff',orbital:'#ffd24d'};
+const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff',leech:'#8fe37a',aura:'#ff5a5a',control:'#6fd6ff',risk:'#ff2d7a',execute:'#ff8a3d',projectile:'#4db8ff',orbital:'#ffd24d',swarm:'#5fe0a0'};
 function graftCard(o){
   let head=`<span class="cat">${o.kind}</span>`;
   if(o.kind==='sequence'){head='<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence at Yuki</span>';}
@@ -249,7 +249,7 @@ function drawHazards(){
   for(const h of projection.hazards||[]){
     const life=clamp(1-h.age/h.maxAge,0,1); ctx.save(); ctx.globalAlpha=.85*life;
     const base=hexRgb(h.color);
-    const solid=h.kind==='toxic_projectile'||h.kind==='spore_projectile'||h.kind==='seeker'||h.kind==='harpoon';
+    const solid=h.kind==='toxic_projectile'||h.kind==='spore_projectile'||h.kind==='seeker'||h.kind==='harpoon'||h.kind==='mark_blob';
     if(solid){
       ctx.fillStyle=`rgba(${base},${.75*life})`; ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=1.4;
       ctx.beginPath(); ctx.arc(h.x,h.y,h.radius,0,Math.PI*2); ctx.fill(); ctx.stroke();
@@ -279,6 +279,7 @@ function drawEntity(e){
   if(e.oxygen>e.oxygenTolerance){ctx.strokeStyle='rgba(191,232,255,.70)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,r+4+Math.sin(world.t*14)*2,0,Math.PI*2);ctx.stroke()}
   if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(188,255,111,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(188,255,111,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
   if(e.strain&&e.kind!=='player'){ctx.save();ctx.globalAlpha=.45+.3*Math.sin(world.t*4+e.x);ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(e.x,e.y,r+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
+  if(e.marked>0){ctx.save();const spin=world.t*2.2;ctx.strokeStyle='#ff2d5a';ctx.lineWidth=2.4;ctx.globalAlpha=.5+.4*Math.abs(Math.sin(world.t*6));const rr=r+11;for(let q=0;q<4;q++){const a=spin+q*Math.PI/2;ctx.beginPath();ctx.arc(e.x,e.y,rr,a-.35,a+.35);ctx.stroke();ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*(rr-5),e.y+Math.sin(a)*(rr-5));ctx.lineTo(e.x+Math.cos(a)*(rr+5),e.y+Math.sin(a)*(rr+5));ctx.stroke();}ctx.restore();}
   drawAppendages(e,ang);
   drawBody(e,ang,r,hp,speed);
   if(e.kind==='player') drawInternalOrganelles(e,ang);
@@ -326,6 +327,7 @@ function drawInternalOrganelles(e,ang){
   if(org.fission_bud)add('fission','#ffc24d',org.fission_bud,4.0,'bubble');
   if(org.mitochondrion)add('mito','#ffac75',org.mitochondrion*2,5.2,'mito');
   if(org.companion_cell)add('companion','#7fffe0',org.companion_cell,4.2,'dot');
+  if(org.pheromone_gland)add('pheromone','#5fe0a0',org.pheromone_gland,4.4,'ring');
   ctx.save();
   ctx.beginPath(); ctx.arc(e.x,e.y,e.r*.82,0,Math.PI*2); ctx.clip();
   for(let i=0;i<parts.length;i++){
@@ -354,7 +356,17 @@ function drawBody(e,ang,r,hp,speed){
   else if(plan==='maw') drawMaw(e,ang,r,hp,speed);
   else if(plan==='amoeba') drawAmoeba(e,ang,r,hp,speed);
   else if(plan==='colonial') drawColonial(e,ang,r,hp,speed);
+  else if(plan==='brood') drawBrood(e,ang,r,hp,speed);
   else drawBlob(e,ang,r,hp,speed);
+}
+function drawBrood(e,ang,r,hp,speed){
+  ctx.save();
+  const haze=ctx.createRadialGradient(e.x,e.y,r*.4,e.x,e.y,r*1.9); haze.addColorStop(0,'rgba(95,224,160,.16)'); haze.addColorStop(1,'rgba(95,224,160,0)'); ctx.fillStyle=haze; ctx.beginPath(); ctx.arc(e.x,e.y,r*1.9,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=bodyStroke(e); ctx.lineWidth=1.2; ctx.fillStyle=bodyFill(e);
+  for(let i=0;i<6;i++){const a=ang+i/6*Math.PI*2+world.t*.6;const bx=e.x+Math.cos(a)*r*1.25,by=e.y+Math.sin(a)*r*1.25;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(bx,by,r*.16,0,Math.PI*2);ctx.fill();ctx.stroke();}
+  ctx.globalAlpha=e.friendly?.96:.92; ctx.beginPath(); ctx.arc(e.x,e.y,r,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1; ctx.stroke();
+  ctx.globalAlpha=.6; ctx.fillStyle='rgba(95,224,160,.7)'; ctx.beginPath(); ctx.arc(e.x,e.y,r*.34+Math.sin(world.t*4)*1.5,0,Math.PI*2); ctx.fill();
+  ctx.restore();
 }
 function drawBlob(e,ang,r,hp,speed){
   ctx.save(); ctx.beginPath(); const pts=28;
