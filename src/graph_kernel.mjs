@@ -444,10 +444,11 @@ export const OFFERINGS = Object.freeze([
 
   // Symbiotic colony: marshal a swarm of allied bacteria by synthesizing
   // spore-pheromones. The entry swarm is a mid-game investment (spores need exotic
-  // storage); the armed swarms need mitochondrial pheromone synthesis — a late play.
+  // storage); the armed swarms teach the colony a gene you harvested from the froth
+  // — gated by DNA discovery, not a hard structural rule.
   { id: 'companion_grazer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Grazer Swarm', desc: 'A swarm of grazer bacteria herded by spore-pheromones. It grazes fields beside you and rasps whatever attacks the colony. The entry swarm.', cost: { biomass: 22, spores: 3 }, companion: 'grazer' },
-  { id: 'companion_lancer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Lancer Swarm', desc: 'A spined bacterial swarm driven by heavier pheromones — fast, it charges hostiles that near your colony. Needs mitochondrial pheromone synthesis.', cost: { biomass: 32, spores: 4, crystals: 1 }, requiresMito: true, companion: 'lancer' },
-  { id: 'companion_hunter', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Toxic Swarm', desc: 'A venomous bacterial swarm marshalled by the richest spore-pheromones, auto-firing toxic globs at your enemies. Your deadliest colony.', cost: { biomass: 44, spores: 5, dna: 1 }, requiresMito: true, companion: 'hunter' },
+  { id: 'companion_lancer', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Lancer Swarm', desc: 'A spined bacterial swarm driven by heavier pheromones — fast, it charges hostiles that near your colony. Its spine is grown from a wild charge-lance gene you sequenced.', cost: { biomass: 32, spores: 4, crystals: 1 }, requiresDiscovery: 'velocity_lance', companion: 'lancer' },
+  { id: 'companion_hunter', section: 'Tier 2E - Symbiotic colony', theme: 'colony', kind: 'colony', name: 'Toxic Swarm', desc: 'A venomous bacterial swarm marshalled by the richest spore-pheromones, auto-firing toxic globs at your enemies. Its venom is bred from a sporo-toxic gene you sequenced.', cost: { biomass: 44, spores: 5, dna: 1 }, requiresDiscovery: 'spore_toxin_launcher', companion: 'hunter' },
 
   { id: 'mitochondrial_eucharist', section: 'Eucharist Gate - Mitochondrial endosymbiosis', kind: 'sacrament', name: 'Mitochondrial Eucharist', desc: 'Yuki gives a living endosymbiont seed. Survive incubation; oxygen becomes power.', cost: { biomass: 24, lipids: 24, spores: 3, enzymes: 2, crystals: 2, dna: 1 }, requiresHostReady: true, effect: { beginEucharist: true } },
 
