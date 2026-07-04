@@ -391,32 +391,32 @@ export const ORGANELLES = Object.freeze({
 });
 
 export const OFFERINGS = Object.freeze([
-  { id: 'repair', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Repair Communion', output: 'hp', desc: 'Yuki patches your membrane. Self-repair is Tier 2; this is external communion.', cost: { biomass: 8 }, effect: { heal: 38 } },
+  { id: 'repair', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Repair Communion', output: 'hp', desc: 'Yuki patches your membrane with fat and a little slurry. Self-repair is Tier 2; this is external communion.', cost: { lipids: 7, biomass: 2 }, effect: { heal: 38 } },
   { id: 'buy_biomass', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render Lipids into Biomass', output: 'biomass', desc: 'Convert stored fat into construction slurry.', cost: { lipids: 8, energy: 3 }, gain: { biomass: 9 } },
   { id: 'buy_lipids', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Condense Lipids', output: 'lipids', desc: 'Restock membrane fat from biomass and ATP.', cost: { biomass: 6, energy: 3 }, gain: { lipids: 8 } },
   { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki refills ATP. No waste is mixed into the output.', cost: { biomass: 4, lipids: 2 }, gain: { energy: 10 } },
   { id: 'buy_toxins', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Distill Toxins', output: 'toxins', desc: 'Restock toxin chemistry as a single clean tank.', cost: { biomass: 4, energy: 3 }, gain: { toxins: 7 } },
   { id: 'detox', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Yuki Detox', output: 'detox', desc: 'Pass toxins and oxygen stress into the canopy. Not a combat vent.', cost: { energy: 4 }, effect: { detox: 14, oxygenVent: 0.20 } },
 
-  { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 6 }, organelle: 'membrane', stackLimit: 8 },
-  { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 3 }, organelle: 'membrane_intake', stackLimit: 6 },
-  { id: 'cytostome', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cytostome Bloom', desc: 'Larger feeding morphology: radius and flow increase together.', cost: { biomass: 18, lipids: 7, spores: 1 }, organelle: 'cytostome', stackLimit: 5 },
-  { id: 'anaerobic_processor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anaerobic Processor', desc: 'Add one more biomass-to-ATP organ flow. More processors mean more flow and more toxin waste.', cost: { biomass: 14, enzymes: 1 }, organelle: 'anaerobic_processor', stackLimit: 8 },
-  { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'One main tank expansion for biomass, lipids, toxins, and ATP. It visibly increases body bulk.', cost: { biomass: 10, lipids: 5, crystals: 1 }, organelle: 'storage_vacuole', stackLimit: 8 },
-  { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 8 },
-  { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 8 },
-  { id: 'membrane_hardening', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin. Good for algae armor and predator survival; slows flow a little.', cost: { biomass: 15, lipids: 8, crystals: 1 }, organelle: 'membrane_hardening', stackLimit: 6 },
-  { id: 'flagella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Flagellum', desc: 'One flagellum. Buy one, grow one.', cost: { biomass: 9, lipids: 4, spores: 1 }, organelle: 'flagella', stackLimit: 8 },
-  { id: 'dash_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Dash Vacuole', desc: 'One burst organ for escaping bad overlaps and oxygen stress.', cost: { biomass: 14, lipids: 12, spores: 1 }, organelle: 'dash_vacuole', stackLimit: 4 },
+  { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8, energy: 6 }, organelle: 'membrane', stackLimit: 8 },
+  { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4, energy: 5 }, organelle: 'membrane_intake', stackLimit: 6 },
+  { id: 'cytostome', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cytostome Bloom', desc: 'Larger feeding morphology: radius and flow increase together.', cost: { biomass: 18, lipids: 9, energy: 8, spores: 1 }, organelle: 'cytostome', stackLimit: 5 },
+  { id: 'anaerobic_processor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anaerobic Processor', desc: 'Add one more biomass-to-ATP organ flow. More processors mean more flow and more toxin waste.', cost: { biomass: 14, lipids: 5, energy: 8, enzymes: 1 }, organelle: 'anaerobic_processor', stackLimit: 8 },
+  { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'One main tank expansion for biomass, lipids, toxins, and ATP. It visibly increases body bulk.', cost: { biomass: 10, lipids: 7, energy: 5, crystals: 1 }, organelle: 'storage_vacuole', stackLimit: 8 },
+  { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, lipids: 4, energy: 5, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 8 },
+  { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, energy: 6, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 8 },
+  { id: 'membrane_hardening', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin. Good for algae armor and predator survival; slows flow a little.', cost: { biomass: 15, lipids: 11, energy: 8, crystals: 1 }, organelle: 'membrane_hardening', stackLimit: 6 },
+  { id: 'flagella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Flagellum', desc: 'One flagellum. Buy one, grow one.', cost: { biomass: 9, lipids: 5, energy: 7, spores: 1 }, organelle: 'flagella', stackLimit: 8 },
+  { id: 'dash_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Dash Vacuole', desc: 'One burst organ for escaping bad overlaps and oxygen stress.', cost: { biomass: 14, lipids: 12, energy: 12, spores: 1 }, organelle: 'dash_vacuole', stackLimit: 4 },
 
-  { id: 'oxygen_tolerance', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Tolerance Vesicle', desc: 'Raise the safe oxygen threshold. Tolerance is separate from storage.', cost: { biomass: 12, enzymes: 1 }, organelle: 'oxygen_tolerance', stackLimit: 5 },
-  { id: 'oxygen_vacuole', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Buoyancy Vacuole', desc: 'Merged oxygen storage and buoyancy. Internal oxygen gives lift only with this organ.', cost: { biomass: 12, lipids: 6, enzymes: 1 }, organelle: 'oxygen_vacuole', stackLimit: 6 },
-  { id: 'photosystem', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Photosystem Patch', desc: 'The algae road: light grows biomass, weight, and oxygen stress.', cost: { biomass: 12, spores: 1, crystals: 1 }, organelle: 'photosystem', stackLimit: 5 },
+  { id: 'oxygen_tolerance', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Tolerance Vesicle', desc: 'Raise the safe oxygen threshold. Tolerance is separate from storage.', cost: { biomass: 12, energy: 6, enzymes: 1 }, organelle: 'oxygen_tolerance', stackLimit: 5 },
+  { id: 'oxygen_vacuole', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Buoyancy Vacuole', desc: 'Merged oxygen storage and buoyancy. Internal oxygen gives lift only with this organ.', cost: { biomass: 12, lipids: 7, energy: 7, enzymes: 1 }, organelle: 'oxygen_vacuole', stackLimit: 6 },
+  { id: 'photosystem', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Photosystem Patch', desc: 'The algae road: light grows biomass, weight, and oxygen stress.', cost: { biomass: 12, energy: 6, spores: 1, crystals: 1 }, organelle: 'photosystem', stackLimit: 5 },
 
-  { id: 'rasping_lamella', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { biomass: 18, crystals: 1, enzymes: 1 }, organelle: 'rasping_lamella', stackLimit: 5 },
-  { id: 'lance_bristle', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Lance Bristle', desc: 'One forward spine. Buy one, grow one.', cost: { biomass: 16, lipids: 6, crystals: 1 }, organelle: 'lance_bristle', stackLimit: 6 },
-  { id: 'toxin_launcher', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxic Launcher', desc: 'Late Tier 2 toxin weapon: fires one chemical glob that creates a damaging field.', cost: { biomass: 14, toxins: 8, crystals: 1 }, organelle: 'toxin_launcher', stackLimit: 3 },
-  { id: 'toxin_cloud', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent. Requires Toxic Launcher.', cost: { biomass: 16, toxins: 16, enzymes: 1, crystals: 1 }, requiresOrganelle: 'toxin_launcher', organelle: 'toxin_cloud', stackLimit: 3 },
+  { id: 'rasping_lamella', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { biomass: 18, lipids: 5, energy: 8, crystals: 1, enzymes: 1 }, organelle: 'rasping_lamella', stackLimit: 5 },
+  { id: 'lance_bristle', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Lance Bristle', desc: 'One forward spine. Buy one, grow one.', cost: { biomass: 16, lipids: 7, energy: 8, crystals: 1 }, organelle: 'lance_bristle', stackLimit: 6 },
+  { id: 'toxin_launcher', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxic Launcher', desc: 'Late Tier 2 toxin weapon: fires one chemical glob that creates a damaging field.', cost: { biomass: 14, energy: 10, toxins: 8, crystals: 1 }, organelle: 'toxin_launcher', stackLimit: 3 },
+  { id: 'toxin_cloud', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent. Requires Toxic Launcher.', cost: { biomass: 16, energy: 10, toxins: 16, enzymes: 1, crystals: 1 }, requiresOrganelle: 'toxin_launcher', organelle: 'toxin_cloud', stackLimit: 3 },
 
   // Exotic traits: locked until you harvest the matching strain's DNA. Discovery
   // is permanent (persists across deaths and sessions); after that they buy like
@@ -576,7 +576,7 @@ export function createWorld(options = {}) {
   const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
   player.carriedStrains = new Map();
   world.playerId = player.id;
@@ -1176,6 +1176,13 @@ function updateEnvironmentAndMetabolism(world, dt) {
     const massBurden = 1 + (e.cargo.biomass || 0) / Math.max(8, caps(e).biomass) * 0.55 + Object.values(e.organelles || {}).reduce((a,b)=>a+b,0) * 0.012;
     const upkeep = (e.controller === 'algae' ? 0.048 : 0.046) * massBurden * dt;
     e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - upkeep);
+    // Starvation: out of ATP with too little biomass to recover, the body autolyses —
+    // faster the emptier it is. No more sitting dead-in-the-water waiting on nothing;
+    // you feed, you flee, or you dissolve (and the froth already smells you — see starving aggro).
+    if ((e.cargo.energy || 0) <= 0.02 && (e.cargo.biomass || 0) < 4) {
+      e.hp -= (5 + 8 * (1 - (e.cargo.biomass || 0) / 4)) * dt;
+      e.hit = Math.max(e.hit, 0.05);
+    }
     if ((e.cargo.energy || 0) <= 0.01 && (e.cargo.biomass || 0) <= 0.03) hurt(world, e, caps(e).hp + 10, 'energy_biomass_collapse');
     if (e.hp <= 0) hurt(world, e, 0.01, 'metabolism');
   }
@@ -1275,6 +1282,26 @@ function updateParticles(world, dt) {
     p.age += dt;
     p.x = wrapX(p.x + p.vx * dt); p.y += p.vy * dt;
     p.vx *= Math.pow(0.96, dt * 60); p.vy *= Math.pow(0.96, dt * 60);
+    // DNA is a fragile, fought-over molecule. It denatures fast, and toxins shred it
+    // faster still — a strand that lands in poison is gone in a blink.
+    if (p.kind === 'dna') {
+      let toxicity = 0;
+      for (const f of world.fields) { if ((f.stock.toxins || 0) > 1 && distWrap(p.x, p.y, f.x, f.y) < f.radius) toxicity += (f.stock.toxins || 0); }
+      for (const h of world.hazards) { if ((h.kind === 'toxic_splash' || h.kind === 'toxin_cloud' || h.kind === 'spore_cloud' || h.kind === 'blast') && distWrap(p.x, p.y, h.x, h.y) < h.radius) toxicity += 30; }
+      if (toxicity > 0) p.age += Math.min(4.5, toxicity * 0.12) * dt;
+      // Predators strip loose DNA for its raw biomass rather than storing information.
+      let devoured = false;
+      for (const e of world.entities) {
+        if (!e.alive || e.kind === 'player' || e.friendly) continue;
+        if (!(e.controller === 'predator' || e.controller === 'protozoan' || e.controller === 'metazoan' || e.controller === 'brood')) continue;
+        if (distWrap(p.x, p.y, e.x, e.y) > e.r + 10) continue;
+        const room = Math.max(0, caps(e).biomass - (e.cargo.biomass || 0));
+        if (room <= 0) continue;
+        e.cargo.biomass += Math.min(room, p.value * 6);
+        devoured = true; break;
+      }
+      if (devoured) { world.particles.splice(i, 1); continue; }
+    }
     if (p.age > p.maxAge || p.y < WORLD.canopy - 30 || p.y > WORLD.h + 80) world.particles.splice(i, 1);
   }
 }
@@ -1803,7 +1830,7 @@ function removeDead(world) {
       // the death, so the long swim home to Yuki is where you bank your discoveries.
       const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
@@ -2081,12 +2108,17 @@ function bestBodyTarget(entity, world, player) {
     if (other.friendly && entity.kind === 'player') continue;
     if (entity.controller === 'predator' && other.controller === 'protozoan') continue;
     const d = distWrap(entity.x, entity.y, other.x, other.y);
-    const fallingValue = other.controller === 'algae' && (other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 4.0 : 0;
+    const fallingValue = other.controller === 'algae' && (other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 3.0 : 0;
     const sizeValue = other.r / Math.max(10, entity.r);
     const weak = other.hp / Math.max(1, caps(other).hp) < 0.55 ? 1.3 : 0;
+    // Live prey that strays close is aggravating — a predator locks onto whatever
+    // swims through its space (the player is no safer than any scavenger).
+    const proximityAggro = (other.controller !== 'algae' && d < 270) ? 3.0 * (1 - d / 270) : 0;
+    // The froth smells weakness: a body running out of ATP draws the hunters in.
+    const starving = (other.controller !== 'algae' && (other.cargo.energy || 0) < 1.5) ? 1.8 : 0;
     // Death-pheromone: the swarm converges on whatever its own director marked.
     const marked = ((other.marked || 0) > 0 && other.markedBy === entity.ownerId) ? 6.0 : 0;
-    const score = fallingValue + sizeValue * 1.2 + weak + marked - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    const score = fallingValue + sizeValue * 1.2 + weak + proximityAggro + starving + marked - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   return best;
@@ -2120,10 +2152,10 @@ function feedFromFields(world, entity, dt) {
 }
 
 function collectParticles(world, entity) {
-  // Exotics and DNA are not coins. They are discrete matter/information
-  // particles that must be deliberately ingested while feeding, and they
-  // remain in the world if the matching storage organ is full.
-  if (!entity.feedIntent || feedingOrgCount(entity) <= 0) return 0;
+  // Exotics and DNA ARE picked up like coins — any body with an intake pore sweeps
+  // up loose particles it swims over, no feeding action required, but only if the
+  // matching storage organ has room. (Field matter still needs deliberate feeding.)
+  if (feedingOrgCount(entity) <= 0) return 0;
   let collected = 0;
   const radius = feedRadius(entity);
   for (let i = world.particles.length - 1; i >= 0; i--) {
@@ -2191,7 +2223,7 @@ function mergeNearbyFields(world) {
 }
 
 function spawnParticle(world, kind, x, y, value = 1) {
-  const p = { id: id('particle'), kind, x: wrapX(x + rand(world, -18, 18)), y: clamp(y + rand(world, -18, 18), WORLD.canopy, WORLD.h), value, vx: rand(world, -24, 24), vy: rand(world, -18, 18), age: 0, maxAge: kind === 'dna' ? 36 : 24, color: COLORS[kind] || '#fff' };
+  const p = { id: id('particle'), kind, x: wrapX(x + rand(world, -18, 18)), y: clamp(y + rand(world, -18, 18), WORLD.canopy, WORLD.h), value, vx: rand(world, -24, 24), vy: rand(world, -18, 18), age: 0, maxAge: kind === 'dna' ? 9 : 24, color: COLORS[kind] || '#fff' };
   world.particles.push(p);
   return p;
 }
@@ -2256,13 +2288,14 @@ export function getYukiOfferings(world, entityId = world.playerId) {
   // pending samples into permanent unlocks (or upgrades an already-known trait if the
   // sample rolled higher). This is where discovery happens.
   const carried = [...((e.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
+  const seqCost = { energy: 6, dna: carried.length }; // sequencing spends the DNA records themselves
   const sequenceOfferings = carried.length ? [{
     id: 'sequence_dna', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'sequence',
     name: `Sequence Genome (${carried.length})`,
-    desc: `Yuki reads the strain records you carried home and locks them into your lineage: ${carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ')}.`,
-    cost: { energy: 6 }, costText: fmtStock({ energy: 6 }),
-    locked: !hasStock(e.cargo, { energy: 6 }), affordable: hasStock(e.cargo, { energy: 6 }),
-    reasons: hasStock(e.cargo, { energy: 6 }) ? [] : [`needs ${fmtStock(missingStock(e.cargo, { energy: 6 }))}`],
+    desc: `Yuki reads the strain records you carried home and locks them into your lineage — consuming the DNA: ${carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ')}.`,
+    cost: seqCost, costText: fmtStock(seqCost),
+    locked: !hasStock(e.cargo, seqCost), affordable: hasStock(e.cargo, seqCost),
+    reasons: hasStock(e.cargo, seqCost) ? [] : [`needs ${fmtStock(missingStock(e.cargo, seqCost))}`],
     owned: false, maxed: false, undiscovered: false, category: null, potency: null, tier3: false, readiness: null
   }] : [];
   const deployCost = { dna: 1, biomass: 32, energy: 20 };
@@ -2298,7 +2331,7 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   if (offeringId === 'sequence_dna') {
     const carried = [...((entity.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
     if (!carried.length) return { ok: false, reason: 'no new strain records to sequence' };
-    const cost = { energy: 6 };
+    const cost = { energy: 6, dna: carried.length }; // sequencing consumes the DNA it reads
     if (!hasStock(entity.cargo, cost)) return { ok: false, reason: `needs ${fmtStock(missingStock(entity.cargo, cost))}` };
     subStock(entity.cargo, cost);
     for (const [s, mult] of carried) {
