@@ -15,6 +15,9 @@ export const WORLD = Object.freeze({
   deepTop: 3000
 });
 
+// The player begins and respawns in Yuki's tendrils at the top of the canopy.
+const YUKI_SPAWN = Object.freeze({ x: WORLD.w / 2, y: WORLD.canopy + 60 });
+
 export const RESOURCES = Object.freeze(['biomass', 'lipids', 'toxins', 'energy', 'spores', 'enzymes', 'crystals', 'dna']);
 export const MATTER_RESOURCES = Object.freeze(['biomass', 'lipids', 'toxins', 'energy']);
 export const EXOTIC_RESOURCES = Object.freeze(['spores', 'enzymes', 'crystals', 'dna']);
@@ -39,7 +42,8 @@ const DNA_CATEGORY_COLORS = Object.freeze({
   metabolic: '#ffb84d',
   lance: '#ff3d9a',
   rasp: '#ff7a3d',
-  launcher: '#b06dff'
+  launcher: '#b06dff',
+  leech: '#8fe37a'
 });
 
 // Each species carries a pool of mutant strains. A strain grafts one signature
@@ -49,7 +53,9 @@ const DNA_CATEGORY_COLORS = Object.freeze({
 const STRAINS = Object.freeze({
   algae: [
     { org: 'lipogenic_processor', tint: '#c9e86f' },
-    { org: 'lipid_repair_loom', tint: '#4fbf6f' }
+    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
+    { org: 'leech_rasp', tint: '#8fe37a' },
+    { org: 'leech_lance', tint: '#6fce8f' }
   ],
   predator: [
     { org: 'virulent_processor', tint: '#ff6a4d' },
@@ -71,8 +77,10 @@ const STRAIN_CHANCE = Object.freeze({ algae: 0.18, predator: 0.28, protozoan: 0.
 const PROCESSORS = Object.freeze(['anaerobic_processor', 'clean_processor', 'virulent_processor', 'catalytic_processor']);
 // Forward spines share one impact model; each type tunes damage, reach, and how
 // hard it ramps with speed. Saw lances pin speed out entirely for flat grind.
-const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance']);
-const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp']);
+const LANCES = Object.freeze(['lance_bristle', 'velocity_lance', 'saw_lance', 'leech_lance']);
+const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp']);
+// Organelles whose per-run potency is rolled fresh each playthrough (see world.organelleRolls).
+const VARIABLE_ORGANS = Object.freeze(['lipid_repair_loom', 'clean_processor', 'virulent_processor', 'lipogenic_processor', 'catalytic_processor', 'velocity_lance', 'saw_lance', 'siphon_rasp', 'spore_toxin_launcher', 'leech_rasp', 'leech_lance']);
 
 export const ORGANELLES = Object.freeze({
   membrane: {
@@ -158,7 +166,7 @@ export const ORGANELLES = Object.freeze({
   toxin_launcher: {
     name: 'Toxic Launcher', tier: 2, action: 'acid', stackable: true, max: 3,
     desc: 'A late Tier 2 weapon organ: fires one toxic glob per shot that bursts into a damaging chemical field. It is not edible food.',
-    stats: { toxinCost: 2.4, energyCost: 4.2, projectileSpeed: 580, projectileDamage: 28, splashDamage: 17, splashRadius: 38, splashAge: 0.95, toxinCapBonus: 18, cooldown: 0.62 }
+    stats: { toxinCost: 2.4, energyCost: 2.6, projectileSpeed: 580, projectileDamage: 28, splashDamage: 17, splashRadius: 38, splashAge: 0.95, toxinCapBonus: 18, cooldown: 0.62 }
   },
   toxin_cloud: {
     name: 'Toxin Cloud Gland', tier: 2, action: 'cloud', stackable: true, max: 3,
@@ -209,6 +217,16 @@ export const ORGANELLES = Object.freeze({
     name: 'Sporo-Toxic Launcher', tier: 3, action: 'sporeshot', stackable: true, max: 3, category: 'launcher',
     desc: 'A combination armament: packs toxins and spores into one heavy glob that hits harder, splashes wider, and leaves a lingering spore-toxin cloud.',
     stats: { toxinCost: 3.0, sporeCost: 1, energyCost: 5.0, projectileSpeed: 540, projectileDamage: 44, splashDamage: 26, splashRadius: 58, splashAge: 1.6, toxinCapBonus: 14, cooldown: 0.9 }
+  },
+  leech_rasp: {
+    name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
+    desc: 'A parasitic feeding membrane. Deals almost no damage, but while rasping it siphons biomass and lipids straight out of the host — the algae-parasite\'s core organ.',
+    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 9.0 }
+  },
+  leech_lance: {
+    name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
+    desc: 'A feeding spine. Its jab barely wounds, but on contact it draws biomass and lipids at range — parasitize prey without killing it.',
+    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 7.0 }
   },
   mitochondrion: {
     name: 'Integrated Mitochondrion', tier: 'gate', action: null,
@@ -270,6 +288,8 @@ export const OFFERINGS = Object.freeze([
   { id: 'saw_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Saw Lance', desc: 'A grinding blade: flat, reliable damage regardless of speed, biting from wider angles.', cost: { biomass: 20, dna: 1, crystals: 1 }, organelle: 'saw_lance', requiresDiscovery: 'saw_lance', stackLimit: 6 },
   { id: 'siphon_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Siphon Rasp', desc: 'A parasitic shred: while rasping, drains the victim\'s biomass and lipids into your cargo.', cost: { biomass: 20, dna: 1, enzymes: 1 }, organelle: 'siphon_rasp', requiresDiscovery: 'siphon_rasp', stackLimit: 5 },
   { id: 'spore_toxin_launcher', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Sporo-Toxic Launcher', desc: 'Combination gun: spends toxins and spores for a heavy glob, wide splash, and a lingering cloud.', cost: { biomass: 22, dna: 1, spores: 2, crystals: 1 }, organelle: 'spore_toxin_launcher', requiresDiscovery: 'spore_toxin_launcher', stackLimit: 3 },
+  { id: 'leech_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Leech Lamella', desc: 'Parasite organ: near-zero damage, but rasping siphons biomass and lipids straight out of your host.', cost: { biomass: 14, dna: 1, enzymes: 1 }, organelle: 'leech_rasp', requiresDiscovery: 'leech_rasp', stackLimit: 5 },
+  { id: 'leech_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Leech Proboscis', desc: 'Feeding spine: barely wounds, but draws biomass and lipids from prey at range. Parasitize without killing.', cost: { biomass: 16, dna: 1, spores: 1 }, organelle: 'leech_lance', requiresDiscovery: 'leech_lance', stackLimit: 6 },
 
   { id: 'mitochondrial_eucharist', section: 'Eucharist Gate - Mitochondrial endosymbiosis', kind: 'sacrament', name: 'Mitochondrial Eucharist', desc: 'Yuki gives a living endosymbiont seed. Survive incubation; oxygen becomes power.', cost: { biomass: 24, lipids: 24, spores: 3, enzymes: 2, crystals: 2, dna: 1 }, requiresHostReady: true, effect: { beginEucharist: true } },
 
@@ -336,12 +356,30 @@ function saveDiscoveries(world) {
   try { localStorage.setItem('ee_discoveries', JSON.stringify([...world.discoveredSources])); } catch (_) {}
 }
 
+// A true fresh start (the reset-world button) wipes the persisted unlocks too, so
+// the Yuki shop returns to its locked, first-run state.
+function freshDiscoveries() {
+  try { localStorage.removeItem('ee_discoveries'); } catch (_) {}
+  return new Set();
+}
+
+// Each playthrough rolls a private genome: every variable organelle gets a potency
+// multiplier (80%..120%), so the trait you unlock this run is never quite the one
+// you unlocked last run. Deterministic from the world seed.
+function rollOrganelles(rng) {
+  const rolls = {};
+  for (const oid of VARIABLE_ORGANS) rolls[oid] = 0.8 + rng() * 0.4;
+  return rolls;
+}
+function pot(world, oid) { return (world && world.organelleRolls && world.organelleRolls[oid]) || 1; }
+
 export function createWorld(options = {}) {
   nextId = 1;
+  const rng = mulberry32(options.seed || 1001);
   const world = {
     version: VERSION,
     t: 0,
-    rng: mulberry32(options.seed || 1001),
+    rng,
     entities: [],
     fields: [],
     particles: [],
@@ -349,15 +387,17 @@ export function createWorld(options = {}) {
     events: [],
     stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
     cellLibrary: [],
-    discoveredSources: loadDiscoveries(),
+    discoveredSources: options.fresh ? freshDiscoveries() : loadDiscoveries(),
+    organelleRolls: rollOrganelles(rng),
     spawn: { algae: 0, npc: 0, exotic: 0, seed: 0 },
     playerId: null
   };
-  const player = makeSoftBody(world, 'player', WORLD.w / 2, WORLD.nurseryBottom - 120, {
-    r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: WORLD.nurseryBottom - 120,
+  const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
+    r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: 0.15
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
+  player.carriedStrains = new Set();
   world.playerId = player.id;
   world.entities.push(player);
   seedMatureEcosystem(world);
@@ -446,7 +486,7 @@ export function getPlayer(world) { return world.entities.find(e => e.id === worl
 export function hasOrg(entity, org) { return (entity?.organelles?.[org] || 0) > 0; }
 export function orgCount(entity, org) { return entity?.organelles?.[org] || 0; }
 export function hasMito(entity) { return orgCount(entity, 'mitochondrion') > 0; }
-function hasRasp(entity) { return hasOrg(entity, 'rasping_lamella') || hasOrg(entity, 'siphon_rasp'); }
+function hasRasp(entity) { return RASP_ORGANS.some(o => hasOrg(entity, o)); }
 
 function colonyOrgs(entity) {
   const merged = {};
@@ -832,7 +872,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
         const st = ORGANELLES[procId].stats;
         const efficiency = st.energyPerBiomass * (1.16 - 0.34 * biomassFill);
         // Catalytic processors run faster the more enzymes you carry, spending a trickle.
-        const rate = st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate;
+        const rate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * pot(world, procId);
         const room = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
         if (room <= 0) break;
         const desiredATP = Math.min(level * rate * volumeCurve * dt, room);
@@ -855,7 +895,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lipidRoom = Math.max(0, caps(e).lipids - (e.cargo.lipids || 0));
       const biomassAvail = Math.max(0, (e.cargo.biomass || 0) - 2);
       if (lipidRoom > 0.02 && biomassAvail > 0.05 && (e.cargo.energy || 0) > lst.energyCost) {
-        const biomassUse = Math.min(biomassAvail, lst.biomassPerSecond * lipoLevel * dt);
+        const biomassUse = Math.min(biomassAvail, lst.biomassPerSecond * lipoLevel * pot(world, 'lipogenic_processor') * dt);
         const lipidsMade = Math.min(lipidRoom, biomassUse * lst.lipidPerBiomass);
         if (lipidsMade > 0) {
           const usedBiomass = lipidsMade / lst.lipidPerBiomass;
@@ -958,9 +998,10 @@ function repairFromLipids(world, entity, dt) {
   const o = ORGANELLES.lipid_repair_loom.stats;
   if ((entity.cargo.lipids || 0) <= 0.02 || (entity.cargo.energy || 0) <= 0.02 || entity.hp >= caps(entity).hp) return false;
   const room = caps(entity).hp - entity.hp;
-  const repair = Math.min(room, o.hpPerSecond * orgCount(entity, 'lipid_repair_loom') * dt);
-  const lipidCost = repair / o.hpPerSecond * o.lipidCost;
-  const energyCost = repair / o.hpPerSecond * o.energyCost;
+  const hps = o.hpPerSecond * pot(world, 'lipid_repair_loom');
+  const repair = Math.min(room, hps * orgCount(entity, 'lipid_repair_loom') * dt);
+  const lipidCost = repair / hps * o.lipidCost;
+  const energyCost = repair / hps * o.energyCost;
   if (entity.cargo.lipids < lipidCost || entity.cargo.energy < energyCost) return false;
   entity.cargo.lipids -= lipidCost;
   entity.cargo.energy -= energyCost;
@@ -1073,6 +1114,7 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
   const hardness = membraneHardness(target);
   const vuln = vulnerability(target);
   let total = 0;
+  let leech = 0;
   for (const lanceId of LANCES) {
     const count = orgCount(attacker, lanceId);
     if (count <= 0) continue;
@@ -1080,15 +1122,19 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
     const reach = attacker.r + target.r + st.length * Math.min(1.65, 0.85 + count * 0.28);
     if (distance > reach || alignmentRaw < st.alignmentFloor) continue;
     const reachFraction = clamp((reach - distance) / Math.max(12, st.length), 0, 1.15);
+    const p = pot(world, lanceId);
+    // A leech proboscis draws resources whenever it's engaged, regardless of its tiny bite.
+    if (st.leechRate) leech += st.leechRate * count * p * reachFraction * dt;
     // Lances are impact organs, not laser beams. Charge lances punch far above
     // steady swimming; saw lances (flat) grind at a fixed rate regardless of speed.
     const speedFactor = st.flat ? 1 : clamp((impactSpeed - (st.speedFloor || 0)) / st.speedScale, 0, st.speedCap || 3.2);
-    let dmg = st.damage * count * reachFraction * alignmentRaw * speedFactor * vuln * dt;
+    let dmg = st.damage * count * reachFraction * alignmentRaw * speedFactor * vuln * p * dt;
     if (dmg <= 0) continue;
     if (st.rupturePower * count < hardness && target.r > attacker.r * 1.35) dmg *= 0.22;
     total += dmg;
   }
   if (total > 0) hurt(world, target, total, attacker.id);
+  if (leech > 0) drainLeech(world, attacker, target, leech);
 }
 
 function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
@@ -1097,25 +1143,29 @@ function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
   let dps = 0;
   let rupturePower = 0;
   let siphon = 0;
+  let leech = 0;
   if (attacker.action === 'rasp' && (attacker.cargo.energy || 0) > 0) {
     for (const raspId of RASP_ORGANS) {
       const rc = orgCount(attacker, raspId);
       if (rc <= 0) continue;
       const rst = ORGANELLES[raspId].stats;
-      dps += rst.dps * rc;
+      const p = pot(world, raspId);
+      dps += rst.dps * rc * p;
       rupturePower += rst.rupturePower * rc;
-      if (rst.stealFraction) siphon += rst.stealFraction;
+      if (rst.stealFraction) siphon += rst.stealFraction * p;
+      if (rst.leechRate) leech += rst.leechRate * rc * p;
     }
   }
-  if (dps <= 0) return;
+  if (dps <= 0 && leech <= 0) return;
   const facing = { x: Math.cos(attacker.phase), y: Math.sin(attacker.phase) };
   const alignment = clamp((facing.x * nx + facing.y * ny + 1.15) / 2.15, 0.25, 1.0);
   const hardness = membraneHardness(target);
   if (rupturePower < hardness && target.r > attacker.r * 1.28) dps *= 0.12;
   const dmg = dps * contactFraction * alignment * vulnerability(target) * dt;
-  hurt(world, target, dmg, attacker.id);
+  if (dmg > 0) hurt(world, target, dmg, attacker.id);
   attacker.hunger = Math.max(0, attacker.hunger - dmg * 0.003);
-  // A siphon rasp doesn't just shred — it drains the victim's stores into your cargo.
+  // A siphon rasp doesn't just shred — it drains the victim's stores into your cargo,
+  // proportional to damage dealt. Leech organs drain at a flat rate with near-zero harm.
   if (siphon > 0 && dmg > 0) {
     const cap = caps(attacker);
     for (const res of ['biomass', 'lipids']) {
@@ -1127,6 +1177,23 @@ function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
     }
     if (attacker.kind === 'player') world.events.push({ type: 'siphon', entityId: attacker.id });
   }
+  if (leech > 0) drainLeech(world, attacker, target, leech * contactFraction * dt);
+}
+
+// Parasite feeding: pull biomass and lipids from the target into the attacker,
+// respecting the attacker's caps, independent of any damage dealt. Split evenly.
+function drainLeech(world, attacker, target, amount) {
+  if (amount <= 0) return;
+  const cap = caps(attacker);
+  let pulled = 0;
+  for (const res of ['biomass', 'lipids']) {
+    const avail = target.cargo[res] || 0;
+    if (avail <= 0) continue;
+    const room = Math.max(0, (cap[res] ?? 0) - (attacker.cargo[res] || 0));
+    const moved = Math.min(avail, room, amount * 0.5);
+    if (moved > 0) { target.cargo[res] -= moved; attacker.cargo[res] += moved; pulled += moved; }
+  }
+  if (pulled > 0 && attacker.kind === 'player') world.events.push({ type: 'leech', entityId: attacker.id });
 }
 
 function spawnToxicHazard(world, x, y, opts = {}) {
@@ -1177,7 +1244,7 @@ function sporePulse(world, entity, aimX = null, aimY = null) {
   const n = norm(ax, ay); ax = n.x; ay = n.y;
   entity.phase = Math.atan2(ay, ax);
   spawnToxicHazard(world, entity.x + ax * (entity.r + 20), entity.y + ay * (entity.r + 20), {
-    kind: 'spore_projectile', sourceId: entity.id, radius: 14, damage: o.projectileDamage,
+    kind: 'spore_projectile', sourceId: entity.id, radius: 14, damage: o.projectileDamage * pot(world, 'spore_toxin_launcher'),
     color: DNA_CATEGORY_COLORS.launcher,
     vx: ax * o.projectileSpeed + entity.vx * 0.25, vy: ay * o.projectileSpeed + entity.vy * 0.25,
     maxAge: 0.9, hitOnce: true
@@ -1224,10 +1291,14 @@ function removeDead(world) {
     if (e.alive) continue;
     bloomDeath(world, e);
     if (e.kind === 'player') {
-      const next = makeSoftBody(world, 'player', e.x + 38, Math.max(WORLD.nurseryTop, e.y - 160), {
-        r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: WORLD.nurseryTop + 230,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(Math.max(WORLD.nurseryTop, e.y - 160)), grace: 2.0
+      // The player always re-forms in Yuki's tendrils at the top of the canopy —
+      // the same place they began. Carried-but-unsequenced strain records survive
+      // the death, so the long swim home to Yuki is where you bank your discoveries.
+      const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
+        r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, dna_memory_vesicle: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
+      next.carriedStrains = new Set(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
         next.organelles.eucharist_archive = 1;
         next.colony = e.colony ? e.colony.map(s => ({ ...s })) : [];
@@ -1446,13 +1517,15 @@ function collectParticles(world, entity) {
     entity.cargo[p.kind] = (entity.cargo[p.kind] || 0) + p.value;
     if (p.kind === 'dna') {
       world.stats.dnaRead += p.value;
-      // A strain-tagged DNA record permanently unlocks its organelle at Yuki, on
-      // top of the currency it adds. Only the player interprets records, and only
-      // genuinely new ones fire the discovery event + persist.
+      // A strain-tagged DNA record is only a *sample* when eaten — it rides along in
+      // carriedStrains. Nothing unlocks until you carry it back and let Yuki sequence
+      // it (buyOffering 'sequence_dna'). Die before then and the sample is lost.
       if (entity.kind === 'player' && p.source && ORGANELLES[p.source] && world.discoveredSources && !world.discoveredSources.has(p.source)) {
-        world.discoveredSources.add(p.source);
-        world.events.push({ type: 'discovery', source: p.source, name: ORGANELLES[p.source].name });
-        saveDiscoveries(world);
+        entity.carriedStrains ||= new Set();
+        if (!entity.carriedStrains.has(p.source)) {
+          entity.carriedStrains.add(p.source);
+          world.events.push({ type: 'sample', source: p.source, name: ORGANELLES[p.source].name });
+        }
       }
     }
     world.events.push({ type: 'particle', entityId: entity.id, kind: p.kind, value: p.value });
@@ -1507,7 +1580,7 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0) actions.push({ id: 'move', label: 'Swim', enabled: powered });
   if (feedingOrgCount(e) > 0) actions.push({ id: 'feed', label: 'Feed', enabled: powered });
   if (hasOrg(e, 'lipid_repair_loom')) actions.push({ id: 'repair', label: 'Repair', enabled: powered && (e.cargo.lipids || 0) > 0 });
-  if (hasRasp(e)) actions.push({ id: 'rasp', label: hasOrg(e, 'siphon_rasp') && !hasOrg(e, 'rasping_lamella') ? 'Siphon' : 'Rasp', enabled: powered });
+  if (hasRasp(e)) { const rl = hasOrg(e, 'rasping_lamella') ? 'Rasp' : hasOrg(e, 'siphon_rasp') ? 'Siphon' : 'Leech'; actions.push({ id: 'rasp', label: rl, enabled: powered }); }
   if (hasOrg(e, 'dash_vacuole')) actions.push({ id: 'dash', label: 'Dash', enabled: powered && (e.cargo.energy || 0) >= ORGANELLES.dash_vacuole.stats.energyCost });
   if (hasOrg(e, 'toxin_launcher')) { const acidStats = ORGANELLES.toxin_launcher.stats; actions.push({ id: 'acid', label: 'Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= acidStats.toxinCost && (e.cargo.energy || 0) >= acidStats.energyCost }); }
   if (hasOrg(e, 'spore_toxin_launcher')) { const st = ORGANELLES.spore_toxin_launcher.stats; actions.push({ id: 'sporeshot', label: 'Sporo-Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= st.toxinCost && (e.cargo.spores || 0) >= st.sporeCost && (e.cargo.energy || 0) >= st.energyCost }); }
@@ -1545,8 +1618,21 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     if (incubating) reasons.push('incubation underway');
     if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, o.cost))}`);
     const category = o.organelle ? ORGANELLES[o.organelle]?.category || null : null;
-    return { ...o, costText: fmtStock(o.cost), locked, affordable, reasons, owned, maxed, undiscovered: needsDiscovery, category, tier3: o.section.includes('Tier 3'), readiness: o.id === 'mitochondrial_eucharist' ? readiness : null };
+    const potency = (o.organelle && VARIABLE_ORGANS.includes(o.organelle)) ? pot(world, o.organelle) : null;
+    return { ...o, costText: fmtStock(o.cost), locked, affordable, reasons, owned, maxed, undiscovered: needsDiscovery, category, potency, tier3: o.section.includes('Tier 3'), readiness: o.id === 'mitochondrial_eucharist' ? readiness : null };
   });
+  // Yuki sequences the strain records you carried home: one offering that flushes
+  // all pending samples into permanent unlocks. This is where discovery happens.
+  const carried = [...(e.carriedStrains || [])].filter(s => ORGANELLES[s] && !(world.discoveredSources || new Set()).has(s));
+  const sequenceOfferings = carried.length ? [{
+    id: 'sequence_dna', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'sequence',
+    name: `Sequence Genome (${carried.length})`,
+    desc: `Yuki reads the strain records you carried home and unlocks them forever: ${carried.map(s => ORGANELLES[s].name).join(', ')}.`,
+    cost: { energy: 6 }, costText: fmtStock({ energy: 6 }),
+    locked: !hasStock(e.cargo, { energy: 6 }), affordable: hasStock(e.cargo, { energy: 6 }),
+    reasons: hasStock(e.cargo, { energy: 6 }) ? [] : [`needs ${fmtStock(missingStock(e.cargo, { energy: 6 }))}`],
+    owned: false, maxed: false, undiscovered: false, category: null, potency: null, tier3: false, readiness: null
+  }] : [];
   const deployCost = { dna: 1, biomass: 32, energy: 20 };
   const attachOfferings = (world.cellLibrary || []).map(bp => {
     const alreadyAttached = (e.colony || []).some(s => s.id === bp.id);
@@ -1569,7 +1655,7 @@ export function getYukiOfferings(world, entityId = world.playerId) {
       locked, affordable, reasons, tier3: true, owned: false, maxed: false, readiness: null
     };
   });
-  return [...staticOfferings, ...attachOfferings];
+  return [...sequenceOfferings, ...staticOfferings, ...attachOfferings];
 }
 
 function missingStock(cargo, cost = {}) { const m = {}; for (const [k, v] of Object.entries(cost)) if (k !== 'oxygen' && (cargo[k] || 0) < v) m[k] = v - (cargo[k] || 0); return m; }
@@ -1577,6 +1663,22 @@ function missingStock(cargo, cost = {}) { const m = {}; for (const [k, v] of Obj
 export function buyOffering(world, offeringId, entityId = world.playerId) {
   const entity = world.entities.find(x => x.id === entityId);
   if (!entity) return { ok: false, reason: 'missing entity' };
+  if (offeringId === 'sequence_dna') {
+    const carried = [...(entity.carriedStrains || [])].filter(s => ORGANELLES[s] && !world.discoveredSources.has(s));
+    if (!carried.length) return { ok: false, reason: 'no new strain records to sequence' };
+    const cost = { energy: 6 };
+    if (!hasStock(entity.cargo, cost)) return { ok: false, reason: `needs ${fmtStock(missingStock(entity.cargo, cost))}` };
+    subStock(entity.cargo, cost);
+    for (const s of carried) {
+      world.discoveredSources.add(s);
+      entity.carriedStrains.delete(s);
+      const mult = pot(world, s);
+      world.events.push({ type: 'discovery', source: s, name: ORGANELLES[s].name, potency: mult });
+    }
+    saveDiscoveries(world);
+    world.events.push({ type: 'buy', entityId, offeringId });
+    return { ok: true, offeringId, sequenced: carried.length };
+  }
   if (offeringId.startsWith('attach_')) {
     const blueprintId = offeringId.slice(7);
     const blueprint = (world.cellLibrary || []).find(b => b.id === blueprintId);
@@ -1638,6 +1740,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     objective: objectiveText(world, e),
     cellLibrary: world.cellLibrary || [],
     discoveredSources: [...(world.discoveredSources || [])],
+    carriedStrains: [...(e.carriedStrains || [])].map(s => ({ id: s, name: ORGANELLES[s]?.name || s, category: ORGANELLES[s]?.category || null })),
     colony: (e.colony || []).map(s => ({ label: s.label, hp: s.hp, maxHp: s.maxHp, r: s.r }))
   };
 }
@@ -1718,4 +1821,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, pot, drainLeech, YUKI_SPAWN };

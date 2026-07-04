@@ -82,15 +82,17 @@ if(window.self !== window.top){
 }
 function resetWorld(seed = Math.floor(Math.random()*1e9)){
   currentSeed = seed;
-  world = K.createWorld({seed: currentSeed});
+  // A full reset: new seeded ecology, a fresh genome (re-rolled organelle potencies),
+  // and a wiped Yuki shop (all exotic unlocks re-locked).
+  world = K.createWorld({seed: currentSeed, fresh: true});
   projection = K.getRenderProjection(world);
   hud = K.getHudProjection(world);
   closeShop();
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,cloud:false};
-  toast('World reset to mature initial ecology.');
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,cloud:false};
+  toast('World reset — new genome, Yuki shop re-locked.');
 }
 
 function resize(){canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
@@ -154,7 +156,8 @@ function checkDeathEvent(){
   if(projection.events.some(e=>e.type==='death'&&e.entityId===world.playerId)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
   if(projection.events.some(e=>e.type==='eucharist_complete')) toast('Form archived. Attach your legacy at Yuki\'s chamber.');
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
-  for(const ev of projection.events){if(ev.type==='discovery') toast(`Strain absorbed — ${ev.name} unlocked at Yuki.`);}
+  for(const ev of projection.events){if(ev.type==='sample') toast(`Genetic sample: ${ev.name}. Carry it to Yuki to sequence.`);}
+  for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} sequenced — unlocked${ev.potency?` at ${Math.round(ev.potency*100)}% potency`:''}.`);}
 }
 
 function updateUI(){
@@ -166,7 +169,8 @@ function updateUI(){
   const visible = ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna'];
   ui.chips.innerHTML = visible.map(id=>{const r=hud.resources.find(x=>x.id===id);return `<div class="chip"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i></div>`}).join('');
   const metab = hud.metabolism ? ` · processors ${hud.metabolism.anaerobicProcessorLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
-  ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}`;
+  const carried = (hud.carriedStrains&&hud.carriedStrains.length)?`<br><span style="color:#8fe37a;font-weight:900">◈ ${hud.carriedStrains.length} DNA sample${hud.carriedStrains.length>1?'s':''} carried — sequence at Yuki to unlock (lost if you die)</span>`:'';
+  ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}${carried}`;
   ui.prompt.style.display=hud.nearYuki?'block':'none'; ui.prompt.textContent='Yuki nearby: press E or tap Yuki';
   ui.orgList.innerHTML = hud.organelles.map(o=>`<div class="org on"><b>${o.name}${o.count>1?' x'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}</div>`).join('');
   if(hud.colony&&hud.colony.length>0){ui.colonySection.style.display='';ui.colonyList.innerHTML=hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="org on"><b>${s.label}</b><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('');}else{ui.colonySection.style.display='none';}
@@ -185,22 +189,24 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>o.id==='lance_bristle');const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const rows=[['WASD','Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['C','Sporo-toxic gun',!!spore],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 function openShop(){ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(){ui.shopOverlay.style.display='none';document.body.classList.remove('shopping')}
 function renderShop(){
   const offers=K.getYukiOfferings(world); const groups=[]; for(const o of offers){let g=groups.find(x=>x.section===o.section);if(!g){g={section:o.section,items:[]};groups.push(g)}g.items.push(o)}
   ui.shopBody.innerHTML = groups.map(g=>{const isT3=g.section.includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section"><div class="sectionTitle"><span>${g.section}</span><small>${g.section.includes('2A')?'storage / repair / movement':g.section.includes('2B')?'photosynthesis / oxygen / buoyancy':g.section.includes('2C')?'weapons / rupture pressure':g.section.includes('2D')?'harvested from mutant strains':g.section.includes('Eucharist')?'host-readiness gate':isT3?'DNA after mitochondria':'matter survival'}</small></div>${libHtml}<div class="grid ${g.items.every(x=>x.kind==='exchange')?'exchangeGrid':''}">${g.items.map(offerCard).join('')}</div></section>`}).join('');
-  for(const card of ui.shopBody.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){toast(kind==='exchange'?'Yuki exchange complete.':kind==='sacrament'?'Eucharist begun.':'Yuki graft accepted.'); renderShop();} else toast(res.reason||'Locked.');};
+  for(const card of ui.shopBody.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){if(kind!=='sequence')toast(kind==='exchange'?'Yuki exchange complete.':kind==='sacrament'?'Eucharist begun.':'Yuki graft accepted.'); renderShop();} else toast(res.reason||'Locked.');};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';return `<div class="offer ${o.kind}${out}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${o.kind==='exchange'?exchangeCard(o):graftCard(o)}</div>`}
 const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff'};
 function graftCard(o){
   let head=`<span class="cat">${o.kind}</span>`;
-  if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>'}`;}
-  return `<div>${head}<div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to graft</div>`}</div>`;
+  if(o.kind==='sequence'){head='<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence at Yuki</span>';}
+  else if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';const pot=(!o.undiscovered&&o.potency)?`<span class="cat" style="border-color:${c}66;color:${c};margin-left:4px">${Math.round(o.potency*100)}% potency</span>`:'';const unlocked=o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${unlocked}${pot}`;}
+  const cue=o.kind==='sequence'?'Tap to sequence':'Tap to graft';
+  return `<div>${head}<div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">${cue}</div>`}</div>`;
 }
 function exchangeCard(o){return `<div><span class="cat">exchange</span><div class="oname">${o.name}</div><div class="exchangeFlow">${resourcePills(o.cost,'costP')}${resourcePills(exchangeOutput(o),'gainP',true)}</div></div><div>${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">Tap to exchange</div>`}</div>`}
 function resLabel(k){return k==='energy'?'ATP':k}
@@ -298,6 +304,8 @@ function drawInternalOrganelles(e,ang){
   if(org.velocity_lance)add('vlance','#ff3d9a',org.velocity_lance,3.4,'tri');
   if(org.saw_lance)add('sawlance','#9a8fb0',org.saw_lance,3.6,'tri');
   if(org.siphon_rasp)add('siphon','#ff7a3d',org.siphon_rasp,4.0,'diamond');
+  if(org.leech_rasp)add('leechr','#8fe37a',org.leech_rasp,3.8,'diamond');
+  if(org.leech_lance)add('leechl','#6fce8f',org.leech_lance,3.4,'tri');
   if(org.mitochondrion)add('mito','#ffac75',org.mitochondrion*2,5.2,'mito');
   if(org.companion_cell)add('companion','#7fffe0',org.companion_cell,4.2,'dot');
   ctx.save();
