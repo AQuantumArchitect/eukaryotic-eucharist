@@ -1034,10 +1034,16 @@ function applyPlayerCommands(world, player, commands, dt) {
   player.action = null;
 
   if (moving) {
-    const energyFill = clamp((player.cargo.energy || 0) / Math.max(1, caps(player).energy), 0, 1);
-    const motionVolume = 0.34 + 1.36 * Math.pow(energyFill, 1.30);
+    // Cost tracks the thrust actually produced — which already falls with reserves via
+    // speedOf's identical energyRatio — instead of a separate volume curve that floored
+    // out and made low tanks slow AND wasteful. thrustFactor mirrors speedOf exactly, so
+    // less thrust always means proportionally less ATP. efficiencyK adds a genuine low-tank
+    // bonus: a draining cell pays less per unit thrust, so low reserves are slow-but-EFFICIENT.
+    const energyRatio = clamp((player.cargo.energy || 0) / Math.max(1, caps(player).energy * 0.42), 0, 1);
+    const thrustFactor = 0.18 + 0.82 * Math.pow(energyRatio, 0.65);
+    const efficiencyK = 0.70 + 0.90 * energyRatio;
     const preMitoBurden = hasMito(player) ? 1.0 : 1.42;
-    const moveCost = (0.38 + orgCount(player, 'flagella') * 0.090 + (player.cargo.biomass || 0) * 0.016 + Object.values(player.organelles || {}).reduce((a,b)=>a+b,0)*0.017) * motionVolume * preMitoBurden * dt;
+    const moveCost = (0.38 + orgCount(player, 'flagella') * 0.090 + (player.cargo.biomass || 0) * 0.016 + Object.values(player.organelles || {}).reduce((a,b)=>a+b,0)*0.017) * thrustFactor * efficiencyK * preMitoBurden * dt;
     if (player.cargo.energy >= moveCost) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
