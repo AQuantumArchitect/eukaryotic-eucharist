@@ -61,41 +61,43 @@ const DNA_CATEGORY_COLORS = Object.freeze({
 // organelle's id — the discovery key. Adding a new enemy variant is one row here
 // plus one ORGANELLES entry plus one gated OFFERINGS entry: no infra changes.
 const STRAINS = Object.freeze({
-  // Scavengers are your most common, shallowest kill — so they carry the feeding,
-  // foraging, and metabolic genes (plus one parasite), making the utility exotics the
-  // first you can farm on the way down.
+  // Algae drift, photosynthesize, and DEFEND — never hunt. Only passive, metabolic,
+  // and defensive genes live here: self-mending, oily fuel-synthesis, a thorned skin,
+  // an acid pellicle. No spines, no lances, no mouths — a bloom has none of those.
+  algae: [
+    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
+    { org: 'lipogenic_processor', tint: '#c9e86f' },
+    { org: 'thorn_coat', tint: '#8fbf5f' },
+    { org: 'corrosive_pellicle', tint: '#b6ff5a' }
+  ],
+  // Scavengers are foragers and parasites: the feeding mouths, the field-vacuum, the
+  // emergency digester, the efficient gut, and BOTH leech organs (they parasitize, they
+  // don't fight). The most common, shallowest kill — the on-ramp for utility exotics.
   scavenger: [
     { org: 'cytostome', tint: '#8ef19e' },
     { org: 'chemotaxis_cilia', tint: '#6fd6ff' },
-    { org: 'clean_processor', tint: '#c8b6ff' },
-    { org: 'lipogenic_processor', tint: '#c9e86f' },
     { org: 'enzyme_reserve', tint: '#ffd27a' },
-    { org: 'leech_rasp', tint: '#8fe37a' }
-  ],
-  // Algae drift and defend rather than hunt: self-mending, spined, acidic, and the
-  // parasitic feeding-vine.
-  algae: [
-    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
-    { org: 'thorn_coat', tint: '#ff6a6a' },
-    { org: 'corrosive_pellicle', tint: '#b6ff5a' },
+    { org: 'clean_processor', tint: '#c8b6ff' },
+    { org: 'leech_rasp', tint: '#8fe37a' },
     { org: 'leech_lance', tint: '#6fce8f' }
   ],
-  // Rupture predators are the armed hunters: every kind of spine, the dash-charge, the
-  // adrenal surge, the harpoon, and the venom-fuel metabolism.
+  // Rupture predators are the armed hunters: charge lance, grinding saw, armor-auger,
+  // predatory rasp, the harpoon, the adrenal surge, the dash-charge, and the hot
+  // venom-fuel metabolism.
   predator: [
     { org: 'velocity_lance', tint: '#ff3d9a' },
     { org: 'saw_lance', tint: '#c07fb0' },
-    { org: 'siphon_rasp', tint: '#c0304f' },
     { org: 'rupture_auger', tint: '#ff5f8f' },
-    { org: 'spore_jet', tint: '#c9a0ff' },
-    { org: 'adrenal_vesicle', tint: '#ff2d7a' },
+    { org: 'siphon_rasp', tint: '#c0304f' },
     { org: 'harpoon_spine', tint: '#3d9aff' },
+    { org: 'adrenal_vesicle', tint: '#ff2d7a' },
+    { org: 'spore_jet', tint: '#c9a0ff' },
     { org: 'virulent_processor', tint: '#ff6a4d' }
   ],
-  // Deep protozoans are the sophisticated ones: venom, electricity, cryo, neurotoxin,
-  // homing spores, crystalline armor, necrosis, and engulfing.
+  // Deep protozoans are the sophisticated ones: venom guns, electricity, cryo,
+  // neurotoxin, homing spores, crystalline armor, necrotic blooms, and the catalytic
+  // gut. The exotic-weapon core of the endgame.
   protozoan: [
-    { org: 'catalytic_processor', tint: '#7fe0d0' },
     { org: 'spore_toxin_launcher', tint: '#b06dff' },
     { org: 'toxin_cloud', tint: '#9d5fff' },
     { org: 'discharge_vesicle', tint: '#ffe86f' },
@@ -104,20 +106,26 @@ const STRAINS = Object.freeze({
     { org: 'seeker_gland', tint: '#4db8ff' },
     { org: 'crystal_ward', tint: '#bfe8ff' },
     { org: 'necrosis_gland', tint: '#c88a4d' },
-    { org: 'phagocyte_maw', tint: '#ff8a3d' }
+    { org: 'catalytic_processor', tint: '#7fe0d0' }
   ],
-  // Colonial metazoans carry the reproduction/detonation genes: orbiting daughters,
-  // fission buds, and the death-blast.
+  // Colonial metazoans carry the multicellular genes: orbiting daughter-cells, fission
+  // budding, whole-body engulfing, and the death-detonation of an unstable colony.
   metazoan: [
     { org: 'orbital_spores', tint: '#ffd24d' },
     { org: 'fission_bud', tint: '#ffc24d' },
+    { org: 'phagocyte_maw', tint: '#ff8a3d' },
     { org: 'volatile_vacuole', tint: '#ff4d6a' }
   ]
 });
-// Strain frequency rises with depth/danger and falls with pool size, so the rarer,
-// deeper enemies are more reliably mutated while the common shallow ones stay mostly
-// wild. Broods are handled separately (their gene, pheromone_gland, is guaranteed).
-const STRAIN_CHANCE = Object.freeze({ scavenger: 0.30, algae: 0.22, predator: 0.35, protozoan: 0.60, metazoan: 0.90 });
+// Mutation frequency scales with DEPTH, per spawn: a canopy bloom mutates ~15% of the
+// time, and by the deep floor of the rupture layer every body is a mutant. Applied by
+// the entity's spawn-y, so it also rises within a species (a deep-rupture predator is
+// far more likely mutated than a shallow one). Broods are handled separately — their
+// gene (pheromone_gland) is always expressed.
+function strainChanceAt(y) {
+  const t = clamp((y - WORLD.canopy) / (3800 - WORLD.canopy), 0, 1);
+  return 0.15 + t * 0.85;
+}
 
 // Every processor is one biomass→ATP flow with its own yield and toxic-waste
 // signature; they coexist and stack. A body's metabolic character is the sum of
@@ -2139,7 +2147,7 @@ function spawnTick(world, dt) {
 function applyStrain(world, e) {
   const pool = STRAINS[e.controller];
   if (!pool || !pool.length) return;
-  if (world.rng() >= (STRAIN_CHANCE[e.controller] ?? 0.2)) return;
+  if (world.rng() >= strainChanceAt(e.y)) return;
   const strain = pool[Math.floor(world.rng() * pool.length)];
   e.organelles[strain.org] = (e.organelles[strain.org] || 0) + 1;
   e.strain = strain.org;
