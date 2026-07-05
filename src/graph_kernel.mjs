@@ -428,6 +428,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki refills ATP. No waste is mixed into the output.', cost: { biomass: 4, lipids: 2 }, gain: { energy: 10 } },
   { id: 'buy_toxins', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Distill Toxins', output: 'toxins', desc: 'Restock toxin chemistry as a single clean tank.', cost: { biomass: 4, energy: 3 }, gain: { toxins: 7 } },
   { id: 'detox', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Yuki Detox', output: 'detox', desc: 'Pass toxins and oxygen stress into the canopy. Not a combat vent.', cost: { energy: 4 }, effect: { detox: 14, oxygenVent: 0.20 } },
+  { id: 'render_dna', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render DNA into Biomass', output: 'biomass', desc: 'Yuki digests spare DNA records into construction slurry — the same trick the deep predators use. Sheds currency you no longer need.', cost: { dna: 1 }, gain: { biomass: 12 } },
 
   { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8, energy: 6 }, organelle: 'membrane', stackLimit: 8 },
   { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4, energy: 5 }, organelle: 'membrane_intake', stackLimit: 6 },
@@ -2266,32 +2267,43 @@ function collectParticles(world, entity) {
   if (feedingOrgCount(entity) <= 0) return 0;
   let collected = 0;
   const radius = feedRadius(entity);
+  const c = caps(entity);
   for (let i = world.particles.length - 1; i >= 0; i--) {
     const p = world.particles[i];
     if (dist2Wrap(entity.x, entity.y, p.x, p.y) > radius * radius) continue;
-    if (entity.kind !== 'player' && p.kind === 'dna') continue;
-    const cap = caps(entity)[p.kind] ?? 0;
+
+    if (p.kind === 'dna') {
+      if (entity.kind !== 'player') continue; // predators strip DNA for biomass in updateParticles
+      const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
+      const dnaRoom = (c.dna ?? 0) - (entity.cargo.dna || 0);
+      if (strain) {
+        // A strain-tagged strand is only worth taking if it's a genuine UPGRADE — a
+        // trait you don't carry/know, or a stronger potency than either. Junk (worse-
+        // or-equal, already sequenced) is ignored: it stays in the water to denature or
+        // feed a predator, so your tiny DNA store never clogs with records you can't use.
+        entity.carriedStrains ||= new Map();
+        const rolled = typeof p.potency === 'number' ? p.potency : 1;
+        const current = Math.max(entity.carriedStrains.get(strain) || 0, world.discoveredSources.get(strain) || 0);
+        if (rolled <= current + 1e-6) continue; // not an upgrade — leave it
+        // An upgrade: bank the SAMPLE regardless of DNA-cargo room (a full tank of raw
+        // currency must never cost you a better genome), and bank the raw DNA too if it fits.
+        entity.carriedStrains.set(strain, rolled);
+        world.events.push({ type: 'sample', source: strain, name: ORGANELLES[strain].name, potency: rolled, upgrade: world.discoveredSources.has(strain) });
+        if (dnaRoom + 1e-9 >= p.value) { entity.cargo.dna += p.value; world.stats.dnaRead += p.value; }
+      } else {
+        // Plain (untagged) DNA is pure currency — take it only if there is room.
+        if (dnaRoom + 1e-9 < p.value) continue;
+        entity.cargo.dna += p.value; world.stats.dnaRead += p.value;
+      }
+      world.events.push({ type: 'particle', entityId: entity.id, kind: 'dna', value: p.value });
+      world.particles.splice(i, 1); collected += p.value;
+      continue;
+    }
+
+    const cap = c[p.kind] ?? 0;
     const room = cap - (entity.cargo[p.kind] || 0);
     if (room + 1e-9 < p.value) continue;
     entity.cargo[p.kind] = (entity.cargo[p.kind] || 0) + p.value;
-    if (p.kind === 'dna') {
-      world.stats.dnaRead += p.value;
-      // A strain-tagged DNA record is only a *sample* when eaten — it rides along in
-      // carriedStrains (a Map orgId -> best potency seen). Nothing unlocks until you
-      // carry it home and let Yuki sequence it. Selection: you only bother carrying a
-      // sample if its genome beats what you already carry OR already have unlocked, so
-      // hunting a better mutant lets you upgrade an existing trait. Die and it's lost.
-      if (entity.kind === 'player' && p.source && ORGANELLES[p.source]) {
-        entity.carriedStrains ||= new Map();
-        const rolled = typeof p.potency === 'number' ? p.potency : 1;
-        const current = Math.max(entity.carriedStrains.get(p.source) || 0, world.discoveredSources.get(p.source) || 0);
-        if (rolled > current + 1e-6) {
-          entity.carriedStrains.set(p.source, rolled);
-          const known = world.discoveredSources.has(p.source);
-          world.events.push({ type: 'sample', source: p.source, name: ORGANELLES[p.source].name, potency: rolled, upgrade: known });
-        }
-      }
-    }
     world.events.push({ type: 'particle', entityId: entity.id, kind: p.kind, value: p.value });
     world.particles.splice(i, 1);
     collected += p.value;
