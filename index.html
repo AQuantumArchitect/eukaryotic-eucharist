@@ -153,13 +153,25 @@ function loop(now){
 requestAnimationFrame(loop);
 
 function checkDeathEvent(){
-  if(projection.events.some(e=>e.type==='death'&&e.entityId===world.playerId)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
-  if(projection.events.some(e=>e.type==='eucharist_complete')) toast('Form archived. Attach your legacy at Yuki\'s chamber.');
-  for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
-  for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
-  for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
-  for(const ev of projection.events){if(ev.type==='sequence'&&ev.good===0&&ev.junk>0) toast(`${ev.junk} junk strand${ev.junk>1?'s':''} rendered → +${ev.biomass} biomass.`);}
-  for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A swarm joins your colony.');else if(ev.type==='mark_launch') toast('Death-pheromone launched — swarm, converge.');else if(ev.type==='marked'&&ev.by===world.playerId) toast('Target marked for the swarm.');else if(ev.type==='bloom_dash') toast('Bloom dash — spore cloud vented.');else if(ev.type==='ward') toast('Crystalline ward raised — shots pierce.');else if(ev.type==='surge') toast('Enzymatic surge — emergency ATP.');}
+  const evs=projection.events, pid=world.playerId;
+  if(evs.some(e=>e.type==='death'&&e.entityId===pid)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
+  // The notification bar is for YOU: only events about the player's own body, and only
+  // meaningful ones (progress, milestones), never the froth's per-cell simulation churn.
+  // One highest-priority message per frame, so it reads clean instead of flickering.
+  let best=null; const note=(prio,msg)=>{ if(!best||prio>=best.prio) best={prio,msg}; };
+  for(const ev of evs){
+    switch(ev.type){
+      case 'sequence': if(ev.entityId===pid){const parts=[];if(ev.good>0)parts.push(`${ev.good} trait${ev.good>1?'s':''} unlocked`);if(ev.junk>0)parts.push(`+${ev.biomass} biomass from junk`);if(parts.length)note(9,`Sequenced: ${parts.join(', ')}.`);} break;
+      case 'eucharist_complete': if(ev.entityId===pid) note(9,'Eucharist complete — mitochondria integrated.'); break;
+      case 'detonate': if(ev.entityId===pid) note(8,'You detonate!'); break;
+      case 'companion': if(ev.entityId===pid) note(7,'A swarm joins your colony.'); break;
+      case 'sample': note(6,`${ev.upgrade?'Better strain':'New strain'}: ${ev.name} ${Math.round((ev.potency||1)*100)}% — sequence at Yuki.`); break;
+      case 'colony_segment_lost': if(ev.entityId===pid) note(6,`Colony cell lost: ${ev.label}.`); break;
+      case 'charm': if(ev.entityId===pid) note(4,'A cell is charmed to your side.'); break;
+      case 'bud': if(ev.entityId===pid) note(4,'A daughter cell buds to fight for you.'); break;
+    }
+  }
+  if(best) toast(best.msg);
 }
 
 function updateUI(){

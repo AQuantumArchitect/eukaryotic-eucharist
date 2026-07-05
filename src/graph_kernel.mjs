@@ -1893,7 +1893,7 @@ function hurt(world, entity, amount, sourceId = null) {
         if (seg.hp <= 0) {
           entity.colony.splice(i, 1);
           entity.r = Math.max(entity.baseR, entity.r - seg.r * 0.6);
-          world.events.push({ type: 'colony_segment_lost', label: seg.label });
+          world.events.push({ type: 'colony_segment_lost', entityId: entity.id, label: seg.label });
         }
       }
     }
@@ -2299,8 +2299,10 @@ function collectParticles(world, entity) {
       // good genomes into the shop. So DNA storage is the real investment, and choosing
       // NOT to top up on junk on the way down (to save room for deep genomes) is the play.
       const dnaRoom = (c.dna ?? 0) - (entity.cargo.dna || 0);
-      if (dnaRoom + 1e-9 < p.value) continue; // full — invest in more storage, or be choosier
-      entity.cargo.dna += p.value; world.stats.dnaRead += p.value;
+      if (dnaRoom <= 1e-9) continue; // store is full — invest in more storage, or be choosier
+      // Partial pickup: take as many records as fit; the rest stays in the water.
+      const take = Math.min(dnaRoom, p.value);
+      entity.cargo.dna += take; world.stats.dnaRead += take;
       if (strain) {
         entity.carriedStrains ||= new Map();
         // Track the best genome per trait — that's the "good" DNA that will upgrade the shop.
@@ -2309,18 +2311,25 @@ function collectParticles(world, entity) {
           world.events.push({ type: 'sample', source: strain, name: ORGANELLES[strain].name, potency: rolled, upgrade: world.discoveredSources.has(strain) });
         }
       }
-      world.events.push({ type: 'particle', entityId: entity.id, kind: 'dna', value: p.value });
-      world.particles.splice(i, 1); collected += p.value;
+      p.value -= take;
+      world.events.push({ type: 'particle', entityId: entity.id, kind: 'dna', value: take });
+      if (p.value <= 1e-9) world.particles.splice(i, 1);
+      collected += take;
       continue;
     }
 
+    // Partial pickup: a body sweeps up as much of a particle as its storage can hold,
+    // so a value-2/3 exotic drop (deep spore clusters!) is still collectible one at a
+    // time with a single-slot rack. This is THE fix for "spores won't pick up".
     const cap = c[p.kind] ?? 0;
     const room = cap - (entity.cargo[p.kind] || 0);
-    if (room + 1e-9 < p.value) continue;
-    entity.cargo[p.kind] = (entity.cargo[p.kind] || 0) + p.value;
-    world.events.push({ type: 'particle', entityId: entity.id, kind: p.kind, value: p.value });
-    world.particles.splice(i, 1);
-    collected += p.value;
+    if (room <= 1e-9) continue;
+    const take = Math.min(room, p.value);
+    entity.cargo[p.kind] = (entity.cargo[p.kind] || 0) + take;
+    p.value -= take;
+    world.events.push({ type: 'particle', entityId: entity.id, kind: p.kind, value: take });
+    if (p.value <= 1e-9) world.particles.splice(i, 1);
+    collected += take;
   }
   return collected;
 }
