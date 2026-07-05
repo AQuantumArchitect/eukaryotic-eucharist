@@ -376,6 +376,11 @@ export const ORGANELLES = Object.freeze({
     desc: 'Each kill may bud off a short-lived allied grazer that fights at your side before dissolving back into the froth.',
     stats: { chance: 0.5, life: 12 }
   },
+  nuclease_vesicle: {
+    name: 'Nuclease Vesicle', tier: 2, action: null, stackable: false, max: 1,
+    desc: 'A DNA-digesting organ. Any strand you sweep up that is worse than a genome you already carry or have sequenced is dissolved on contact into a scrap of biomass — instead of taking a slot in your DNA store. Good genomes still bank normally.',
+    stats: {}
+  },
   // ── Consumable-verb organs: each has one atomic function, fuelled by one exotic ──
   spore_jet: {
     name: 'Spore Jet Vesicle', tier: 2, action: null, stackable: false, max: 1,
@@ -437,6 +442,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'One main tank expansion for biomass, lipids, toxins, and ATP. It visibly increases body bulk.', cost: { biomass: 10, lipids: 7, energy: 5, crystals: 1 }, organelle: 'storage_vacuole', stackLimit: 8 },
   { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, lipids: 4, energy: 5, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 8 },
   { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, energy: 6, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 8 },
+  { id: 'nuclease_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Nuclease Vesicle', desc: 'Digests junk DNA — any strand worse than a genome you carry or know — into biomass on pickup, keeping your DNA store free for the good stuff.', cost: { biomass: 16, energy: 8, enzymes: 1 }, organelle: 'nuclease_vesicle', stackLimit: 1 },
   { id: 'membrane_hardening', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin. Good for algae armor and predator survival; slows flow a little.', cost: { biomass: 15, lipids: 11, energy: 8, crystals: 1 }, organelle: 'membrane_hardening', stackLimit: 6 },
   { id: 'flagella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Flagellum', desc: 'One flagellum. Buy one, grow one.', cost: { biomass: 9, lipids: 5, energy: 7, spores: 1 }, organelle: 'flagella', stackLimit: 8 },
   { id: 'dash_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Dash Vacuole', desc: 'One burst organ for escaping bad overlaps and oxygen stress.', cost: { biomass: 14, lipids: 12, energy: 12, spores: 1 }, organelle: 'dash_vacuole', stackLimit: 4 },
@@ -2274,6 +2280,19 @@ function collectParticles(world, entity) {
 
     if (p.kind === 'dna') {
       if (entity.kind !== 'player') continue; // predators strip DNA for biomass in updateParticles
+      const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
+      const rolled = typeof p.potency === 'number' ? p.potency : 1;
+      const best = strain ? Math.max((entity.carriedStrains && entity.carriedStrains.get(strain)) || 0, world.discoveredSources.get(strain) || 0) : 0;
+      const junkStrain = strain && rolled <= best + 1e-6; // a genome no better than one you carry/know
+      // Nuclease Vesicle: dissolve junk strands into a scrap of biomass on contact, so they
+      // never take a DNA slot — works even when the DNA store is full. Good genomes fall through.
+      if (junkStrain && hasOrg(entity, 'nuclease_vesicle')) {
+        const room = Math.max(0, (c.biomass ?? 0) - (entity.cargo.biomass || 0));
+        if (room > 0) entity.cargo.biomass += Math.min(room, p.value);
+        world.events.push({ type: 'digest_dna', entityId: entity.id });
+        world.particles.splice(i, 1); collected += p.value;
+        continue;
+      }
       // You sweep up any DNA you have STORAGE room for — junk and treasure alike. What it
       // is worth is decided later, at Yuki: sequencing renders junk to biomass and locks
       // good genomes into the shop. So DNA storage is the real investment, and choosing
@@ -2281,13 +2300,10 @@ function collectParticles(world, entity) {
       const dnaRoom = (c.dna ?? 0) - (entity.cargo.dna || 0);
       if (dnaRoom + 1e-9 < p.value) continue; // full — invest in more storage, or be choosier
       entity.cargo.dna += p.value; world.stats.dnaRead += p.value;
-      const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
       if (strain) {
         entity.carriedStrains ||= new Map();
-        const rolled = typeof p.potency === 'number' ? p.potency : 1;
-        const current = Math.max(entity.carriedStrains.get(strain) || 0, world.discoveredSources.get(strain) || 0);
         // Track the best genome per trait — that's the "good" DNA that will upgrade the shop.
-        if (rolled > current + 1e-6) {
+        if (rolled > best + 1e-6) {
           entity.carriedStrains.set(strain, rolled);
           world.events.push({ type: 'sample', source: strain, name: ORGANELLES[strain].name, potency: rolled, upgrade: world.discoveredSources.has(strain) });
         }
