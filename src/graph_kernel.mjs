@@ -61,47 +61,63 @@ const DNA_CATEGORY_COLORS = Object.freeze({
 // organelle's id — the discovery key. Adding a new enemy variant is one row here
 // plus one ORGANELLES entry plus one gated OFFERINGS entry: no infra changes.
 const STRAINS = Object.freeze({
-  algae: [
-    { org: 'lipogenic_processor', tint: '#c9e86f' },
-    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
+  // Scavengers are your most common, shallowest kill — so they carry the feeding,
+  // foraging, and metabolic genes (plus one parasite), making the utility exotics the
+  // first you can farm on the way down.
+  scavenger: [
     { org: 'cytostome', tint: '#8ef19e' },
-    { org: 'enzyme_reserve', tint: '#ffb84d' }
+    { org: 'chemotaxis_cilia', tint: '#6fd6ff' },
+    { org: 'clean_processor', tint: '#c8b6ff' },
+    { org: 'lipogenic_processor', tint: '#c9e86f' },
+    { org: 'enzyme_reserve', tint: '#ffd27a' },
+    { org: 'leech_rasp', tint: '#8fe37a' }
   ],
+  // Algae drift and defend rather than hunt: self-mending, spined, acidic, and the
+  // parasitic feeding-vine.
+  algae: [
+    { org: 'lipid_repair_loom', tint: '#4fbf6f' },
+    { org: 'thorn_coat', tint: '#ff6a6a' },
+    { org: 'corrosive_pellicle', tint: '#b6ff5a' },
+    { org: 'leech_lance', tint: '#6fce8f' }
+  ],
+  // Rupture predators are the armed hunters: every kind of spine, the dash-charge, the
+  // adrenal surge, the harpoon, and the venom-fuel metabolism.
   predator: [
-    { org: 'virulent_processor', tint: '#ff6a4d' },
     { org: 'velocity_lance', tint: '#ff3d9a' },
+    { org: 'saw_lance', tint: '#c07fb0' },
     { org: 'siphon_rasp', tint: '#c0304f' },
-    { org: 'spore_jet', tint: '#c9a0ff' }
+    { org: 'rupture_auger', tint: '#ff5f8f' },
+    { org: 'spore_jet', tint: '#c9a0ff' },
+    { org: 'adrenal_vesicle', tint: '#ff2d7a' },
+    { org: 'harpoon_spine', tint: '#3d9aff' },
+    { org: 'virulent_processor', tint: '#ff6a4d' }
   ],
+  // Deep protozoans are the sophisticated ones: venom, electricity, cryo, neurotoxin,
+  // homing spores, crystalline armor, necrosis, and engulfing.
   protozoan: [
     { org: 'catalytic_processor', tint: '#7fe0d0' },
-    { org: 'clean_processor', tint: '#c8b6ff' },
-    { org: 'saw_lance', tint: '#9a8fb0' },
-    { org: 'leech_rasp', tint: '#8fe37a' },
-    { org: 'leech_lance', tint: '#6fce8f' },
-    { org: 'rupture_auger', tint: '#ff3d9a' },
-    { org: 'adrenal_vesicle', tint: '#ff2d7a' },
-    { org: 'thorn_coat', tint: '#ff6a6a' },
-    { org: 'corrosive_pellicle', tint: '#ff5a5a' },
+    { org: 'spore_toxin_launcher', tint: '#b06dff' },
+    { org: 'toxin_cloud', tint: '#9d5fff' },
     { org: 'discharge_vesicle', tint: '#ffe86f' },
     { org: 'cryo_vesicle', tint: '#8fd6ff' },
-    { org: 'chemotaxis_cilia', tint: '#6fd6ff' },
-    { org: 'phagocyte_maw', tint: '#ff8a3d' },
-    { org: 'necrosis_gland', tint: '#c88a4d' },
-    { org: 'volatile_vacuole', tint: '#ff4d6a' },
-    { org: 'seeker_gland', tint: '#4db8ff' },
-    { org: 'harpoon_spine', tint: '#3d9aff' },
     { org: 'neuro_barb', tint: '#6faaff' },
+    { org: 'seeker_gland', tint: '#4db8ff' },
+    { org: 'crystal_ward', tint: '#bfe8ff' },
+    { org: 'necrosis_gland', tint: '#c88a4d' },
+    { org: 'phagocyte_maw', tint: '#ff8a3d' }
+  ],
+  // Colonial metazoans carry the reproduction/detonation genes: orbiting daughters,
+  // fission buds, and the death-blast.
+  metazoan: [
     { org: 'orbital_spores', tint: '#ffd24d' },
     { org: 'fission_bud', tint: '#ffc24d' },
-    { org: 'spore_toxin_launcher', tint: '#b06dff' },
-    { org: 'crystal_ward', tint: '#bfe8ff' },
-    { org: 'toxin_cloud', tint: '#b06dff' }
+    { org: 'volatile_vacuole', tint: '#ff4d6a' }
   ]
 });
-// Deep protozoans are the most mutated: half spawn as a strain, drawn from a large
-// pool, so the deep froth is a churning mix of exotic genomes to hunt and harvest.
-const STRAIN_CHANCE = Object.freeze({ algae: 0.18, predator: 0.28, protozoan: 0.5 });
+// Strain frequency rises with depth/danger and falls with pool size, so the rarer,
+// deeper enemies are more reliably mutated while the common shallow ones stay mostly
+// wild. Broods are handled separately (their gene, pheromone_gland, is guaranteed).
+const STRAIN_CHANCE = Object.freeze({ scavenger: 0.30, algae: 0.22, predator: 0.35, protozoan: 0.60, metazoan: 0.90 });
 
 // Every processor is one biomass→ATP flow with its own yield and toxic-waste
 // signature; they coexist and stack. A body's metabolic character is the sum of
@@ -144,7 +160,7 @@ const COMPANIONS = Object.freeze({
 const DEEP_BODY_BY_CATEGORY = Object.freeze({
   lance: 'spiny', risk: 'spiny', rasp: 'amoeba', leech: 'amoeba', metabolic: 'ciliate',
   launcher: 'jelly', aura: 'jelly', control: 'jelly', execute: 'maw',
-  projectile: 'ciliate', orbital: 'radial'
+  projectile: 'ciliate', orbital: 'radial', feed: 'maw', guard: 'spiny', burst: 'jelly'
 });
 
 // Exotics are not just graft-currency — they are combustible verbs. Each one fuels
@@ -2015,7 +2031,7 @@ function hurt(world, entity, amount, sourceId = null) {
 
 // Fission Bud: spawn a short-lived allied grazer that fights on the killer's side.
 function budFriendly(world, owner, x, y) {
-  const bud = spawnScavenger(world, { x: x + rand(world, -12, 12), y: y + rand(world, -12, 12) });
+  const bud = spawnScavenger(world, { x: x + rand(world, -12, 12), y: y + rand(world, -12, 12), noStrain: true });
   bud.friendly = (owner.kind === 'player' || owner.friendly);
   bud.organelles.rasping_lamella = 1;
   bud.friendLife = ORGANELLES.fission_bud.stats.life;
@@ -2072,12 +2088,16 @@ function bloomDeath(world, e) {
     if (deep > 780 && world.rng() < 0.7) spawnParticle(world, 'spores', e.x, e.y, Math.ceil(deep / 1400));
     if (deep > 1120 && world.rng() < 0.58) spawnParticle(world, choice(world, ['enzymes', 'crystals']), e.x, e.y, 1);
     const player = getPlayer(world);
-    if (player && (e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae' || e.controller === 'metazoan' || e.controller === 'brood') && world.rng() < (hasMito(player) ? 0.95 : 0.46)) {
+    const isMutant = !!(e.strain && ORGANELLES[e.strain]);
+    const dnaSpecies = e.controller === 'protozoan' || e.controller === 'predator' || e.controller === 'algae' || e.controller === 'metazoan' || e.controller === 'brood' || e.controller === 'scavenger';
+    // A mutant ALWAYS sheds its signature gene when cracked open — hunting a tinted
+    // strain is a guaranteed harvest, no drop-roll. Wild (unmutated) kills still roll
+    // for plain currency DNA. This removes an entire RNG layer from the discovery loop.
+    if (player && dnaSpecies && (isMutant || world.rng() < (hasMito(player) ? 0.95 : 0.46))) {
       const dp = spawnParticle(world, 'dna', e.x, e.y, e.controller === 'metazoan' ? 3 : (e.controller === 'protozoan' || e.controller === 'brood') ? 2 : 1);
-      // Mutant strains shed information about their signature organelle: the DNA
-      // is tagged with that organelle's id (the discovery key) and colored by its
-      // category. Wild kills drop plain white DNA — currency, but no unlock.
-      if (e.strain && ORGANELLES[e.strain]) {
+      // The tagged DNA carries that organelle's id (the discovery key) and is colored
+      // by its category. Wild kills drop plain white DNA — currency, but no unlock.
+      if (isMutant) {
         dp.source = e.strain;
         dp.potency = e.strainPotency || 1;
         dp.color = DNA_CATEGORY_COLORS[ORGANELLES[e.strain].category] || COLORS.dna;
@@ -2167,6 +2187,7 @@ function spawnScavenger(world, opts = {}) {
     r: rand(world, 11, 18), color: '#8ef19e', controller: 'scavenger', trophicRole: 'anaerobic_scavenger', depthHome: y,
     organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
+  if (!opts.noStrain) { applyStrain(world, e); assignBody(e); }
   world.entities.push(e); return e;
 }
 
