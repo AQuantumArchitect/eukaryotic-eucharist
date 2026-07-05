@@ -375,6 +375,27 @@ export const ORGANELLES = Object.freeze({
     desc: 'Each kill may bud off a short-lived allied grazer that fights at your side before dissolving back into the froth.',
     stats: { chance: 0.5, life: 12 }
   },
+  // ── Consumable-verb organs: each has one atomic function, fuelled by one exotic ──
+  spore_jet: {
+    name: 'Spore Jet Vesicle', tier: 2, action: null, stackable: false, max: 1,
+    desc: 'A propulsive sac wired to your dash. When you burst it fires a spore charge — a stronger lunge that vents a lingering spore cloud behind you. Spends one spore per dash. Requires a Dash Vacuole to fire.',
+    stats: {}
+  },
+  phagosome: {
+    name: 'Phagosome Gland', tier: 2, action: 'engulf', stackable: false, max: 1,
+    desc: 'A digestive vesicle. On command it engulfs an overlapping smaller or wounded body, spending one enzyme to dissolve it whole into biomass.',
+    stats: {}
+  },
+  crystal_ward: {
+    name: 'Crystalline Ward Lattice', tier: 2, action: 'ward', stackable: false, max: 1,
+    desc: 'A lattice organ. Spend one crystal to sheathe the membrane for a few seconds: harder skin, reflected damage, and overcharged shots that pierce.',
+    stats: {}
+  },
+  enzyme_reserve: {
+    name: 'Enzyme Reserve Sac', tier: 2, action: null, stackable: false, max: 1,
+    desc: 'An emergency catalyst store. When ATP runs critically low it automatically spends one enzyme to flash-digest biomass into a burst of ATP.',
+    stats: {}
+  },
   pheromone_gland: {
     name: 'Pheromone Gland', tier: 3, action: 'mark', stackable: true, max: 2, category: 'swarm',
     desc: 'A signaling organ harvested from deep swarm-directors. It marshals a colony of allied bacteria, and paints a target with a sticky death-pheromone that your swarm converges on. Each gland conducts a larger swarm.',
@@ -418,6 +439,9 @@ export const OFFERINGS = Object.freeze([
   { id: 'membrane_hardening', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin. Good for algae armor and predator survival; slows flow a little.', cost: { biomass: 15, lipids: 11, energy: 8, crystals: 1 }, organelle: 'membrane_hardening', stackLimit: 6 },
   { id: 'flagella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Flagellum', desc: 'One flagellum. Buy one, grow one.', cost: { biomass: 9, lipids: 5, energy: 7, spores: 1 }, organelle: 'flagella', stackLimit: 8 },
   { id: 'dash_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Dash Vacuole', desc: 'One burst organ for escaping bad overlaps and oxygen stress.', cost: { biomass: 14, lipids: 12, energy: 12, spores: 1 }, organelle: 'dash_vacuole', stackLimit: 4 },
+  { id: 'spore_jet', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Spore Jet Vesicle', desc: 'Wires your dash to a spore charge: a stronger lunge that vents a spore cloud. Spends one spore per dash. Needs a Dash Vacuole.', cost: { biomass: 14, energy: 8, spores: 2 }, requiresOrganelle: 'dash_vacuole', organelle: 'spore_jet', stackLimit: 1 },
+  { id: 'enzyme_reserve', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Enzyme Reserve Sac', desc: 'Auto-spends an enzyme to flash-digest biomass into ATP whenever your energy runs critically low.', cost: { biomass: 14, energy: 8, enzymes: 2 }, organelle: 'enzyme_reserve', stackLimit: 1 },
+  { id: 'crystal_ward', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Crystalline Ward Lattice', desc: 'Spend a crystal to sheathe the membrane: harder skin, reflected damage, and piercing shots for a few seconds.', cost: { biomass: 16, lipids: 6, energy: 8, crystals: 2 }, organelle: 'crystal_ward', stackLimit: 1 },
 
   { id: 'oxygen_tolerance', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Tolerance Vesicle', desc: 'Raise the safe oxygen threshold. Tolerance is separate from storage.', cost: { biomass: 12, energy: 6, enzymes: 1 }, organelle: 'oxygen_tolerance', stackLimit: 5 },
   { id: 'oxygen_vacuole', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Buoyancy Vacuole', desc: 'Merged oxygen storage and buoyancy. Internal oxygen gives lift only with this organ.', cost: { biomass: 12, lipids: 7, energy: 7, enzymes: 1 }, organelle: 'oxygen_vacuole', stackLimit: 6 },
@@ -426,6 +450,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'rasping_lamella', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { biomass: 18, lipids: 5, energy: 8, crystals: 1, enzymes: 1 }, organelle: 'rasping_lamella', stackLimit: 5 },
   { id: 'lance_bristle', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Lance Bristle', desc: 'One forward spine. Buy one, grow one.', cost: { biomass: 16, lipids: 7, energy: 8, crystals: 1 }, organelle: 'lance_bristle', stackLimit: 6 },
   { id: 'toxin_launcher', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxic Launcher', desc: 'Late Tier 2 toxin weapon: fires one chemical glob that creates a damaging field.', cost: { biomass: 14, energy: 10, toxins: 8, crystals: 1 }, organelle: 'toxin_launcher', stackLimit: 3 },
+  { id: 'phagosome', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Phagosome Gland', desc: 'Engulf an overlapping smaller or wounded body on command, spending one enzyme to dissolve it whole into biomass.', cost: { biomass: 18, energy: 8, enzymes: 1, crystals: 1 }, organelle: 'phagosome', stackLimit: 1 },
   { id: 'toxin_cloud', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent. Requires Toxic Launcher.', cost: { biomass: 16, energy: 10, toxins: 16, enzymes: 1, crystals: 1 }, requiresOrganelle: 'toxin_launcher', organelle: 'toxin_cloud', stackLimit: 3 },
 
   // Exotic traits: locked until you harvest the matching strain's DNA. Discovery
@@ -956,9 +981,9 @@ function applyPlayerCommands(world, player, commands, dt) {
     player.repairIntent = !!commands.repair;
     if (commands.dash && hasOrg(player, 'dash_vacuole') && player.cargo.energy >= ORGANELLES.dash_vacuole.stats.energyCost) {
       let sp = ORGANELLES.dash_vacuole.stats.impulse;
-      // Bloom Dash: spend a spore for a stronger burst that vents a spore cloud behind you.
+      // Bloom Dash: the Spore Jet Vesicle spends a spore for a stronger burst + cloud.
       const bd = CONSUMABLES.bloomDash;
-      if ((player.cargo.spores || 0) >= bd.spore) {
+      if (hasOrg(player, 'spore_jet') && (player.cargo.spores || 0) >= bd.spore) {
         player.cargo.spores -= bd.spore;
         sp *= bd.impulseMult;
         const h = spawnToxicHazard(world, player.x, player.y, { kind: 'spore_cloud', sourceId: player.id, radius: bd.cloudRadius, damage: bd.cloudDamage, maxAge: bd.cloudAge, color: DNA_CATEGORY_COLORS.launcher });
@@ -976,8 +1001,8 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (commands.sporeshot && hasOrg(player, 'spore_toxin_launcher')) sporePulse(world, player, commands.aimX, commands.aimY);
     if (commands.harpoon && hasOrg(player, 'harpoon_spine')) harpoonPulse(world, player, commands.aimX, commands.aimY);
     if (commands.mark && hasOrg(player, 'pheromone_gland')) markPulse(world, player, commands.aimX, commands.aimY);
-    if (commands.engulf && hasOrg(player, 'phagocyte_maw')) engulfPulse(world, player);
-    if (commands.ward && hasOrg(player, 'membrane_hardening')) wardPulse(world, player);
+    if (commands.engulf && hasOrg(player, 'phagosome')) engulfPulse(world, player);
+    if (commands.ward && hasOrg(player, 'crystal_ward')) wardPulse(world, player);
     if (commands.cloud && hasOrg(player, 'toxin_cloud')) toxinCloud(world, player);
   }
 
@@ -1180,7 +1205,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // enzyme to flash-digest biomass into ATP — an automatic emergency respiration.
     const surge = CONSUMABLES.surge;
     e.cooldowns ||= {};
-    if ((e.cargo.energy || 0) < caps(e).energy * surge.threshold && hasOrg(e, 'catalytic_processor')
+    if ((e.cargo.energy || 0) < caps(e).energy * surge.threshold && hasOrg(e, 'enzyme_reserve')
       && (e.cargo.enzymes || 0) >= surge.enzyme && (e.cargo.biomass || 0) > 2 && (e.cooldowns.surge || 0) <= 0) {
       const used = Math.min(e.cargo.biomass, surge.convert);
       e.cargo.biomass -= used;
@@ -1728,7 +1753,7 @@ function markPulse(world, entity, aimX = null, aimY = null) {
 // Engulf (enzyme-fueled instakill): the phagocyte maw digests an overlapping hostile
 // that is smaller than you or already wounded — spend one enzyme, gain its biomass.
 function engulfPulse(world, e) {
-  if (!hasOrg(e, 'phagocyte_maw')) return false;
+  if (!hasOrg(e, 'phagosome')) return false;
   const o = CONSUMABLES.engulf;
   e.cooldowns ||= {};
   if ((e.cooldowns.engulf || 0) > 0 || (e.cargo.enzymes || 0) < o.enzyme || !hasEnergy(e, o.energyCost)) return false;
@@ -1753,7 +1778,7 @@ function engulfPulse(world, e) {
 // Ward (crystal-fueled): spend a crystal to lattice the membrane for a few seconds —
 // harder skin, reflected damage, and your shots pierce while the ward holds.
 function wardPulse(world, e) {
-  if (!hasOrg(e, 'membrane_hardening')) return false;
+  if (!hasOrg(e, 'crystal_ward')) return false;
   const o = CONSUMABLES.ward;
   e.cooldowns ||= {};
   if ((e.cooldowns.ward || 0) > 0 || (e.cargo.crystals || 0) < o.crystal || !hasEnergy(e, o.energyCost)) return false;
@@ -2325,8 +2350,8 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (hasOrg(e, 'spore_toxin_launcher')) { const st = ORGANELLES.spore_toxin_launcher.stats; actions.push({ id: 'sporeshot', label: 'Sporo-Toxic Launcher', enabled: powered && (e.cargo.toxins || 0) >= st.toxinCost && (e.cargo.spores || 0) >= st.sporeCost && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'harpoon_spine')) { const st = ORGANELLES.harpoon_spine.stats; actions.push({ id: 'harpoon', label: 'Harpoon Spine', enabled: powered && (e.cargo.energy || 0) >= st.energyCost }); }
   if (hasOrg(e, 'pheromone_gland')) { const st = ORGANELLES.pheromone_gland.stats; actions.push({ id: 'mark', label: 'Mark Target', enabled: powered && (e.cargo.energy || 0) >= st.energyCost && (e.cargo.spores || 0) >= st.sporeCost }); }
-  if (hasOrg(e, 'phagocyte_maw')) { const o = CONSUMABLES.engulf; actions.push({ id: 'engulf', label: 'Engulf', enabled: powered && (e.cargo.enzymes || 0) >= o.enzyme && (e.cargo.energy || 0) >= o.energyCost }); }
-  if (hasOrg(e, 'membrane_hardening')) { const o = CONSUMABLES.ward; actions.push({ id: 'ward', label: 'Crystal Ward', enabled: powered && (e.cargo.crystals || 0) >= o.crystal && (e.cargo.energy || 0) >= o.energyCost }); }
+  if (hasOrg(e, 'phagosome')) { const o = CONSUMABLES.engulf; actions.push({ id: 'engulf', label: 'Engulf', enabled: powered && (e.cargo.enzymes || 0) >= o.enzyme && (e.cargo.energy || 0) >= o.energyCost }); }
+  if (hasOrg(e, 'crystal_ward')) { const o = CONSUMABLES.ward; actions.push({ id: 'ward', label: 'Crystal Ward', enabled: powered && (e.cargo.crystals || 0) >= o.crystal && (e.cargo.energy || 0) >= o.energyCost }); }
   if (hasOrg(e, 'toxin_cloud')) actions.push({ id: 'cloud', label: 'Cloud', enabled: powered && (e.cargo.toxins || 0) >= ORGANELLES.toxin_cloud.stats.toxinCost && (e.cargo.energy || 0) >= ORGANELLES.toxin_cloud.stats.energyCost });
   actions.push({ id: 'yuki', label: 'Yuki', enabled: nearYuki(world, e) });
   return actions;

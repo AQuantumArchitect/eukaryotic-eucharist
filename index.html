@@ -329,6 +329,10 @@ function drawInternalOrganelles(e,ang){
   if(org.mitochondrion)add('mito','#ffac75',org.mitochondrion*2,5.2,'mito');
   if(org.companion_cell)add('companion','#7fffe0',org.companion_cell,4.2,'dot');
   if(org.pheromone_gland)add('pheromone','#5fe0a0',org.pheromone_gland,4.4,'ring');
+  if(org.spore_jet)add('sporejet','#d6a2ff',1,4.0,'bubble');
+  if(org.phagosome)add('phagosome','#ff8a3d',1,4.4,'bubble');
+  if(org.crystal_ward)add('ward','#ff5dba',1,4.2,'diamond');
+  if(org.enzyme_reserve)add('enzresv','#7fffe0',1,4.0,'bubble');
   ctx.save();
   ctx.beginPath(); ctx.arc(e.x,e.y,e.r*.82,0,Math.PI*2); ctx.clip();
   for(let i=0;i<parts.length;i++){
