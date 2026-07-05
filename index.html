@@ -158,6 +158,7 @@ function checkDeathEvent(){
   for(const ev of projection.events){if(ev.type==='colony_segment_lost') toast(`${ev.label} lost.`);}
   for(const ev of projection.events){if(ev.type==='sample') toast(`${ev.upgrade?'Better strain':'Genetic sample'}: ${ev.name} @ ${Math.round((ev.potency||1)*100)}% — carry to Yuki to ${ev.upgrade?'upgrade':'sequence'}.`);}
   for(const ev of projection.events){if(ev.type==='discovery') toast(`${ev.name} ${ev.upgrade?'upgraded':'sequenced'} — ${Math.round((ev.potency||1)*100)}% potency locked in.`);}
+  for(const ev of projection.events){if(ev.type==='sequence'&&ev.good===0&&ev.junk>0) toast(`${ev.junk} junk strand${ev.junk>1?'s':''} rendered → +${ev.biomass} biomass.`);}
   for(const ev of projection.events){if(ev.type==='engulf') toast('Engulfed.');else if(ev.type==='charm') toast('A cell turns to your side.');else if(ev.type==='bud') toast('A daughter cell buds off to fight for you.');else if(ev.type==='detonate') toast('You detonate.');else if(ev.type==='companion') toast('A swarm joins your colony.');else if(ev.type==='mark_launch') toast('Death-pheromone launched — swarm, converge.');else if(ev.type==='marked'&&ev.by===world.playerId) toast('Target marked for the swarm.');else if(ev.type==='bloom_dash') toast('Bloom dash — spore cloud vented.');else if(ev.type==='ward') toast('Crystalline ward raised — shots pierce.');else if(ev.type==='surge') toast('Enzymatic surge — emergency ATP.');}
 }
 

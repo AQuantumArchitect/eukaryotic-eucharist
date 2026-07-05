@@ -111,6 +111,7 @@ const RASP_ORGANS = Object.freeze(['rasping_lamella', 'siphon_rasp', 'leech_rasp
 // a swarm; graft the chassis and you are one large organism. Two different answers
 // to "stop being alone in the froth."
 const COMPANION_CAP = 6; // hard ceiling; the real cap scales with Pheromone Gland count (swarmCap)
+const JUNK_DNA_BIOMASS = 10; // biomass yielded per non-upgrade (junk) DNA record when sequenced
 const COMPANIONS = Object.freeze({
   grazer: {
     label: 'Grazer Swarm', color: '#8ef1c0', r: 13, bodyPlan: 'blob',
@@ -428,7 +429,6 @@ export const OFFERINGS = Object.freeze([
   { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki refills ATP. No waste is mixed into the output.', cost: { biomass: 4, lipids: 2 }, gain: { energy: 10 } },
   { id: 'buy_toxins', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Distill Toxins', output: 'toxins', desc: 'Restock toxin chemistry as a single clean tank.', cost: { biomass: 4, energy: 3 }, gain: { toxins: 7 } },
   { id: 'detox', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Yuki Detox', output: 'detox', desc: 'Pass toxins and oxygen stress into the canopy. Not a combat vent.', cost: { energy: 4 }, effect: { detox: 14, oxygenVent: 0.20 } },
-  { id: 'render_dna', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render DNA into Biomass', output: 'biomass', desc: 'Yuki digests spare DNA records into construction slurry — the same trick the deep predators use. Sheds currency you no longer need.', cost: { dna: 1 }, gain: { biomass: 12 } },
 
   { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8, energy: 6 }, organelle: 'membrane', stackLimit: 8 },
   { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4, energy: 5 }, organelle: 'membrane_intake', stackLimit: 6 },
@@ -2274,26 +2274,23 @@ function collectParticles(world, entity) {
 
     if (p.kind === 'dna') {
       if (entity.kind !== 'player') continue; // predators strip DNA for biomass in updateParticles
-      const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
+      // You sweep up any DNA you have STORAGE room for — junk and treasure alike. What it
+      // is worth is decided later, at Yuki: sequencing renders junk to biomass and locks
+      // good genomes into the shop. So DNA storage is the real investment, and choosing
+      // NOT to top up on junk on the way down (to save room for deep genomes) is the play.
       const dnaRoom = (c.dna ?? 0) - (entity.cargo.dna || 0);
+      if (dnaRoom + 1e-9 < p.value) continue; // full — invest in more storage, or be choosier
+      entity.cargo.dna += p.value; world.stats.dnaRead += p.value;
+      const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
       if (strain) {
-        // A strain-tagged strand is only worth taking if it's a genuine UPGRADE — a
-        // trait you don't carry/know, or a stronger potency than either. Junk (worse-
-        // or-equal, already sequenced) is ignored: it stays in the water to denature or
-        // feed a predator, so your tiny DNA store never clogs with records you can't use.
         entity.carriedStrains ||= new Map();
         const rolled = typeof p.potency === 'number' ? p.potency : 1;
         const current = Math.max(entity.carriedStrains.get(strain) || 0, world.discoveredSources.get(strain) || 0);
-        if (rolled <= current + 1e-6) continue; // not an upgrade — leave it
-        // An upgrade: bank the SAMPLE regardless of DNA-cargo room (a full tank of raw
-        // currency must never cost you a better genome), and bank the raw DNA too if it fits.
-        entity.carriedStrains.set(strain, rolled);
-        world.events.push({ type: 'sample', source: strain, name: ORGANELLES[strain].name, potency: rolled, upgrade: world.discoveredSources.has(strain) });
-        if (dnaRoom + 1e-9 >= p.value) { entity.cargo.dna += p.value; world.stats.dnaRead += p.value; }
-      } else {
-        // Plain (untagged) DNA is pure currency — take it only if there is room.
-        if (dnaRoom + 1e-9 < p.value) continue;
-        entity.cargo.dna += p.value; world.stats.dnaRead += p.value;
+        // Track the best genome per trait — that's the "good" DNA that will upgrade the shop.
+        if (rolled > current + 1e-6) {
+          entity.carriedStrains.set(strain, rolled);
+          world.events.push({ type: 'sample', source: strain, name: ORGANELLES[strain].name, potency: rolled, upgrade: world.discoveredSources.has(strain) });
+        }
       }
       world.events.push({ type: 'particle', entityId: entity.id, kind: 'dna', value: p.value });
       world.particles.splice(i, 1); collected += p.value;
@@ -2409,12 +2406,18 @@ export function getYukiOfferings(world, entityId = world.playerId) {
   // Yuki sequences the strain records you carried home: one offering that flushes all
   // pending samples into permanent unlocks (or upgrades an already-known trait if the
   // sample rolled higher). This is where discovery happens.
+  // Sequencing reads your WHOLE DNA store at once: good genomes (the best sample of each
+  // trait) lock into the shop as unlocks/upgrades; every other strand is junk, rendered
+  // into biomass. One button empties the tank, so DNA storage is how much you can bank
+  // between Yuki visits — and topping up on junk on the way down costs you deep-genome room.
   const carried = [...((e.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
-  const seqCost = { energy: 6, dna: carried.length }; // sequencing spends the DNA records themselves
-  const sequenceOfferings = carried.length ? [{
+  const dnaHeld = Math.round(e.cargo.dna || 0);
+  const junkCount = Math.max(0, dnaHeld - carried.length);
+  const seqCost = { energy: 6 };
+  const sequenceOfferings = dnaHeld > 0 ? [{
     id: 'sequence_dna', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'sequence',
-    name: `Sequence Genome (${carried.length})`,
-    desc: `Yuki reads the strain records you carried home and locks them into your lineage — consuming the DNA: ${carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ')}.`,
+    name: `Sequence Genome (${dnaHeld})`,
+    desc: `Yuki reads your ${dnaHeld} DNA record${dnaHeld > 1 ? 's' : ''}: ${carried.length ? carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ') : 'no new traits'}${junkCount > 0 ? `; ${junkCount} junk strand${junkCount > 1 ? 's' : ''} → ${junkCount * JUNK_DNA_BIOMASS} biomass` : ''}.`,
     cost: seqCost, costText: fmtStock(seqCost),
     locked: !hasStock(e.cargo, seqCost), affordable: hasStock(e.cargo, seqCost),
     reasons: hasStock(e.cargo, seqCost) ? [] : [`needs ${fmtStock(missingStock(e.cargo, seqCost))}`],
@@ -2452,19 +2455,29 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
   if (!entity) return { ok: false, reason: 'missing entity' };
   if (offeringId === 'sequence_dna') {
     const carried = [...((entity.carriedStrains || new Map()).entries())].filter(([s]) => ORGANELLES[s]);
-    if (!carried.length) return { ok: false, reason: 'no new strain records to sequence' };
-    const cost = { energy: 6, dna: carried.length }; // sequencing consumes the DNA it reads
+    const dnaHeld = Math.round(entity.cargo.dna || 0);
+    if (dnaHeld <= 0 && !carried.length) return { ok: false, reason: 'no DNA to sequence' };
+    const cost = { energy: 6 };
     if (!hasStock(entity.cargo, cost)) return { ok: false, reason: `needs ${fmtStock(missingStock(entity.cargo, cost))}` };
     subStock(entity.cargo, cost);
+    // Good genomes lock into the shop (the best sample of each trait).
     for (const [s, mult] of carried) {
       const upgrade = world.discoveredSources.has(s);
-      world.discoveredSources.set(s, mult); // sample only carried if it beats current, so always locks the better genome
+      world.discoveredSources.set(s, mult);
       entity.carriedStrains.delete(s);
       world.events.push({ type: 'discovery', source: s, name: ORGANELLES[s].name, potency: mult, upgrade });
     }
+    // Every strand that wasn't a good genome is junk — Yuki renders it into biomass.
+    const junkCount = Math.max(0, dnaHeld - carried.length);
+    const biomassGain = junkCount * JUNK_DNA_BIOMASS;
+    if (biomassGain > 0) entity.cargo.biomass = Math.min(caps(entity).biomass, (entity.cargo.biomass || 0) + biomassGain);
+    // The whole tank is consumed: junk is spent, but the good records stay as graft currency.
+    entity.cargo.dna = Math.max(0, dnaHeld - junkCount);
+    clampCargo(entity);
     saveDiscoveries(world);
+    world.events.push({ type: 'sequence', entityId, good: carried.length, junk: junkCount, biomass: biomassGain });
     world.events.push({ type: 'buy', entityId, offeringId });
-    return { ok: true, offeringId, sequenced: carried.length };
+    return { ok: true, offeringId, sequenced: carried.length, rendered: junkCount, biomass: biomassGain };
   }
   if (offeringId.startsWith('attach_')) {
     const blueprintId = offeringId.slice(7);
