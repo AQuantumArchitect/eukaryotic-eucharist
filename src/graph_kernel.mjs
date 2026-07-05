@@ -378,7 +378,7 @@ export const ORGANELLES = Object.freeze({
   },
   nuclease_vesicle: {
     name: 'Nuclease Vesicle', tier: 2, action: null, stackable: false, max: 1,
-    desc: 'A DNA-digesting organ. Any strand you sweep up that is worse than a genome you already carry or have sequenced is dissolved on contact into a scrap of biomass — instead of taking a slot in your DNA store. Good genomes still bank normally.',
+    desc: 'A DNA-digesting organ. Any junk strand you sweep up — an untagged record, or a genome no better than one you already carry or have sequenced — is dissolved on contact into a scrap of biomass, instead of taking a slot in your DNA store. Good genomes still bank normally.',
     stats: {}
   },
   // ── Consumable-verb organs: each has one atomic function, fuelled by one exotic ──
@@ -442,7 +442,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'One main tank expansion for biomass, lipids, toxins, and ATP. It visibly increases body bulk.', cost: { biomass: 10, lipids: 7, energy: 5, crystals: 1 }, organelle: 'storage_vacuole', stackLimit: 8 },
   { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, lipids: 4, energy: 5, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 8 },
   { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, energy: 6, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 8 },
-  { id: 'nuclease_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Nuclease Vesicle', desc: 'Digests junk DNA — any strand worse than a genome you carry or know — into biomass on pickup, keeping your DNA store free for the good stuff.', cost: { biomass: 16, energy: 8, enzymes: 1 }, organelle: 'nuclease_vesicle', stackLimit: 1 },
+  { id: 'nuclease_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Nuclease Vesicle', desc: 'Digests junk DNA — untagged strands and any genome no better than one you carry or know — into biomass on pickup, keeping your DNA store free for the good stuff.', cost: { biomass: 16, energy: 8, enzymes: 1 }, organelle: 'nuclease_vesicle', stackLimit: 1 },
   { id: 'membrane_hardening', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin. Good for algae armor and predator survival; slows flow a little.', cost: { biomass: 15, lipids: 11, energy: 8, crystals: 1 }, organelle: 'membrane_hardening', stackLimit: 6 },
   { id: 'flagella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Flagellum', desc: 'One flagellum. Buy one, grow one.', cost: { biomass: 9, lipids: 5, energy: 7, spores: 1 }, organelle: 'flagella', stackLimit: 8 },
   { id: 'dash_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Dash Vacuole', desc: 'One burst organ for escaping bad overlaps and oxygen stress.', cost: { biomass: 14, lipids: 12, energy: 12, spores: 1 }, organelle: 'dash_vacuole', stackLimit: 4 },
@@ -2283,10 +2283,11 @@ function collectParticles(world, entity) {
       const strain = (p.source && ORGANELLES[p.source]) ? p.source : null;
       const rolled = typeof p.potency === 'number' ? p.potency : 1;
       const best = strain ? Math.max((entity.carriedStrains && entity.carriedStrains.get(strain)) || 0, world.discoveredSources.get(strain) || 0) : 0;
-      const junkStrain = strain && rolled <= best + 1e-6; // a genome no better than one you carry/know
-      // Nuclease Vesicle: dissolve junk strands into a scrap of biomass on contact, so they
-      // never take a DNA slot — works even when the DNA store is full. Good genomes fall through.
-      if (junkStrain && hasOrg(entity, 'nuclease_vesicle')) {
+      // Junk = an untagged strand (no genome to unlock) OR a strain no better than one you
+      // carry/know. Nuclease Vesicle dissolves it into a scrap of biomass on contact, so it
+      // never takes a DNA slot — works even when the store is full. Good genomes fall through.
+      const isJunk = !strain || rolled <= best + 1e-6;
+      if (isJunk && hasOrg(entity, 'nuclease_vesicle')) {
         const room = Math.max(0, (c.biomass ?? 0) - (entity.cargo.biomass || 0));
         if (room > 0) entity.cargo.biomass += Math.min(room, p.value);
         world.events.push({ type: 'digest_dna', entityId: entity.id });
