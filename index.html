@@ -15,6 +15,9 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 /* Vitals flash under duress: damage taken (HP), critically low ATP, O2 over the poison line. */
 @keyframes vitalDuress{0%,100%{box-shadow:0 0 0 0 rgba(255,64,64,0),inset 0 0 0 0 rgba(255,64,64,0)}50%{box-shadow:0 0 11px 1px rgba(255,64,64,.75),inset 0 0 0 1px rgba(255,90,90,.7)}}
 .vital.duress{animation:vitalDuress .68s ease-in-out infinite}
+/* Fill flash: a stat actively GAINING glows green — confirms feeding / absorbing is working. */
+@keyframes vitalFill{0%,100%{box-shadow:0 0 0 0 rgba(158,240,189,0)}50%{box-shadow:0 0 12px 1px rgba(158,240,189,.85),inset 0 0 0 1px rgba(158,240,189,.55)}}
+.vital.filling{animation:vitalFill .82s ease-in-out infinite}
 .vital{cursor:help}
 /* Stage-guidance line inside the shop (reaches touch + desktop). */
 .shopGuide{flex:0 0 auto;padding:8px 16px;font-size:11px;line-height:1.38;color:#d3ecda;background:linear-gradient(180deg,rgba(134,210,255,.09),rgba(8,8,22,0));border-bottom:1px solid rgba(255,255,255,.10)}
@@ -200,6 +203,15 @@ function checkDeathEvent(){
 }
 
 let prevHp=null, hpFlash=0;
+let fillPrev={}, fillTimer={}, uiPhase=0;
+// A stat is "filling" when its value is climbing. A short decay keeps the glow steady between
+// per-frame gain ticks, so a steady feed reads as a steady glow rather than a stutter.
+function fillPulse(key,cur){
+  const p=fillPrev[key];
+  if(p!=null && cur>p+0.02) fillTimer[key]=16; else fillTimer[key]=Math.max(0,(fillTimer[key]||0)-1);
+  fillPrev[key]=cur;
+  return (fillTimer[key]||0)>0;
+}
 const CHIP_TIP={
   biomass:'Biomass — your bulk and the fuel processors burn into ATP. Gather it by feeding on fields (F).',
   lipids:'Lipids (fat) — spent on membrane repair (Q) and a source of buoyancy. Banked from feeding.',
@@ -224,6 +236,11 @@ function updateUI(){
   ui.hpVital.classList.toggle('duress', hpFlash>0);
   const atpFrac=energy.value/Math.max(1,energy.max); ui.energyVital.classList.toggle('duress', atpFrac<0.10);
   const o2Over=hud.oxygen.value>hud.oxygen.tolerance; ui.o2Vital.classList.toggle('duress', o2Over);
+  // ── Fill flashing: stats that are actively GAINING glow green (is my feeding working?) ──
+  uiPhase++;
+  ui.hpVital.classList.toggle('filling', fillPulse('hp',hud.hp.value) && hpFlash<=0);
+  ui.energyVital.classList.toggle('filling', fillPulse('atp',energy.value) && atpFrac>=0.10);
+  ui.o2Vital.classList.toggle('filling', fillPulse('o2',hud.oxygen.value) && !o2Over);
   // ── Stage-aware tooltips: what each stat is + what to do right now (verified against mechanics) ──
   ui.hpVital.title='HP — membrane integrity. Flashes red when a cell wounds you. Mend it with Lipid Repair (Q, needs a Lipid Repair Loom) or add membrane layers at Yuki; lose a full layer and it sheds.';
   ui.energyVital.title='ATP powers every action — at zero, all actions are blocked. Make it by feeding on matter fields (F / right-click); processors turn biomass into ATP. Charge ATP instantly at Yuki.'+(atpFrac<0.10?'  ⚠ Almost empty — feed or Charge ATP now.':'');
@@ -231,7 +248,8 @@ function updateUI(){
   ui.depthVital.title=`Depth — ${hud.depth.zone}. Deeper water is darker and more dangerous but sheds richer DNA. Dive by holding S (needs a Ballast Bladder); rise with W.`;
   // ATP keeps its vital bar above; the slot under the O2 meter becomes the ballast trim meter.
   const visible = ['biomass','lipids','toxins','__ballast','spores','enzymes','crystals','dna'];
-  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);return `<div class="chip" title="${CHIP_TIP[id]||''}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i></div>`}).join('');
+  const glowT=0.5+0.5*Math.sin(uiPhase*0.42); // shared pulse phase for the filling glow
+  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';return `<div class="chip" title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i></div>`}).join('');
   const metab = hud.metabolism ? ` · processors ${hud.metabolism.anaerobicProcessorLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
   const carried = (hud.carriedStrains&&hud.carriedStrains.length)?`<br><span style="color:#8fe37a;font-weight:900">◈ ${hud.carriedStrains.length} DNA sample${hud.carriedStrains.length>1?'s':''} carried — sequence at Yuki to unlock (lost if you die)</span>`:'';
   ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}${carried}`;
