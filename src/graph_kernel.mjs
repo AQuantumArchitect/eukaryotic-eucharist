@@ -1061,6 +1061,13 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     ballast: false, maxDepth: 0, combatHit: 0, warded: 0,
     chill: 0, chillMult: 1, charmTimer: 0, friendLife: 0, marked: 0, markedBy: null,
     carriedStrains: null, _chemoWasFeeding: false,
+    // Policy-graph brain state (free hunters only, but declared on every body to keep one hidden
+    // class). brainState = current node; _targetRef = committed prey/threat object (steered toward
+    // every frame, re-selected only on the throttled think tick); _think = seconds to next scan;
+    // _commit = remaining commitment/give-up clock; aggro/caution = per-individual temperament
+    // rolled at spawn; _wander = slow cruise heading offset; _preyScore = last scan's winning score.
+    brainState: 'prowl', _targetRef: null, _think: rand(world, 0, 0.18), _commit: 0,
+    aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity,
     _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
@@ -1454,6 +1461,205 @@ function applyPlayerCommands(world, player, commands, dt) {
   collectParticles(world, player);
 }
 
+// The free deep hunters run on the policy graph; leashed swarms/companions/broods keep their
+// director/leash logic in the classic updateNPCs path below.
+const FREE_HUNTERS = new Set(['predator', 'protozoan', 'metazoan']);
+
+// Predator policy graph — a fixed little state machine ("the game is a graph"). Nodes are the
+// keys below; edges are the cheap scalar transitions in updateNpcBrain. Per-node dials: speedMult
+// scales max speed, homeBias is how hard the home-depth spring pulls (low = committed chase).
+// Top-level scalars are the global feel knobs the user can tune.
+const BRAIN = Object.freeze({
+  THINK_INTERVAL: 0.18,  // seconds between expensive re-scans; steering stays every-frame
+  ACCEPT_BASE: 1.6,      // target score a FED hunter needs to commit (high ⇒ it stands down)
+  ACCEPT_SLOPE: 2.4,     // how far hunger lowers that bar: acceptBar = BASE − drive*SLOPE
+  STRIKE_PAD: 42,        // px beyond r+r that counts as "in strike range" (rasp reach)
+  GIVEUP_DIST: 1180,     // drop a committed target once it strays past this
+  FLEE_HP: 0.34,         // HP fraction under which caution can trip a retreat
+  FLEE_SIZE: 1.35,       // a close live body this many× my radius can trip a retreat
+  prowl:  { speedMult: 0.55, homeBias: 0.38 },
+  stalk:  { speedMult: 1.15, homeBias: 0.05 },
+  strike: { speedMult: 1.05, homeBias: 0.02 },
+  feed:   { speedMult: 0.65, homeBias: 0.20 },
+  flee:   { speedMult: 1.25, homeBias: 0.10 }
+});
+
+// Roll a hunter's temperament once at spawn (deterministic via world.rng). Deeper spawns skew
+// bolder and less cautious — the abyss breeds recklessness. Mutants deviate a touch more.
+function initBrain(world, e, depthT = 0) {
+  e.aggro = clamp(gaussian(world.rng, 0.45 + depthT * 0.30, 0.16), 0, 1);
+  e.caution = clamp(gaussian(world.rng, 0.55 - depthT * 0.20, 0.16), 0, 1);
+  if (e.strain) e.aggro = clamp(e.aggro * (0.85 + (e.strainPotency || 1) * 0.15), 0, 1);
+  e.brainState = 'prowl';
+  e._targetRef = null;
+  e._commit = 0;
+  e._think = rand(world, 0, BRAIN.THINK_INTERVAL);
+  e._wander = rand(world, 0, Math.PI * 2);
+  e._preyScore = -Infinity;
+}
+
+// Ranged + melee attack gates against a committed prey. Each weapon self-gates on its own range
+// and ammo; rasp only flags on contact. Extracted verbatim from the classic prey block so ranged
+// hunters still poke during the approach, not only in melee.
+function fireOnPrey(world, e, prey, preyDist) {
+  if (hasOrg(e, 'toxin_launcher') && preyDist < 520 && e.cargo.energy > ORGANELLES.toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.toxin_launcher.stats.toxinCost && world.rng() < 0.018) acidPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'spore_toxin_launcher') && preyDist < 540 && e.cargo.energy > ORGANELLES.spore_toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.spore_toxin_launcher.stats.toxinCost && (e.cargo.spores || 0) >= ORGANELLES.spore_toxin_launcher.stats.sporeCost && world.rng() < 0.014) sporePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && world.rng() < 0.02) harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'combustion_vesicle') && preyDist < e.r + prey.r + ORGANELLES.combustion_vesicle.stats.reach) flamePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'pheromone_gland') && preyDist < 520 && (e.cargo.spores || 0) >= ORGANELLES.pheromone_gland.stats.sporeCost && (prey.marked || 0) <= 0 && world.rng() < 0.014) markPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasRasp(e) && preyDist < e.r + prey.r + BRAIN.STRIKE_PAD) e.action = 'rasp';
+}
+
+// Survival check, run cheaply every frame. Returns the thing to run from — a threat body, the
+// string 'light' (photophobic body caught in the glare → dive), 'scatter' (wounded, no clear
+// threat → bolt), or null (no panic). Cautious individuals break earlier; reckless ones tough it out.
+function fleeThreat(world, e, myCapHp) {
+  if (e.photophobic && lightAt(e.y) > LIGHT_BURN.threshold) return 'light';
+  if (e.hp < myCapHp * BRAIN.FLEE_HP * (0.6 + e.caution)) {
+    const t = e._targetRef;
+    return (t && t.alive) ? t : 'scatter';
+  }
+  const t = e._targetRef;
+  if (t && t.alive && t.r > e.r * (BRAIN.FLEE_SIZE + (1 - e.caution) * 0.7)) {
+    if (distWrap(e.x, e.y, t.x, t.y) < e.r + t.r + 160) return t; // outmatched and it's on top of me
+  }
+  return null;
+}
+
+function enterFlee(e, threat) {
+  e.brainState = 'flee';
+  e._commit = 0.8 + e.caution; // how long it keeps bolting before re-assessing
+  if (threat === 'light') { e._targetRef = null; e._wander = Math.PI / 2; }        // vy+ is DOWN, away from light
+  else if (threat === 'scatter') { e._targetRef = null; e._wander = e.phase + Math.PI; } // reverse course
+  else e._targetRef = threat;  // a body — steer away from its live position each frame
+}
+
+// The policy-graph brain for free hunters. Selection scans (bestBodyTarget/bestFieldFor) run only
+// on the throttled think tick; steering toward the committed target/point runs every frame.
+function updateNpcBrain(world, e, player, dt) {
+  const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
+  const myCapHp = caps(e).hp;
+
+  // Free-roamers let their home depth drift toward wherever the hunt takes them, so the predator
+  // layer follows the algal fall down instead of pinning to the seam where it spawned.
+  if (!e.ownerId) {
+    e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
+    e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+  }
+
+  // Survival overrides every node.
+  if (e.brainState !== 'flee') {
+    const threat = fleeThreat(world, e, myCapHp);
+    if (threat) enterFlee(e, threat);
+  }
+
+  e._think -= dt;
+  const think = e._think <= 0;
+  if (think) e._think = BRAIN.THINK_INTERVAL * rand(world, 0.85, 1.15);
+
+  let tx = e.x + Math.cos(e._wander) * 120, ty = e.depthHome, mode = 'home';
+  const node = BRAIN[e.brainState] || BRAIN.prowl;
+
+  switch (e.brainState) {
+    case 'prowl': {
+      // Organic cruise: a slowly-turning heading (deterministic per individual) around home depth.
+      e._wander += Math.sin((world.t + e.phase) * 0.5) * 0.6 * dt;
+      tx = e.x + Math.cos(e._wander) * 220; ty = e.depthHome + Math.sin(e._wander) * 60;
+      if (think) {
+        const drive = huntDrive(e);
+        const field = bestFieldFor(e, world);
+        const prey = bestBodyTarget(e, world, player); // stashes e._preyScore
+        const acceptBar = BRAIN.ACCEPT_BASE - drive * BRAIN.ACCEPT_SLOPE;
+        if (prey && e._preyScore > acceptBar) {
+          e._targetRef = prey; e.brainState = 'stalk';
+          e._commit = 2.5 + drive * 3.0;           // hungrier ⇒ chases longer before giving up
+        } else if (field && e.hunger > 0.15 && (field._matter || 0) > 4) {
+          e._targetRef = field; e.brainState = 'feed';
+        }
+      }
+      break;
+    }
+    case 'stalk': {
+      const t = e._targetRef;
+      if (!t || !t.alive) { e.brainState = 'prowl'; e._targetRef = null; break; }
+      const d = distWrap(e.x, e.y, t.x, t.y);
+      tx = t.x; ty = t.y; mode = 'prey';
+      e._commit -= dt;
+      if (powered) fireOnPrey(world, e, t, d);      // ranged pokes land during the approach
+      if (d < e.r + t.r + BRAIN.STRIKE_PAD) e.brainState = 'strike';
+      else if (d > BRAIN.GIVEUP_DIST || e._commit <= 0) { e.brainState = 'prowl'; e._targetRef = null; }
+      else if (think) {
+        const prey = bestBodyTarget(e, world, player);
+        if (prey && prey !== t && e._preyScore > BRAIN.ACCEPT_BASE) { e._targetRef = prey; e._commit = Math.max(e._commit, 2.0); }
+      }
+      break;
+    }
+    case 'strike': {
+      const t = e._targetRef;
+      if (!t || !t.alive) {
+        // Killed (or lost) → tear off a mouthful and stand down. A close-by fresh kill restocks
+        // the hunter's own biomass (the bulk still becomes the corpse field the ecosystem eats),
+        // which raises its stores, drops its appetite, and sends it to prowl instead of re-charging.
+        if (t && distWrap(e.x, e.y, t.x, t.y) < e.r + t.r + 90) {
+          const room = caps(e).biomass - (e.cargo.biomass || 0);
+          if (room > 0) e.cargo.biomass = (e.cargo.biomass || 0) + Math.min(room, t.r * 0.6);
+          e.hunger = clamp(e.hunger - 0.25, 0, 1); // the meal takes the edge off
+        }
+        e.brainState = 'prowl'; e._targetRef = null; break;
+      }
+      const d = distWrap(e.x, e.y, t.x, t.y);
+      tx = t.x; ty = t.y; mode = 'prey';
+      if (d > (e.r + t.r + BRAIN.STRIKE_PAD) * 1.4) { e.brainState = 'stalk'; e._commit = Math.max(e._commit, 1.5); break; }
+      if (powered) fireOnPrey(world, e, t, d);
+      break;
+    }
+    case 'feed': {
+      const t = e._targetRef;
+      if (think) {
+        const field = bestFieldFor(e, world); // refresh to a live field (never chase a ghost)
+        if (!field || e.hunger < 0.10) { e.brainState = 'prowl'; e._targetRef = null; break; }
+        e._targetRef = field;
+        // Opportunism while grazing: a clearly easy kill still tempts even a feeding hunter.
+        const drive = huntDrive(e);
+        const prey = bestBodyTarget(e, world, player);
+        if (prey && e._preyScore > BRAIN.ACCEPT_BASE - drive * BRAIN.ACCEPT_SLOPE + 0.6) {
+          e._targetRef = prey; e.brainState = 'stalk'; e._commit = 2.5 + drive * 3.0; break;
+        }
+      }
+      if (t && t.radius != null) {
+        tx = t.x; ty = t.y; mode = 'field';
+        if (powered && distWrap(e.x, e.y, t.x, t.y) < e.r + t.radius * 0.9) {
+          e.feedIntent = true;
+          feedFromFields(world, e, dt);
+          collectParticles(world, e);
+        }
+      }
+      break;
+    }
+    case 'flee': {
+      let ax, ay;
+      const t = e._targetRef;
+      if (t && t.alive) { const aw = norm(dxWrap(t.x, e.x), e.y - t.y); ax = aw.x; ay = aw.y; } // away from the threat
+      else { ax = Math.cos(e._wander); ay = Math.sin(e._wander); }
+      tx = e.x + ax * 320; ty = e.y + ay * 320; mode = 'prey'; // 'prey' mode = fast, low home bias
+      e._commit -= dt;
+      if (e._commit <= 0 && !fleeThreat(world, e, myCapHp)) { e.brainState = 'prowl'; e._targetRef = null; }
+      break;
+    }
+  }
+
+  // Steering integrate — the classic updateNPCs tail, node-parameterized.
+  const dyHome = e.depthHome - e.y;
+  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * node.homeBias);
+  const sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * node.speedMult : 0;
+  const accel = mode === 'prey' ? 4.2 : 2.5;
+  e.vx += toward.x * sp * accel * dt;
+  e.vy += toward.y * sp * accel * dt;
+  e.phase = Math.atan2(toward.y, toward.x);
+  e.x = wrapX(e.x + e.vx * dt);
+  e.y += e.vy * dt;
+}
+
 function updateNPCs(world, player, dt) {
   for (const e of world.entities) {
     if (!e.alive || e.kind === 'player') continue;
@@ -1467,6 +1673,8 @@ function updateNPCs(world, player, dt) {
       updateAlgaeAI(world, e, dt);
       continue;
     }
+
+    if (FREE_HUNTERS.has(e.controller)) { updateNpcBrain(world, e, player, dt); continue; }
 
     const targetField = bestFieldFor(e, world);
     const prey = bestBodyTarget(e, world, player);
@@ -2894,6 +3102,7 @@ function spawnPredator(world, opts = {}) {
   e.photophobic = y >= WORLD.deepTop; // only the deepest predators are dark-adapted
   applyStrain(world, e);
   assignBody(e);
+  initBrain(world, e, depthT); // deeper predators roll bolder + less cautious
   world.entities.push(e); return e;
 }
 
@@ -2920,6 +3129,7 @@ function spawnProtozoan(world, opts = {}) {
   e.photophobic = true; // deep predators are creatures of the dark
   applyStrain(world, e);
   assignBody(e);
+  initBrain(world, e, 0.9); // the deep breeds bold hunters
   world.entities.push(e); return e;
 }
 
@@ -2969,6 +3179,7 @@ function spawnMetazoan(world, opts = {}) {
   e.maxHp = caps(e).hp; e.hp = e.maxHp; // colony membranes fold into a big HP pool
   e.bodyPlan = 'colonial';
   e.photophobic = true; // an abyssal colony — the light is death to it
+  initBrain(world, e, 1); // a colossal deep colony: bold, low caution
   world.entities.push(e); return e;
 }
 
@@ -3021,8 +3232,35 @@ function bestFieldFor(entity, world) {
   return best;
 }
 
+// The hunter's appetite. NOT just the hunger clock (which pins high — a predator can't graze the
+// corpse fields it makes, so its timer would sit at 1 forever and it'd hunt nonstop). Instead:
+// APPETITE = the rising hunger clock MINUS how well-stocked its own biomass/ATP stores are. A
+// predator flush from a recent kill feels sated and stands down (prowls); as metabolism burns the
+// stores down, appetite climbs and it hunts again — the opportunistic cycle, driven by real
+// internal state. Scaled by temperament (bold individuals hunt while barely peckish) with a
+// desperation floor when ATP runs dry. Continuous 0..~1.4 — the brain turns it into an acceptance
+// bar (hungrier ⇒ commits to worse/riskier/farther prey) and the scorer uses it to discount risk.
+function huntDrive(entity) {
+  const cap = caps(entity);
+  const bmFill = (entity.cargo?.biomass || 0) / Math.max(1, cap.biomass);
+  const enFill = (entity.cargo?.energy || 0) / Math.max(1, cap.energy);
+  const stocked = clamp(bmFill * 0.6 + enFill * 0.4, 0, 1);
+  const appetite = clamp((entity.hunger || 0) - stocked * 0.85, 0, 1);
+  const desperate = (entity.cargo?.energy || 0) < 1.2 ? 0.3 : 0;
+  return clamp(appetite * (0.55 + (entity.aggro ?? 0.5) * 0.9) + desperate, 0, 1.4);
+}
+
+// Opportunistic target scoring: reward × ease − risk. Prefers EASY, rewarding prey (wounded,
+// starving, small, close, falling blooms) and shies from anything bigger/tankier than itself
+// unless hunger overrides caution. Returns the best body (signature unchanged so the leashed
+// controllers still call it) and stashes the winning score in entity._preyScore for the brain's
+// acceptance gate. This is the fix for "predators prefer big prey and suicide onto giants".
 function bestBodyTarget(entity, world, player) {
-  if (!hasWeapon(entity)) return null;
+  if (!hasWeapon(entity)) { entity._preyScore = -Infinity; return null; }
+  const drive = huntDrive(entity);
+  const caution = entity.caution ?? 0.5;
+  const myCapHp = caps(entity).hp;
+  const riskTolerance = 1 - Math.min(0.9, drive * 0.6); // hungrier ⇒ less deterred by big/tanky prey
   let best = null, bestScore = -Infinity;
   for (const other of world.entities) {
     if (!other.alive || other.id === entity.id) continue;
@@ -3035,9 +3273,12 @@ function bestBodyTarget(entity, world, player) {
     // marks are only ever painted at close range), so skip the megamorphic stat reads
     // below for anything well out of hunting range. Big cut to the per-NPC scan cost.
     if (d > 1300) continue;
+    const oCapHp = caps(other).hp;
+    // Reward ≈ how much biomass the kill yields, CAPPED so a giant isn't auto-top-scored.
+    const reward = Math.min(2.4, other.r / 26 + (other.cargo.biomass || 0) / 60);
+    // A sinking/deep bloom is free food — the froth's easiest meal.
     const fallingValue = other.controller === 'algae' && (other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 3.0 : 0;
-    const sizeValue = other.r / Math.max(10, entity.r);
-    const weak = other.hp / Math.max(1, caps(other).hp) < 0.55 ? 1.3 : 0;
+    const weak = other.hp / Math.max(1, oCapHp) < 0.55 ? 1.3 : 0;
     // Live prey that strays close is aggravating — a predator locks onto whatever
     // swims through its space (the player is no safer than any scavenger).
     const proximityAggro = (other.controller !== 'algae' && d < 270) ? 3.0 * (1 - d / 270) : 0;
@@ -3045,9 +3286,15 @@ function bestBodyTarget(entity, world, player) {
     const starving = (other.controller !== 'algae' && (other.cargo.energy || 0) < 1.5) ? 1.8 : 0;
     // Death-pheromone: the swarm converges on whatever its own director marked.
     const marked = ((other.marked || 0) > 0 && other.markedBy === entity.ownerId) ? 6.0 : 0;
-    const score = fallingValue + sizeValue * 1.2 + weak + proximityAggro + starving + marked - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    // Risk: prey bigger and/or far tankier than me is dangerous. Scaled by my caution and
+    // discounted by my drive — a bold, starving hunter charges anyway; a fed, timid one balks.
+    const sizeRatio = other.r / Math.max(10, entity.r);
+    const tanky = oCapHp > myCapHp * 1.3 ? 0.6 : 0;
+    const risk = ((sizeRatio > 1 ? sizeRatio - 1 : 0) + tanky) * (2.4 * caution) * riskTolerance;
+    const score = reward + fallingValue + weak + proximityAggro + starving + marked - risk - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
+  entity._preyScore = best ? bestScore : -Infinity;
   return best;
 }
 
@@ -3566,4 +3813,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, BRAIN, FREE_HUNTERS };
