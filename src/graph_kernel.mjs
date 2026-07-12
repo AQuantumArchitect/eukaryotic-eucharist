@@ -4,7 +4,7 @@
 export const VERSION = 'mobile_v1_3_3_predator_flow_eucharist_balance';
 
 export const WORLD = Object.freeze({
-  w: 1800,
+  w: 2340,
   h: 5600,
   canopy: 220,
   surfaceZone: 520,
@@ -1050,7 +1050,18 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     hunger: rand(world, 0.25, 0.9), targetId: null, feedIntent: false, repairIntent: false, action: null, alive: true, hit: 0,
     phase: rand(world, 0, Math.PI * 2), radiusPulse: rand(world, 0.6, 1.5), friendly: opts.friendly || false,
     fallState: opts.fallState || null, incubating: null, grace: opts.grace ?? 0, cooldowns: {},
-    colony: opts.colony ? opts.colony.map(s => ({ ...s })) : []
+    colony: opts.colony ? opts.colony.map(s => ({ ...s })) : [],
+    // Every optional field an entity can ever grow is declared here at birth, in a fixed order,
+    // so ALL bodies (player included) share ONE hidden class. Without this, fields added later
+    // and conditionally (marks, chill, lance flags, caps memo…) fork each entity into its own
+    // shape and turn every property read in the hot loops megamorphic — the single biggest sim
+    // cost under load (V8 LoadIC_Megamorphic). Spawn helpers reassign these slots, never add them.
+    strain: opts.strain || null, strainPotency: opts.strainPotency ?? 1, bodyPlan: opts.bodyPlan || null,
+    companionType: opts.companionType || null, ownerId: opts.ownerId || null, photophobic: opts.photophobic || false,
+    ballast: false, maxDepth: 0, combatHit: 0, warded: 0,
+    chill: 0, chillMult: 1, charmTimer: 0, friendLife: 0, marked: 0, markedBy: null,
+    carriedStrains: null, _chemoWasFeeding: false,
+    _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
   body.maxHp = caps(body).hp;
@@ -1892,6 +1903,7 @@ function updateFields(world, dt) {
     const decay = f.decayRate * dt;
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
     const total = totalMatter(f.stock);
+    f._matter = total; // cache for this frame's AI field scans (bestFieldFor)
     // Drift by composition: biomass slurry sinks (faster the more biomass it carries),
     // lipids float, and the net eases into f.vy so patches slide rather than snap.
     if (total > 0) {
@@ -2766,11 +2778,17 @@ function bloomDeath(world, e) {
   }
 }
 
+// Population dials. Raised in the v1.3.3 perf pass: the sim step got ~2.5× cheaper (uniform
+// entity hidden-class + cached field matter) and the renderer now viewport-culls, so the world
+// can hold noticeably more bodies at 60fps. Tune here — these are the two hard ceilings on
+// on-screen density. ALGAE_CAP feeds the food web; POP_CAP bounds total bodies (all kinds).
+const POP_CAP = 140;   // was 104 — total entity ceiling for recurring NPC spawns
+const ALGAE_CAP = 44;  // was 32  — standing algae bloom count (the froth's food supply)
 function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt;
   // A steadier, thinner rain: blooms drift in a few at a time from the canopy rather
   // than flooding the surface all at once.
-  if (world.spawn.algae <= 0 && world.entities.filter(e => e.controller === 'algae').length < 32) {
+  if (world.spawn.algae <= 0 && world.entities.filter(e => e.controller === 'algae').length < ALGAE_CAP) {
     world.spawn.algae = rand(world, 0.7, 1.4);
     // During play most blooms enter SMALL and YOUNG right at the lit canopy band, then grow
     // (biomassMass) and spiral down with age — size is earned, depth follows size. A share
@@ -2779,7 +2797,7 @@ function spawnTick(world, dt) {
     spawnAlgae(world, { mature: world.rng() < 0.35, y: WORLD.canopy + rand(world, 80, 300) });
   }
   // Predators are the dominant recurring spawn so the falls keep getting cropped.
-  if (world.spawn.npc <= 0 && world.entities.length < 104) {
+  if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
     world.spawn.npc = rand(world, 0.8, 1.7);
     const r = world.rng();
     if (r < 0.28) spawnScavenger(world);
@@ -2994,7 +3012,7 @@ function bestFieldFor(entity, world) {
   for (const f of world.fields) {
     const d = distWrap(entity.x, entity.y, f.x, f.y);
     if (d > 1300) continue; // far fields never win matter/(35+d); skip the reduce over stock
-    const matter = totalMatter(f.stock); if (matter <= 0.5) continue;
+    const matter = f._matter || 0; if (matter <= 0.5) continue; // cached in updateFields this frame
     const depthPenalty = Math.abs(f.y - entity.depthHome) * 0.010;
     const toxinPenalty = (f.stock.toxins || 0) * (hasOrg(entity, 'toxin_launcher') ? 0.01 : 0.09);
     const score = matter / (35 + d) - depthPenalty - toxinPenalty;
@@ -3151,8 +3169,12 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
   const f = {
     id: id('field'), x: wrapX(x), y: clamp(y, WORLD.canopy + 5, WORLD.h - 25), radius: opts.radius || 42,
     stock: emptyCargo(stock), density: opts.density || 1, sourceKind: opts.sourceKind || 'slurry', age: 0,
-    maxAge: opts.maxAge || 24, decayRate: opts.decayRate ?? 0.10, radiusScale: opts.radiusScale || 8, maxRadius: opts.maxRadius || 180
+    maxAge: opts.maxAge || 24, decayRate: opts.decayRate ?? 0.10, radiusScale: opts.radiusScale || 8, maxRadius: opts.maxRadius || 180,
+    // vy/spread grow during drift; _matter caches totalMatter(stock) so the per-NPC field
+    // scan (bestFieldFor) reads a number instead of re-reducing every field's stock each query.
+    vy: 0, spread: 0, _matter: 0
   };
+  f._matter = totalMatter(f.stock);
   world.fields.push(f);
   return f;
 }

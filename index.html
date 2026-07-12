@@ -407,8 +407,15 @@ function exchangeOutPills(o){
   const {gain,remove}=exchangeOutput(o);const g=Object.entries(gain).filter(([k,v])=>k!=='oxygen'&&v>0).map(([k,v])=>resPill(k,v,'+'));const r=Object.entries(remove).filter(([k,v])=>v>0).map(([k,v])=>resPill(k,v,'−'));const pills=[...g,...r].join('')||'<span class="pill gainP">service</span>';return `<span class="flowArrow">→</span>${pills}`}
 
 function worldToScreenX(x){let sx=x-camera.x; if(sx<-innerWidth*.5)sx+=K.WORLD.w; if(sx>innerWidth*1.5)sx-=K.WORLD.w; return sx}
+// Viewport culling. The world is 2340×5600 but the camera shows only ~one screen of it, and
+// every object is drawn once per wrap-offset pass. Without culling, off-screen bodies (the vast
+// majority) get fully rendered — appendages, organelles, wobble math — 3× each frame. onScreen()
+// tests an object's position under the CURRENT wrap offset so each pass draws only what it can
+// actually show; an object visible in only one pass costs nothing in the other two.
+let curOffX=0;
+function onScreen(x,y,pad){const sx=x+curOffX-camera.x, sy=y-camera.y; return sx>=-pad && sx<=innerWidth+pad && sy>=-pad && sy<=innerHeight+pad;}
 function draw(){
-  ctx.clearRect(0,0,innerWidth,innerHeight); ctx.save(); ctx.translate(-camera.x,-camera.y); drawWorld(); for(const off of [-K.WORLD.w,0,K.WORLD.w]){ctx.save();ctx.translate(off,0); drawFields(); drawHazards(); drawParticles(); drawEntities(); ctx.restore()} ctx.restore(); drawVignette();
+  ctx.clearRect(0,0,innerWidth,innerHeight); ctx.save(); ctx.translate(-camera.x,-camera.y); drawWorld(); for(const off of [-K.WORLD.w,0,K.WORLD.w]){curOffX=off; ctx.save();ctx.translate(off,0); drawFields(); drawHazards(); drawParticles(); drawEntities(); ctx.restore()} ctx.restore(); drawVignette();
 }
 function drawWorld(){
   const g=ctx.createLinearGradient(0,0,0,K.WORLD.h);
@@ -432,6 +439,7 @@ function drawYukiCanopy(){
 }
 function drawFields(){
   for(const f of projection.fields){
+    if(!onScreen(f.x,f.y,f.radius+8)) continue;
     const s=f.stock;
     const parts=[['biomass',s.biomass||0],['lipids',s.lipids||0],['toxins',s.toxins||0],['energy',s.energy||0]];
     const total=parts.reduce((a,[,v])=>a+Math.max(0,v),0); if(total<=0.01)continue;
@@ -453,6 +461,7 @@ function drawFields(){
 function hexRgb(hex){if(!hex)return'232,226,44';const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16);return `${(n>>16)&255},${(n>>8)&255},${n&255}`;}
 function drawHazards(){
   for(const h of projection.hazards||[]){
+    if(!onScreen(h.x,h.y,(h.radius||12)+10)) continue;
     const life=clamp(1-h.age/h.maxAge,0,1); ctx.save(); ctx.globalAlpha=.85*life;
     const base=hexRgb(h.color);
     const fire=h.kind==='flame'||h.kind==='blast';
@@ -483,14 +492,14 @@ function drawHazards(){
 }
 
 function drawParticles(){
-  for(const p of projection.particles){ctx.save();ctx.globalAlpha=clamp(1-p.age/p.maxAge,0,1);ctx.translate(p.x,p.y);ctx.rotate(world.t*1.8+p.x);ctx.fillStyle=p.color;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=1.3;
+  for(const p of projection.particles){if(!onScreen(p.x,p.y,16))continue;ctx.save();ctx.globalAlpha=clamp(1-p.age/p.maxAge,0,1);ctx.translate(p.x,p.y);ctx.rotate(world.t*1.8+p.x);ctx.fillStyle=p.color;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=1.3;
     if(p.kind==='dna'){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=2;ctx.beginPath();for(let i=-2;i<=2;i++){ctx.moveTo(i*4,-8);ctx.lineTo(-i*4,8)}ctx.stroke();}
     else if(p.kind==='spores'){ctx.beginPath();ctx.arc(0,0,7,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='rgba(255,255,255,.45)';for(let i=0;i<4;i++){ctx.beginPath();ctx.arc(Math.cos(i*Math.PI/2)*3,Math.sin(i*Math.PI/2)*3,1.3,0,Math.PI*2);ctx.fill();}}
     else if(p.kind==='enzymes'){ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(8,0);ctx.lineTo(0,9);ctx.lineTo(-8,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.45)';ctx.beginPath();ctx.moveTo(-5,0);ctx.lineTo(5,0);ctx.moveTo(0,-5);ctx.lineTo(0,5);ctx.stroke();}
     else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
     ctx.restore()}
 }
-function drawEntities(){for(const e of projection.entities){drawEntity(e)}}
+function drawEntities(){for(const e of projection.entities){if(!onScreen(e.x,e.y,e.r+70))continue;drawEntity(e)}}
 function drawEntity(e){
   const speed=clamp(Math.hypot(e.vx,e.vy)/260,0,1); const hp=clamp(e.hp/e.maxHp,0,1); const r=e.r; const ang=e.phase||0;
   if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
