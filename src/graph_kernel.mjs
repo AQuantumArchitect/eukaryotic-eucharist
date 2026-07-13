@@ -375,6 +375,15 @@ export const ORGANELLES = Object.freeze({
     desc: 'One flagellum. Buy one, grow one. Each adds swimming force and a little lift.',
     stats: { speedBonus: 0.075, lift: 5.2 }
   },
+  cleavage_furrow: {
+    name: 'Cleavage Furrow', tier: 1, action: 'divide', stackable: false, max: 1,
+    desc: 'The engine of binary fission — innate to the predator lineage (and you). Bank enough FAT from feeding — a full lipid reserve — with body mass and an ATP charge to power it, and it cleaves you into two cells, spending all your ATP and dropping both to lean reserves. Daughters drift genetically, so a self-splitting hunter population EVOLVES under selection: the ones that hunt well divide, the ones that don\'t die out.',
+    // Lipids (fat) are the SOLE reproductive currency — they accumulate from KILLS and aren\'t
+    // burned, so they cleanly track hunting success. Biomass and ATP are chronically low (fermented
+    // away to fuel hunting), so they\'re only trivial floors — FAT is the bar. A hunter that banks a
+    // full fat reserve and is healthy divides; the split drains its ATP and drops it to lean.
+    stats: { biomassFrac: 0.10, lipidFrac: 0.45, atpFrac: 0.02, childReserve: 0.15 }
+  },
   lance_bristle: {
     name: 'Lance Bristle', tier: 2, action: null, stackable: true, max: 6,
     desc: 'One directional contact spine. Buy one, grow one. Damage scales by alignment, overlap, and movement speed.',
@@ -932,7 +941,7 @@ export function createWorld(options = {}) {
   const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
   player.carriedStrains = new Map();
   world.playerId = player.id;
@@ -968,37 +977,38 @@ export function createWorld(options = {}) {
 function seedMatureEcosystem(world) {
   // v1.1.1 starts in medias res: a mature algal-fall ecology is already
   // running, so the player enters rupture chaos instead of waiting for bloom.
-  for (let i = 0; i < 24; i++) spawnScavenger(world, {
+  // Seed a viable LIVING froth (just an initial condition now — the emergent lifecycles take it
+  // from here): a scavenger forager pool, a hunter guild that will fission/select, a deep.
+  for (let i = 0; i < SCAV_TARGET; i++) spawnScavenger(world, {
     y: WORLD.nurseryTop + rand(world, 120, 850),
     x: rand(world, 0, WORLD.w)
   });
 
-  // Seed the standing algal crop near its steady density (~32) so the column is populated
-  // from frame one, not thin-then-ripening: a spread of young growers plus fat mature blooms.
-  for (let i = 0; i < 14; i++) spawnAlgae(world, { mature: false });
-  for (let i = 0; i < 8; i++) spawnAlgae(world, { mature: true });
-  // A rain of falls already in progress, scattered across the whole column at varied
-  // depths — not a single wall of algae dumped at the rupture seam.
-  for (let i = 0; i < 6; i++) {
-    const e = spawnAlgae(world, {
-      mature: true,
-      y: WORLD.nurseryTop + rand(world, 0, 2400),
-      x: rand(world, 0, WORLD.w),
-      biomass: rand(world, 130, 230),
-      r: rand(world, 48, 70),
-      fallState: 'sinking'
-    });
-    e.vy = rand(world, 18, 70);
-    e.cargo.energy = rand(world, 1, 9);
-    e.organelles.membrane_hardening = Math.max(e.organelles.membrane_hardening || 0, Math.ceil(rand(world, 2, 5)));
+  // Seed the FULL standing algal crop (ALGAE_CAP) as a continuous lifecycle spread, NOT batches
+  // of identical young + mature that then mature in lockstep and fall as one giant wave. Each
+  // bloom gets its own lifecycle fraction (lean→fat), placed at the depth its weight implies
+  // (lean near the lit canopy, fat sinking through the column), so at t=0 the falls are already
+  // mid-stream and desynced — the column looks exactly like it will at t=x.
+  for (let i = 0; i < ALGAE_CAP; i++) {
+    const frac = clamp(i / (ALGAE_CAP - 1) + rand(world, -0.06, 0.06), 0, 1);
+    const bm = 8 + frac * 70;                  // lean 8 → fat ~78 (matches the steady-state mean ~43)
+    const mature = frac > 0.4;
+    const y = WORLD.canopy + 40 + frac * (WORLD.ruptureBottom - WORLD.canopy - 260);
+    const sinking = frac > 0.5;                // the fatter half is already on its way down
+    const e = spawnAlgae(world, { mature, biomass: bm, y, x: rand(world, 0, WORLD.w), fallState: sinking ? 'sinking' : null });
+    if (sinking) {
+      e.vy = rand(world, 6, 40);
+      e.cargo.energy = rand(world, 1, 10);
+      e.organelles.membrane_hardening = Math.max(e.organelles.membrane_hardening || 0, Math.ceil(rand(world, 1, 3)));
+    }
   }
 
-  // Denser, stratified predator population so the falls actually get cropped.
-  for (let i = 0; i < 24; i++) spawnPredator(world, {
+  // A starting predator guild, stratified; fission will grow or crash it from here under selection.
+  for (let i = 0; i < 18; i++) spawnPredator(world, {
     y: WORLD.ruptureTop - 120 + rand(world, 0, 1900),
     x: rand(world, 0, WORLD.w)
   });
-  for (let i = 0; i < 9; i++) spawnProtozoan(world, {
+  for (let i = 0; i < 8; i++) spawnProtozoan(world, {
     y: WORLD.deepTop + rand(world, 80, 1900),
     x: rand(world, 0, WORLD.w)
   });
@@ -1067,7 +1077,7 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // _commit = remaining commitment/give-up clock; aggro/caution = per-individual temperament
     // rolled at spawn; _wander = slow cruise heading offset; _preyScore = last scan's winning score.
     brainState: 'prowl', _targetRef: null, _think: rand(world, 0, 0.18), _commit: 0,
-    aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity,
+    aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity, _emigrate: 0,
     _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
@@ -1339,6 +1349,7 @@ export function step(world, commands = {}, dt = 1 / 60) {
   updateStrainSystems(world, dt);
   resolveContacts(world, dt);
   removeDead(world);
+  populationTick(world, dt); // hunters fission when gorged; scavengers emigrate when starved
   for (const e of world.entities) {
     // A bloom that sinks all the way to the world floor uneaten dissolves into a rich
     // deep slurry — its mass rejoins the froth as food for the deep instead of piling
@@ -1432,6 +1443,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (commands.ward && hasOrg(player, 'crystal_ward')) wardPulse(world, player);
     if (commands.cloud && hasOrg(player, 'toxin_cloud')) toxinCloud(world, player);
     if (commands.jettison && hasOrg(player, 'jettison_vesicle')) ventBiomass(world, player);
+    if (commands.divide && fissionReady(player) && world.entities.length < POP_CAP) playerFission(world, player);
   }
 
   // Ballast trim is flattened onto vertical swim (W/S): sustained DOWN intent floods the
@@ -1478,8 +1490,8 @@ const BRAIN = Object.freeze({
   FLEE_HP: 0.34,         // HP fraction under which caution can trip a retreat
   FLEE_SIZE: 1.35,       // a close live body this many× my radius can trip a retreat
   prowl:  { speedMult: 0.55, homeBias: 0.38 },
-  stalk:  { speedMult: 1.15, homeBias: 0.05 },
-  strike: { speedMult: 1.05, homeBias: 0.02 },
+  stalk:  { speedMult: 1.28, homeBias: 0.05 }, // committed chase — must run down fleeing prey
+  strike: { speedMult: 1.12, homeBias: 0.02 },
   feed:   { speedMult: 0.65, homeBias: 0.20 },
   flee:   { speedMult: 1.25, homeBias: 0.10 }
 });
@@ -1511,10 +1523,15 @@ function fireOnPrey(world, e, prey, preyDist) {
 }
 
 // Survival check, run cheaply every frame. Returns the thing to run from — a threat body, the
-// string 'light' (photophobic body caught in the glare → dive), 'scatter' (wounded, no clear
-// threat → bolt), or null (no panic). Cautious individuals break earlier; reckless ones tough it out.
+// string 'dive' (the shallows are lethal: O2-rich water poisons this hunter, or the light cooks a
+// photophobic one → dive back down), 'scatter' (wounded, no clear threat → bolt), or null (no
+// panic). Cautious individuals break earlier; reckless ones tough it out.
 function fleeThreat(world, e, myCapHp) {
-  if (e.photophobic && lightAt(e.y) > LIGHT_BURN.threshold) return 'light';
+  // The shallows are death: a hunter with no mito/tolerance poisons on the surface's O2, and a
+  // dark-adapted deep body cooks in the light. Either way, dive — this stops the "predators swim
+  // to the top and suicide on oxygen" behavior by making them break off before the lethal band.
+  if (oxygenAt(e.y) - oxygenTolerance(e) > 0.12) return 'dive';
+  if (e.photophobic && lightAt(e.y) > LIGHT_BURN.threshold) return 'dive';
   if (e.hp < myCapHp * BRAIN.FLEE_HP * (0.6 + e.caution)) {
     const t = e._targetRef;
     return (t && t.alive) ? t : 'scatter';
@@ -1529,7 +1546,7 @@ function fleeThreat(world, e, myCapHp) {
 function enterFlee(e, threat) {
   e.brainState = 'flee';
   e._commit = 0.8 + e.caution; // how long it keeps bolting before re-assessing
-  if (threat === 'light') { e._targetRef = null; e._wander = Math.PI / 2; }        // vy+ is DOWN, away from light
+  if (threat === 'dive') { e._targetRef = null; e._wander = Math.PI / 2; }           // vy+ is DOWN, away from the deadly shallows
   else if (threat === 'scatter') { e._targetRef = null; e._wander = e.phase + Math.PI; } // reverse course
   else e._targetRef = threat;  // a body — steer away from its live position each frame
 }
@@ -1601,8 +1618,13 @@ function updateNpcBrain(world, e, player, dt) {
         // the hunter's own biomass (the bulk still becomes the corpse field the ecosystem eats),
         // which raises its stores, drops its appetite, and sends it to prowl instead of re-charging.
         if (t && distWrap(e.x, e.y, t.x, t.y) < e.r + t.r + 90) {
-          const room = caps(e).biomass - (e.cargo.biomass || 0);
-          if (room > 0) e.cargo.biomass = (e.cargo.biomass || 0) + Math.min(room, t.r * 0.6);
+          const cap = caps(e);
+          const bRoom = cap.biomass - (e.cargo.biomass || 0);
+          if (bRoom > 0) e.cargo.biomass = (e.cargo.biomass || 0) + Math.min(bRoom, t.r * 1.0);
+          // Flesh is fat too: the bite banks LIPIDS — the reserve a hunter must fill to divide, so
+          // successful predation (not grazing) is what fuels the fission engine and its selection.
+          const lRoom = cap.lipids - (e.cargo.lipids || 0);
+          if (lRoom > 0) e.cargo.lipids = (e.cargo.lipids || 0) + Math.min(lRoom, t.r * 0.95);
           e.hunger = clamp(e.hunger - 0.25, 0, 1); // the meal takes the edge off
         }
         e.brainState = 'prowl'; e._targetRef = null; break;
@@ -1660,6 +1682,64 @@ function updateNpcBrain(world, e, player, dt) {
   e.y += e.vy * dt;
 }
 
+// Scavenger brain — a forager, not a hunter (no weapon). Two nodes: forage (seek + graze the best
+// field, or wander the nursery) and flee (bolt from an attacker when struck, or dive out of O2-
+// toxic shallows). The "flee when taking damage" the froth's prey needs. Throttled scan like the
+// hunters; reuses the same _think/_commit/_targetRef/_wander slots.
+function updateScavengerBrain(world, e, dt) {
+  const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
+
+  // Panic: a combat hit (0.18; environmental stress only sets 0.05) → bolt from the attacker;
+  // or the shallows are turning O2-toxic → dive back down.
+  if (e.brainState !== 'flee') {
+    if (e.hit > 0.12) {
+      const atk = e.targetId ? world.entities.find(x => x.id === e.targetId && x.alive) : null;
+      e.brainState = 'flee'; e._commit = 1.4 + e.caution;
+      if (atk) e._targetRef = atk; else { e._targetRef = null; e._wander = e.phase + Math.PI; }
+    } else if (oxygenAt(e.y) - oxygenTolerance(e) > 0.10) {
+      e.brainState = 'flee'; e._commit = 0.7; e._targetRef = null; e._wander = Math.PI / 2;
+    }
+  }
+
+  e._think -= dt;
+  const think = e._think <= 0;
+  if (think) e._think = BRAIN.THINK_INTERVAL * rand(world, 0.85, 1.15);
+
+  let tx = e.x, ty = e.depthHome, mode = 'home', spMul = 0.6;
+  if (e.brainState === 'flee') {
+    let ax, ay;
+    const t = e._targetRef;
+    if (t && t.alive) { const aw = norm(dxWrap(t.x, e.x), e.y - t.y); ax = aw.x; ay = aw.y; } // away from the attacker
+    else { ax = Math.cos(e._wander); ay = Math.sin(e._wander); }
+    tx = e.x + ax * 300; ty = e.y + ay * 300; mode = 'flee'; spMul = 1.1; // darts, but doesn't outrun a committed hunter
+    e._commit -= dt;
+    if (e._commit <= 0 && e.hit <= 0.12 && oxygenAt(e.y) - oxygenTolerance(e) <= 0.10) { e.brainState = 'forage'; e._targetRef = null; }
+  } else {
+    let field = (e._targetRef && e._targetRef.radius != null) ? e._targetRef : null;
+    if (think) { field = bestFieldFor(e, world); e._targetRef = field; }
+    if (field) {
+      tx = field.x; ty = field.y; mode = 'field'; spMul = 0.85;
+      if (powered && distWrap(e.x, e.y, field.x, field.y) < e.r + field.radius * 0.9) {
+        e.feedIntent = true; feedFromFields(world, e, dt); collectParticles(world, e);
+      }
+    } else {
+      e._wander += Math.sin((world.t + e.phase) * 0.5) * 0.6 * dt;
+      tx = e.x + Math.cos(e._wander) * 180; ty = e.depthHome + Math.sin(e._wander) * 50; mode = 'home'; spMul = 0.6;
+    }
+  }
+
+  const dyHome = e.depthHome - e.y;
+  const homeBias = mode === 'flee' ? 0.05 : mode === 'field' ? 0.18 : 0.34;
+  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * homeBias);
+  const sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * spMul : 0;
+  const accel = mode === 'flee' ? 4.0 : 2.5;
+  e.vx += toward.x * sp * accel * dt;
+  e.vy += toward.y * sp * accel * dt;
+  e.phase = Math.atan2(toward.y, toward.x);
+  e.x = wrapX(e.x + e.vx * dt);
+  e.y += e.vy * dt;
+}
+
 function updateNPCs(world, player, dt) {
   for (const e of world.entities) {
     if (!e.alive || e.kind === 'player') continue;
@@ -1673,6 +1753,8 @@ function updateNPCs(world, player, dt) {
       updateAlgaeAI(world, e, dt);
       continue;
     }
+
+    if (e.controller === 'scavenger') { updateScavengerBrain(world, e, dt); continue; }
 
     if (FREE_HUNTERS.has(e.controller)) { updateNpcBrain(world, e, player, dt); continue; }
 
@@ -1758,54 +1840,39 @@ function updateNPCs(world, player, dt) {
 }
 
 function updateAlgaeAI(world, e, dt) {
-  // Algae are pure buoyancy machines: light grows biomass, biomass is weight, and
-  // weight over lift pulls them down. Nothing hard-codes where they stop — a heavy
-  // bloom just keeps sinking through every layer until a mouth eats it or the world
-  // floor claims it. A bloom that metabolizes its load back down grows buoyant and
-  // bobs toward the light again. The froth breathes.
+  // Algae have NO flagella and no swim — vertical motion is PURE BALLAST. Net buoyancy (ballast
+  // gas lift vs biomass weight) is the only thing that moves a bloom up or down. Lean gas-full
+  // blooms float to the light and photosynthesize; as they fatten, weight overtakes the gas and
+  // they sink; a sunk bloom in the dark ferments its biomass back into lift-gas and can rise
+  // again. The froth breathes — and because each bloom's biomass/gas history differs, they cycle
+  // out of phase instead of in one giant synchronized wave.
   const weight = biomassWeight(e);
-  const lift = buoyancy(e) + orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift + (e.cargo.energy || 0) * 0.035;
+  const lift = buoyancy(e); // ballast gas + base only — no flagella term
   const fullness = (e.cargo.biomass || 0) / Math.max(1, caps(e).biomass);
-  // The lifecycle: a young bloom HOLDS in the lit canopy and photosynthesizes, growing
-  // fat. Fatness (weight overtaking lift, or a brimming tank) is the ONLY thing that
-  // tips it into a fall — not low energy, not a dip. Then it sinks, feeding the deep.
-  // Only a truly overloaded old bloom commits to the terminal plunge to the floor; short of
-  // that it just HOVERS deeper as it grows (see settle depth below) — "deeper as it gets bigger".
-  // Sink pressure is the single quantity the fall hysteresis turns on: how far net weight
-  // exceeds lift. Entry and exit read the SAME quantity (with a wide dead-band) so a fat-but-
-  // buoyant bloom can't chatter sinking/recovering every frame — a fall is a real event.
-  const sinkPressure = weight - lift;
-  const tooFat = sinkPressure > 20 || (fullness > 0.95 && sinkPressure > -3);
+  const sinkPressure = weight - lift; // >0 sinks, <0 floats
+
+  // Fall event = a bloom the ballast can no longer hold. Wide dead-band so a marginal bloom
+  // doesn't chatter its fall flag every frame. Only used for the terminal-plunge accelerant +
+  // the algae_fall stat/event; the actual up/down is the buoyancy force below either way.
+  const tooFat = sinkPressure > 12 || (fullness > 0.95 && sinkPressure > 0);
   if (tooFat && !e.fallState) {
     e.fallState = 'sinking';
     world.stats.algaeFalls += 1;
     world.events.push({ type: 'algae_fall', entityId: e.id });
   }
-  // Recovery: only once the bloom is clearly buoyant AGAIN and no longer brimming — the
-  // dead-band (need sinkPressure < -3 AND fullness < 0.9 to exit, > -3 to enter) kills flapping.
-  if (e.fallState === 'sinking' && sinkPressure < -3 && fullness < 0.9) e.fallState = null;
+  if (e.fallState === 'sinking' && sinkPressure < -5 && fullness < 0.85) e.fallState = null;
 
-  const sp = speedOf(e);
-  if (e.fallState !== 'sinking') {
-    // A bloom ALWAYS strains toward the lit canopy — it wants the light. But the strain is
-    // weak, and buoyancy is the real arbiter of depth: a light bloom wins and bobs at the
-    // surface band; a fattened bloom strains upward and LOSES, hanging deeper and sinking
-    // under its own weight. "Deeper as it gets bigger" is emergent (weight overpowers the
-    // swim), never steered — the froth struggles up and fails, it does not swim down.
-    const band = WORLD.canopy + 90;
-    e.vx += Math.cos(world.t * 0.4 + e.phase) * sp * 0.30 * dt; // gentle sideways graze
-    if (e.y > band) {
-      e.vy -= Math.min(sp * 0.16, (e.y - band) * 0.05) * dt;    // swim UP toward the light — weak, capped
-    } else {
-      e.vy += (band - e.y) * 0.22 * dt;                         // risen above the band: settle gently back into it
-    }
-    e.vy += clamp((weight - lift) * 0.5, -8, 22) * dt;          // buoyancy: heavy pulls down harder than the swim lifts
-    e.vy += Math.sin(world.t * 0.6 + e.phase) * 4 * dt;         // gentle bob
-  } else {
-    // Falling: it gives up on the light and sinks under its own net weight, drifting sideways.
-    e.vx += Math.cos(world.t * 0.3 + e.phase) * sp * 0.22 * dt;
-    e.vy += clamp((weight - lift) * 0.6 + fullness * 16 + 6, -4, 80) * dt;
-  }
+  // Horizontal graze drift, per-bloom phase so the crop doesn't slide in lockstep.
+  e.vx += Math.cos(world.t * 0.35 + e.phase) * speedOf(e) * 0.28 * dt;
+  // Vertical: buoyancy is the sole driver. sinkPressure<0 (buoyant) → up (vy negative);
+  // sinkPressure>0 (heavy) → down. Gentle gain + clamp so it's a smooth drift, not a lurch.
+  e.vy += clamp(sinkPressure * 0.42, -14, 22) * dt;
+  e.vy += Math.sin(world.t * 0.5 + e.phase) * 3 * dt;          // slow bob
+  if (e.fallState === 'sinking') e.vy += (fullness * 10 + 4) * dt; // committed plunge picks up speed
+  // Soft ceiling: a buoyant bloom grazes the lit band instead of pinning to the very roof.
+  const ceil = WORLD.canopy + 70;
+  if (e.y < ceil) e.vy += (ceil - e.y) * 0.05 * dt;
+
   e.phase = Math.atan2(e.vy, e.vx || 0.001);
   e.x = wrapX(e.x + e.vx * dt);
   e.y += e.vy * dt;
@@ -2007,9 +2074,13 @@ function updateEnvironmentAndMetabolism(world, dt) {
       }
     }
 
-    // Vertical ecology: biomass is weight; oxygen vacuoles turn internal O2 into lift. This applies to all bodies.
-    const sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
-    e.vy += clamp(sink * 0.026, -8, 22) * dt;
+    // Vertical ecology for NON-algae bodies (predators/scavengers/player): biomass is weight,
+    // ballast gas is lift, flagella add a little lift. Algae own their vertical entirely in
+    // updateAlgaeAI (pure ballast); applying this to them too would double-count their buoyancy.
+    if (e.controller !== 'algae') {
+      const sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
+      e.vy += clamp(sink * 0.026, -8, 22) * dt;
+    }
 
     if (e.incubating) updateEucharistIncubation(world, e, dt);
 
@@ -2819,6 +2890,9 @@ function hurt(world, entity, amount, sourceId = null) {
   entity.hp -= amount;
   if (amount > 0) {
     entity.hit = 0.18;
+    // Remember who struck me (a real attacker, not self/hazard-less): the scavenger brain reads
+    // this to bolt away from its attacker. `hit` (0.18 combat vs 0.05 environmental) times the flee.
+    if (sourceId && sourceId !== entity.id) entity.targetId = sourceId;
     // Struck by another cell (or its weapon/hazard) → a red damage flash, distinct from the white
     // flash of environmental stress (oxygen/light/starvation set e.hit directly, never through here).
     // Scoped to the player and gated on the source being a real entity, so metabolism tags don't red-flash.
@@ -2901,7 +2975,7 @@ function removeDead(world) {
       // the death, so the long swim home to Yuki is where you bank your discoveries.
       const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
@@ -2986,33 +3060,141 @@ function bloomDeath(world, e) {
   }
 }
 
-// Population dials. Raised in the v1.3.3 perf pass: the sim step got ~2.5× cheaper (uniform
-// entity hidden-class + cached field matter) and the renderer now viewport-culls, so the world
-// can hold noticeably more bodies at 60fps. Tune here — these are the two hard ceilings on
-// on-screen density. ALGAE_CAP feeds the food web; POP_CAP bounds total bodies (all kinds).
-const POP_CAP = 140;   // was 104 — total entity ceiling for recurring NPC spawns
-const ALGAE_CAP = 44;  // was 32  — standing algae bloom count (the froth's food supply)
+// Population is EMERGENT, not quota'd. Births are EARNED by binary fission (doFission): a gorged,
+// healthy cell cleaves into two, spending its whole ATP charge and most of its reserves — so a
+// population grows only while its food lasts and crashes when the food (or the prey) runs out. A
+// real petri dish that breathes. POP_CAP is only a performance ceiling (rarely touched). POP_FLOOR
+// is a TINY immigration safety net: if a species crashes toward zero a lone cell occasionally
+// drifts in, so a wiped layer can recover instead of dying forever — "keep the quota, but small."
+const POP_CAP = 150;                // performance ceiling only — normal life sits well below it
+const ALGAE_CAP = 72;               // the canopy fungus mints algae up to here (the food base)
+const SCAV_TARGET = 26;             // scavengers immigrate toward this; they emigrate when starved
+const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood: 1 }); // fission-guild safety net
+
+// A hunter is ready to divide when it is GORGED (the user's spec): ATP brimming AND biomass and
+// lipids near full. Only the fission guild (predator/protozoan/metazoan + player) carries the
+// cleavage_furrow, and they fill their reserves from KILLS (the on-kill bite grants biomass+lipids)
+// — so reproduction is fuelled by successful predation, and fission spends it all. Food paces it.
+function fissionReady(entity) {
+  if (!hasOrg(entity, 'cleavage_furrow')) return false;
+  const cap = caps(entity), st = ORGANELLES.cleavage_furrow.stats;
+  return entity.hp >= cap.hp * 0.6
+    && (entity.cargo.energy || 0) >= cap.energy * st.atpFrac
+    && (entity.cargo.biomass || 0) >= cap.biomass * st.biomassFrac
+    && (entity.cargo.lipids || 0) >= cap.lipids * st.lipidFrac;
+}
+
+// Binary fission: cleave one gorged cell into two. Drains ALL ATP (mitosis is expensive) and
+// leaves BOTH the parent and the new daughter at childReserve (15%) biomass/lipids — the rest is
+// spent building the second body. Both daughters roll genetic drift (mutateOnFission).
+function doFission(world, e) {
+  const cap = caps(e), res = ORGANELLES.cleavage_furrow.stats.childReserve;
+  const daughter = makeSoftBody(world, e.kind, wrapX(e.x + rand(world, -e.r - 6, e.r + 6)), e.y + rand(world, -8, 8), {
+    r: e.r, baseR: e.baseR, biomassMass: e.biomassMass, mass: e.mass,
+    controller: e.controller, color: e.color, depthHome: e.depthHome, trophicRole: e.trophicRole,
+    organelles: { ...e.organelles }, strain: e.strain, strainPotency: e.strainPotency,
+    bodyPlan: e.bodyPlan, photophobic: e.photophobic, friendly: e.friendly, ownerId: e.ownerId,
+    ruptureThreshold: e.ruptureThreshold, ballastGas: (e.ballastGas || 0) * 0.5,
+    cargo: { biomass: cap.biomass * res, lipids: cap.lipids * res, energy: 0 }, grace: 1.6
+  });
+  e.cargo.biomass = cap.biomass * res;
+  e.cargo.lipids = cap.lipids * res;
+  e.cargo.energy = 0;
+  mutateOnFission(world, daughter);
+  mutateOnFission(world, e);
+  e._capsEpoch = -1; e.hp = Math.min(e.hp, caps(e).hp);
+  daughter._capsEpoch = -1; daughter.hp = caps(daughter).hp;
+  if (FREE_HUNTERS.has(daughter.controller)) initBrain(world, daughter, clamp((daughter.y - WORLD.ruptureTop) / 1700, 0, 1));
+  else if (daughter.controller === 'scavenger') daughter.brainState = 'forage';
+  world.entities.push(daughter);
+  world.events.push({ type: 'fission', entityId: e.id, childId: daughter.id, controller: e.controller });
+  return daughter;
+}
+
+// The player divides on command: a full copy of you, but re-flagged as a FRIENDLY clone (a leashed
+// companion that fights at your side) rather than a rival. Same heavy cost — you drop to 15%
+// reserves and 0 ATP. The clone's DNA may have drifted (mutateOnFission), so you can breed variants.
+function playerFission(world, player) {
+  const child = doFission(world, player);
+  child.kind = 'npc';
+  child.controller = 'companion';
+  child.friendly = true;
+  child.ownerId = player.id;
+  child._capsEpoch = -1;
+  world.events.push({ type: 'player_fission', entityId: player.id, childId: child.id });
+  return child;
+}
+
+// DNA genes drift when a cell divides — the petri dish's engine of variation. A strained lineage
+// nudges its potency and can pick up a fresh signature gene; ANY cell (player clones included) can
+// gain or lose a copy of a DNA-category organelle. So a splitting population evolves, never xeroxes.
+function mutateOnFission(world, e) {
+  if (e.strain && ORGANELLES[e.strain] && world.rng() < 0.6) {
+    e.strainPotency = clamp(gaussian(world.rng, e.strainPotency || 1, 0.16), 0.5, 1.9);
+  }
+  if (world.rng() < 0.15) applyStrain(world, e); // may graft/switch a signature gene
+  if (world.rng() < 0.25) {                       // copy-number drift on a DNA-category organelle
+    const dna = Object.keys(e.organelles).filter(o => ORGANELLES[o] && ORGANELLES[o].category && e.organelles[o] > 0);
+    if (dna.length) {
+      const pick = dna[Math.floor(world.rng() * dna.length)];
+      e.organelles[pick] += world.rng() < 0.5 ? 1 : -1;
+      if (e.organelles[pick] <= 0) delete e.organelles[pick];
+      e._capsEpoch = -1;
+    }
+  }
+}
+
+// The per-frame population engine: hunters self-replicate when gorged; scavengers emigrate when
+// starved. (Algae are minted top-down in spawnTick; the player divides on command.) Iterate a
+// captured length so daughters pushed this tick aren't themselves processed until next frame.
+function populationTick(world, dt) {
+  const n = world.entities.length;
+  let emigrants = null;
+  for (let i = 0; i < n; i++) {
+    const e = world.entities[i];
+    if (!e.alive || e.kind === 'player' || e.ownerId) continue; // owned buds/companions don't self-divide
+    // Fission guild: a gorged hunter cleaves in two → the froth's self-replication + selection.
+    if (fissionReady(e)) { if (world.entities.length < POP_CAP) doFission(world, e); continue; }
+    // Scavengers emigrate once their reserves run out — they drift off to forage elsewhere rather
+    // than starving in place. Removed cleanly (no corpse), the outbound half of their migration.
+    if (e.controller === 'scavenger') {
+      const cap = caps(e);
+      if ((e.cargo.biomass || 0) < cap.biomass * 0.10 && (e.cargo.energy || 0) < cap.energy * 0.10) {
+        e._emigrate += dt;
+        if (e._emigrate > 4) { e.alive = false; (emigrants ||= []).push(e); world.events.push({ type: 'emigrate', entityId: e.id }); }
+      } else e._emigrate = 0;
+    }
+  }
+  if (emigrants) world.entities = world.entities.filter(x => x.alive || !emigrants.includes(x));
+}
+
 function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt;
-  // A steadier, thinner rain: blooms drift in a few at a time from the canopy rather
-  // than flooding the surface all at once.
-  if (world.spawn.algae <= 0 && world.entities.filter(e => e.controller === 'algae').length < ALGAE_CAP) {
-    world.spawn.algae = rand(world, 0.7, 1.4);
-    // During play most blooms enter SMALL and YOUNG right at the lit canopy band, then grow
-    // (biomassMass) and spiral down with age — size is earned, depth follows size. A share
-    // arrive already MATURE and heavy, so the surface always has fat blooms sinking into a
-    // steady rain of falls (patches everywhere) instead of a thin crop of young inerts.
-    spawnAlgae(world, { mature: world.rng() < 0.35, y: WORLD.canopy + rand(world, 80, 300) });
+  // ALGAE — minted top-down by the canopy fungus, the primary producer renewed from the light up
+  // to its carrying capacity. Young blooms drift down and live their ballast lifecycle as food.
+  let algaeN = 0, scavN = 0;
+  for (const e of world.entities) { if (!e.alive) continue; if (e.controller === 'algae') algaeN++; else if (e.controller === 'scavenger') scavN++; }
+  if (world.spawn.algae <= 0 && algaeN < ALGAE_CAP) {
+    world.spawn.algae = rand(world, 0.5, 1.1);
+    spawnAlgae(world, { mature: false, y: WORLD.canopy + rand(world, 40, 170) });
   }
-  // Predators are the dominant recurring spawn so the falls keep getting cropped.
+  // SCAVENGERS immigrate toward a soft target (they emigrate when starved, see populationTick) —
+  // a migratory forager pool that flows through. Below target the froth draws foragers in.
+  // The fission guild (predator/protozoan/metazoan) only gets a tiny immigration FLOOR — their
+  // real numbers come from fission — so a crashed hunter layer can still recover.
   if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
-    world.spawn.npc = rand(world, 0.8, 1.7);
-    const r = world.rng();
-    if (r < 0.28) spawnScavenger(world);
-    else if (r < 0.82) spawnPredator(world);
-    else if (world.rng() < 0.16) spawnMetazoan(world); // rare deep colonial predator
-    else if (world.rng() < 0.16) spawnBrood(world);    // rare deep swarm-director
-    else spawnProtozoan(world);
+    world.spawn.npc = rand(world, 0.7, 1.5);
+    if (scavN < SCAV_TARGET) spawnScavenger(world);
+    else {
+      const counts = {};
+      for (const e of world.entities) if (e.alive) counts[e.controller] = (counts[e.controller] || 0) + 1;
+      let want = null, worst = 0;
+      for (const ctrl in POP_FLOOR) { const d = POP_FLOOR[ctrl] - (counts[ctrl] || 0); if (d > worst) { worst = d; want = ctrl; } }
+      if (want === 'predator') spawnPredator(world);
+      else if (want === 'protozoan') spawnProtozoan(world);
+      else if (want === 'metazoan') spawnMetazoan(world);
+      else if (want === 'brood') spawnBrood(world);
+    }
   }
   if (world.spawn.exotic <= 0) {
     world.spawn.exotic = rand(world, 2.5, 5.2);
@@ -3058,7 +3240,10 @@ function spawnAlgae(world, opts = {}) {
   const y = opts.y ?? (WORLD.canopy + rand(world, 40, 260));
   const e = makeSoftBody(world, 'npc', x, y, {
     r, color: '#7ee96f', controller: 'algae', trophicRole: 'photosynthetic_bloom', depthHome: WORLD.canopy + 160,
-    organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 5 : 3, oxygen_vacuole: mature ? 3 : 1, flagella: mature ? 0 : 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
+    // No flagella: a bloom has no swimming organ — it rises and falls ONLY on ballast (gas in its
+    // single Ballast Bladder) versus its own weight. One bladder for every bloom keeps the buoyancy
+    // curve linear and legible: gas-full & lean ⇒ floats to the light; fat ⇒ outweighs the gas & sinks.
+    organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 5 : 3, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
     cargo: { biomass, lipids: rand(world, 8, 26), energy: rand(world, 8, 24), toxins: 0 },
     oxygen: oxygenAt(y) * 0.55,
     ruptureThreshold: mature ? 0.55 : 0.35, biomassMass: biomass, fallState: opts.fallState || null
@@ -3079,6 +3264,7 @@ function spawnScavenger(world, opts = {}) {
     organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
   if (!opts.noStrain) { applyStrain(world, e); assignBody(e); }
+  e.brainState = 'forage';
   world.entities.push(e); return e;
 }
 
@@ -3093,7 +3279,7 @@ function spawnPredator(world, opts = {}) {
   const depthT = clamp((y - WORLD.ruptureTop) / 1700, 0, 1);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 20, 30) + depthT * 16, color: '#ff7897', controller: 'predator', trophicRole: 'rupture_predator', depthHome: y,
-    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), flagella: 1, rasping_lamella: 1, storage_vacuole: 4, exotic_vacuole: 1, membrane_hardening: 1 + Math.round(depthT * 2) }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
+    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), basal_motility: 1, flagella: 1, rasping_lamella: 1, storage_vacuole: 4, exotic_vacuole: 1, membrane_hardening: 1 + Math.round(depthT * 2), cleavage_furrow: 1 }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.48
   });
   const roll = world.rng();
@@ -3123,7 +3309,7 @@ function spawnProtozoan(world, opts = {}) {
   const hp = rand(world, 150, 230);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 34, 52), color: '#d892ff', controller: 'protozoan', trophicRole: 'deep_predator', depthHome: y,
-    organelles: { membrane: 3, anaerobic_processor: 3, flagella: 1, rasping_lamella: 1, toxin_launcher: 1, mitochondrion: 1, lance_bristle: 1, storage_vacuole: 6, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 2 }, cargo: { biomass: rand(world, 40, 78), energy: rand(world, 70, 120), lipids: rand(world, 24, 58), toxins: rand(world, 4, 18) }, oxygen: oxygenAt(y),
+    organelles: { membrane: 3, anaerobic_processor: 3, basal_motility: 1, flagella: 1, rasping_lamella: 1, toxin_launcher: 1, mitochondrion: 1, lance_bristle: 1, storage_vacuole: 6, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 2, cleavage_furrow: 1 }, cargo: { biomass: rand(world, 40, 78), energy: rand(world, 70, 120), lipids: rand(world, 24, 58), toxins: rand(world, 4, 18) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.65
   });
   e.photophobic = true; // deep predators are creatures of the dark
@@ -3159,7 +3345,7 @@ function spawnMetazoan(world, opts = {}) {
   const x = opts.x ?? rand(world, 0, WORLD.w);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 42, 60), color: '#b060d0', controller: 'metazoan', trophicRole: 'colonial_predator', depthHome: y,
-    organelles: { membrane: 4, anaerobic_processor: 4, mitochondrion: 1, flagella: 2, lance_bristle: 1, rasping_lamella: 1, toxin_launcher: 1, storage_vacuole: 8, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 3 },
+    organelles: { membrane: 4, anaerobic_processor: 4, mitochondrion: 1, basal_motility: 1, flagella: 2, lance_bristle: 1, rasping_lamella: 1, toxin_launcher: 1, storage_vacuole: 8, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 3, cleavage_furrow: 1 },
     cargo: { biomass: rand(world, 70, 120), energy: rand(world, 90, 150), lipids: rand(world, 40, 80), toxins: rand(world, 10, 24) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.7
   });
@@ -3244,10 +3430,18 @@ function huntDrive(entity) {
   const cap = caps(entity);
   const bmFill = (entity.cargo?.biomass || 0) / Math.max(1, cap.biomass);
   const enFill = (entity.cargo?.energy || 0) / Math.max(1, cap.energy);
-  const stocked = clamp(bmFill * 0.6 + enFill * 0.4, 0, 1);
+  const lipidFill = (entity.cargo?.lipids || 0) / Math.max(1, cap.lipids);
+  // Satiation now leans on LIPIDS (fat = the fuel for fission). A hunter isn't "stocked" until it
+  // is fat enough to divide, so it keeps hunting to bank the fat its offspring costs — reproduction
+  // pressure, not just a full belly. Only the truly gorged (fat + fed) stand down.
+  const stocked = clamp(bmFill * 0.30 + enFill * 0.25 + lipidFill * 0.45, 0, 1);
   const appetite = clamp((entity.hunger || 0) - stocked * 0.85, 0, 1);
-  const desperate = (entity.cargo?.energy || 0) < 1.2 ? 0.3 : 0;
-  return clamp(appetite * (0.55 + (entity.aggro ?? 0.5) * 0.9) + desperate, 0, 1.4);
+  // Running on fumes: back off and REST so anaerobic processing can rebuild ATP. Hunting on an
+  // empty charge just leaves you slow (speed scales with ATP) and gets you killed — the relentless
+  // hunter starves and dies before it ever banks enough fat to divide. This rest/hunt cadence is
+  // what lets a lineage survive long enough to reproduce (and stops the predator death-spiral).
+  const exhausted = enFill < 0.16 ? 0.35 : 1;
+  return clamp(appetite * (0.55 + (entity.aggro ?? 0.5) * 0.9) * exhausted, 0, 1.4);
 }
 
 // Opportunistic target scoring: reward × ease − risk. Prefers EASY, rewarding prey (wounded,
@@ -3291,7 +3485,11 @@ function bestBodyTarget(entity, world, player) {
     const sizeRatio = other.r / Math.max(10, entity.r);
     const tanky = oCapHp > myCapHp * 1.3 ? 0.6 : 0;
     const risk = ((sizeRatio > 1 ? sizeRatio - 1 : 0) + tanky) * (2.4 * caution) * riskTolerance;
-    const score = reward + fallingValue + weak + proximityAggro + starving + marked - risk - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    // Cannibalism tax: a hunter prefers the food chain (scavengers, falling blooms) to its own
+    // guild, so the predator layer competes for prey instead of slaughtering itself down to the
+    // floor — but a weak or right-on-top-of-me rival is still fair game (selection still bites).
+    const guildTax = (FREE_HUNTERS.has(other.controller) && !entity.friendly) ? 4.5 : 0;
+    const score = reward + fallingValue + weak + proximityAggro + starving + marked - risk - guildTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   entity._preyScore = best ? bestScore : -Infinity;
@@ -3473,6 +3671,7 @@ export function getAvailableActions(world, entityId = world.playerId) {
   if (hasOrg(e, 'toxin_cloud')) actions.push({ id: 'cloud', label: 'Cloud', enabled: powered && (e.cargo.toxins || 0) >= ORGANELLES.toxin_cloud.stats.toxinCost && (e.cargo.energy || 0) >= ORGANELLES.toxin_cloud.stats.energyCost });
   if (hasOrg(e, BALLAST.requires)) actions.push({ id: 'ballast', label: e.ballast ? 'Rise' : 'Dive', enabled: true, active: !!e.ballast });
   if (hasOrg(e, 'jettison_vesicle')) actions.push({ id: 'jettison', label: 'Jettison', enabled: powered && (e.cargo.biomass || 0) >= ORGANELLES.jettison_vesicle.stats.ejectMin });
+  if (hasOrg(e, 'cleavage_furrow')) actions.push({ id: 'divide', label: 'Divide', enabled: fissionReady(e) }); // lights up when gorged enough to split
   actions.push({ id: 'yuki', label: 'Yuki', enabled: nearYuki(world, e) });
   return actions;
 }
@@ -3813,4 +4012,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, BRAIN, FREE_HUNTERS };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, fleeThreat, BRAIN, FREE_HUNTERS, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, ALGAE_CAP, POP_CAP };

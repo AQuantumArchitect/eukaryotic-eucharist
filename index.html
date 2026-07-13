@@ -93,7 +93,7 @@ let camera = {x:0,y:0,shake:0};
 let keys = new Set();
 let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
 let moveTouch = {id:null,x:0,y:0,active:false};
-let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false};
 let didGameOver = false;
 // Iframe focus gate: keyboard events are silently dropped until the document has focus.
 // Applies to itch.io embeds, Google Sites embeds, and any other iframe host.
@@ -117,7 +117,7 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false};
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false};
   toast('Reborn from the froth — a fresh genome. Yuki\'s deeper grafts are sealed until you earn them again.');
 }
 
@@ -165,7 +165,7 @@ function command(){
   const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
   let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
   const an=norm(ax,ay);
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:keys.has('j')||buttons.flame,aimX:an.x,aimY:an.y};
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,aimX:an.x,aimY:an.y};
 }
 
 function loop(now){
@@ -195,6 +195,7 @@ function checkDeathEvent(){
       case 'colony_segment_lost': if(ev.entityId===pid) note(6,`A colony cell is torn away — ${ev.label} lost.`); break;
       case 'ballast': if(ev.entityId===pid) note(5,ev.flooded?'Ballast flooded — venting gas, diving.':'Ballast released — holding trim.'); break;
       case 'jettison': if(ev.entityId===pid) note(4,'Biomass jettisoned — lurching up.'); break;
+      case 'player_fission': if(ev.entityId===pid) note(7,'You cleave in two — a clone splits away to fight beside you.'); break;
       case 'charm': if(ev.entityId===pid) note(4,'A cell is charmed to your side.'); break;
       case 'bud': if(ev.entityId===pid) note(4,'A daughter cell buds to fight for you.'); break;
     }
@@ -264,7 +265,7 @@ function updateUI(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['divide','M','Divide'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -272,7 +273,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold S floods ballast (dive), W releases (rise)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Jettison biomass (rise / escape)',!!map.get('jettison')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold S floods ballast (dive), W releases (rise)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Jettison biomass (rise / escape)',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
@@ -582,6 +583,7 @@ function drawInternalOrganelles(e,ang){
   if(org.phagosome)add('phagosome','#ff8a3d',1,4.4,'bubble');
   if(org.crystal_ward)add('ward','#ff5dba',1,4.2,'diamond');
   if(org.enzyme_reserve)add('enzresv','#7fffe0',1,4.0,'bubble');
+  if(org.cleavage_furrow)add('cleavage','#a0f0c0',1,4.6,'ring');
   ctx.save();
   ctx.beginPath(); ctx.arc(e.x,e.y,e.r*.82,0,Math.PI*2); ctx.clip();
   for(let i=0;i<parts.length;i++){
