@@ -207,7 +207,9 @@ const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives 
 // tagged photophobic (spawned in the deep) takes HP damage wherever light exceeds the
 // threshold, so it cannot chase you up into the lit shallows without cooking. Surface
 // dwellers (algae, the player) are never photophobic — light is their element.
-const LIGHT_BURN = Object.freeze({ threshold: 0.34, rate: 30 });
+// The dark lineages are true light-vampires: the tail is inhabitable, but the bright transition
+// burns them quickly enough that light forms a meaningful spatial refuge.
+const LIGHT_BURN = Object.freeze({ threshold: 0.30, rate: 90, slope: 22 });
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
@@ -216,6 +218,7 @@ const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
 const FEED_INHALE_RATE = 0.9;     // active O2 gulp multiplier while feeding in O2-rich water
 const GAS_LEAK_K = 0.20;          // ballast-gas leak per unit membrane porosity per second (a trimmed bladder holds)
+const MASS_TAX_K = 0.015;         // ATP/s drained per unit of STORED BIOMASS: biomass is metabolically active tissue with a basal upkeep, so hoarding bleeds ATP and biomass must FLOW (refine→lipids, spend→organs, ferment→ATP). Self-regulating: the drain opens ATP headroom → the processor burns biomass to refill → biomass never pools even at idle. A lean body barely feels it; a fat body pays constant rent — the physical basis of the low-biomass archetypes. [PLAYTEST DIAL]
 // Ballast gas is produced ONLY as the offgas byproduct of the biomass→ATP processor (see the
 // fermentation block) — there is no standalone biomass→gas drain, so a cell at full ATP holds its
 // biomass. Buoyancy is about working that offgas + the reserve (vent to dive, ferment to refill).
@@ -224,6 +227,7 @@ const GAS_LEAK_K = 0.20;          // ballast-gas leak per unit membrane porosity
 // back up — a vertical bob whose depth/amplitude escalate with the bloom's size. The bright top
 // is a steep heal band (bask to mend); the deep is attrition (climb back to Yuki or dissolve).
 const ALGAE_DEEP_FERMENT_K = 1.6; // deep blooms ferment lift-gas up to (1+K)× faster → they bottom out & rise
+const ALGAE_LIGHT_GAS_VENT_K = 0.040; // bright-water gas vent / s: the broader shelf still heats/vents a bloated bloom into its next descent
 const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
 const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
 const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep-diving bloom reads big
@@ -913,11 +917,25 @@ function id(prefix) { return `${prefix}_${nextId++}`; }
 
 export function lightAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
+  const upper = WORLD.nurseryTop - WORLD.canopy;
+  const transition = WORLD.ruptureTop - WORLD.canopy;
+  // Sigmoid beach at Yuki -> nearly linear usable-light ramp through the nursery/transition ->
+  // sigmoid tail into the true dark. The joins stay close in value to avoid numerical shocks.
+  if (d <= upper) return clamp(0.78 + 0.22 / (1 + Math.exp((d - 390) / 125)), 0, 1);
+  if (d <= transition) return clamp(0.78 - 0.56 * (d - upper) / Math.max(1, transition - upper), 0, 1);
+  return clamp(0.44 / (1 + Math.exp((d - transition) / 250)), 0, 1);
   return clamp(Math.exp(-d / 300), 0, 1); // steeper falloff — light is a shallow, canopy-hugging resource
 }
 
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
+  const upper = WORLD.nurseryTop - WORLD.canopy;
+  const transition = WORLD.ruptureTop - WORLD.canopy;
+  // O2 falls more linearly than light: the lower nursery remains bright but oxygen-poor, while the
+  // lower transition still carries respiratory O2 after light has entered its dark tail.
+  if (d <= upper) return clamp(0.98 - 0.40 * d / Math.max(1, upper), 0.04, 1);
+  if (d <= transition) return clamp(0.58 - 0.16 * (d - upper) / Math.max(1, transition - upper), 0.04, 1);
+  return clamp(0.04 + 0.76 / (1 + Math.exp((d - transition) / 600)), 0.04, 1);
   // High at surface, sharply lower in nursery, almost gone by deep layer.
   return clamp(0.08 + 0.90 * Math.exp(-d / 610), 0.035, 1);
 }
@@ -968,6 +986,7 @@ function potency(world, entity, oid) {
 export function createWorld(options = {}) {
   nextId = 1;
   const rng = mulberry32(options.seed || 1001);
+  const ecologyOnly = options.ecologyOnly === true;
   const world = {
     version: VERSION,
     t: 0,
@@ -977,22 +996,28 @@ export function createWorld(options = {}) {
     particles: [],
     hazards: [],
     events: [],
-    stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
+    stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, algaeBirths: 0,
+      immigrations: 0, emigrations: 0, fissions: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
     cellLibrary: [],
-    discoveredSources: options.fresh ? freshDiscoveries() : loadDiscoveries(),
+    discoveredSources: ecologyOnly ? new Map() : (options.fresh ? freshDiscoveries() : loadDiscoveries()),
     spawn: { algae: 0, npc: 0, exotic: 0, nursery: 0, seed: 0 },
     escalation: 0,     // ratchets up with the player's progress → the deep releases more, and more
                        // monstrous, predators (the rising danger + the falling-action end game)
-    playerId: null
+    playerId: null,
+    ecologyOnly,
+    _targetClaims: new Map()
   };
-  const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
-    r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-    cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
-  });
-  player.carriedStrains = new Map();
-  world.playerId = player.id;
-  world.entities.push(player);
+  let player = null;
+  if (!ecologyOnly) {
+    player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
+      r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
+      cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
+      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+    });
+    player.carriedStrains = new Map();
+    world.playerId = player.id;
+    world.entities.push(player);
+  }
   seedMatureEcosystem(world);
   // Start the world "in the middle": the seeded ecology is a cold snapshot, so optionally
   // step it forward N seconds before play begins — blooms photosynthesize, ferment, fall,
@@ -1002,23 +1027,55 @@ export function createWorld(options = {}) {
   // a fresh start. Default off, so the smoke tests keep their cold t=0 world.
   if (options.warmup > 0) {
     const p = player;
-    const start = { cargo: { ...p.cargo }, oxygen: p.oxygen, ballastGas: p.ballastGas || 0, hp: p.hp, biomassMass: p.biomassMass, r: p.r };
+    const start = p ? { cargo: { ...p.cargo }, oxygen: p.oxygen, ballastGas: p.ballastGas || 0, hp: p.hp, biomassMass: p.biomassMass, r: p.r } : null;
     // Coarse fixed step (the sim's max dt) so warmup is ~3x cheaper — a couple hundred ms of
     // load, not a multi-second freeze — since we only need to reach the steady state, not
     // render it. Gameplay then runs at the fine 1/60 step.
     const WARM_DT = 0.05;
     const frames = Math.round(options.warmup / WARM_DT);
     for (let i = 0; i < frames; i++) {
-      step(world, {}, WARM_DT);
-      p.alive = true; p.hp = caps(p).hp;                    // the observer never dies mid-warmup
-      p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.fallState = null;
+      if (ecologyOnly) stepEcology(world, WARM_DT);
+      else {
+        step(world, {}, WARM_DT);
+        p.alive = true; p.hp = caps(p).hp;                  // the observer never dies mid-warmup
+        p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.fallState = null;
+      }
     }
-    Object.assign(p, start);                                // fresh player, aged world
-    p.cargo = start.cargo;
-    p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.grace = 2.5;
-    p.carriedStrains = new Map(); p.fallState = null; p._capsEpoch = -1;
+    if (p) {
+      Object.assign(p, start);                              // fresh player, aged world
+      p.cargo = start.cargo;
+      p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.grace = 2.5;
+      p.maxDepth = 0; p.carriedStrains = new Map(); p.fallState = null; p._capsEpoch = -1;
+    }
+    // Warmup produces an aged ecology, not an aged session. Gameplay and evaluation begin at t=0
+    // with clean counters while the evolved bodies, fields, particles, and RNG state are retained.
+    world.t = 0;
+    world.events.length = 0;
+    for (const k of Object.keys(world.stats)) world.stats[k] = 0;
   }
   return world;
+}
+
+// A genuinely player-free ecology world for equilibrium work. No inert player body means no player
+// corpse matter, no wasted predator targets, no progression escalation, and no respawn interruptions.
+export function createEcologyWorld(options = {}) {
+  return createWorld({ ...options, ecologyOnly: true, fresh: true });
+}
+
+function seedMatureHunterState(world, e) {
+  const c = caps(e);
+  e.cargo.energy = c.energy * rand(world, 0.03, 0.34);
+  e.cargo.biomass = c.biomass * rand(world, 0.12, 0.55);
+  e.cargo.lipids = c.lipids * rand(world, 0.10, 0.52);
+  e.hunger = rand(world, 0.58, 1);
+  e.hp = c.hp * rand(world, 0.72, 1);
+  e.brainState = world.rng() < 0.32 ? 'recover' : 'prowl';
+  e._targetRef = null;
+  e._commit = 0;
+  // Sample the same long wild-generation phase used after division. Otherwise every seeded
+  // hunter becomes reproduction-ready together during the opening minute, making t=0 special.
+  e.fissionCooldown = rand(world, 0, 66);
+  e.reproHeat = rand(world, 0.02, 0.45); // a mature ecology includes cold and recently successful lineages
 }
 
 function seedMatureEcosystem(world) {
@@ -1031,39 +1088,65 @@ function seedMatureEcosystem(world) {
     x: rand(world, 0, WORLD.w)
   });
 
-  // Seed the FULL standing algal crop (ALGAE_CAP) as a continuous lifecycle spread, NOT batches
-  // of identical young + mature that then mature in lockstep and fall as one giant wave. Each
-  // bloom gets its own lifecycle fraction (lean→fat), placed at the depth its weight implies
-  // (lean near the lit canopy, fat sinking through the column), so at t=0 the falls are already
-  // mid-stream and desynced — the column looks exactly like it will at t=x.
+  // Seed the full crop across the JOINT lifecycle, not as a linear depth/biomass gradient. Gas,
+  // velocity, cargo, structural size, and fall direction must agree or the initial spread collapses
+  // into one synchronized wave. Stratified phases guarantee coverage; jitter keeps seeds distinct.
   for (let i = 0; i < ALGAE_CAP; i++) {
-    const frac = clamp(i / (ALGAE_CAP - 1) + rand(world, -0.06, 0.06), 0, 1);
-    const bm = 8 + frac * 70;                  // lean 8 → fat ~78 (matches the steady-state mean ~43)
-    const mature = frac > 0.4;
-    const y = WORLD.canopy + 40 + frac * (WORLD.ruptureBottom - WORLD.canopy - 260);
-    const sinking = frac > 0.5;                // the fatter half is already on its way down
-    const e = spawnAlgae(world, { mature, biomass: bm, y, x: rand(world, 0, WORLD.w), fallState: sinking ? 'sinking' : null });
-    if (sinking) {
-      e.vy = rand(world, 6, 40);
-      e.cargo.energy = rand(world, 1, 10);
-      e.organelles.membrane_hardening = Math.max(e.organelles.membrane_hardening || 0, Math.ceil(rand(world, 1, 3)));
+    const phase = clamp((i + world.rng()) / ALGAE_CAP, 0, 0.9999);
+    let u, bm, structural, y, gasFill, fallState, vy;
+    if (phase < 0.16) {                         // bask/grow: brief bright interval before the next fall
+      u = phase / 0.16;
+      bm = 105 + u * 17;
+      structural = 78 + u * 18;
+      y = WORLD.canopy + 70 + Math.pow(u, 1.5) * 440;
+      gasFill = 0.66 - u * 0.30;
+      fallState = u > 0.78 ? 'sinking' : null;
+      vy = u > 0.78 ? rand(world, 3, 12) : rand(world, -6, 4);
+    } else if (phase < 0.77) {                  // long weighted descent: the dominant mature phase
+      u = (phase - 0.16) / 0.61;
+      bm = 126 - u * 14;
+      structural = 94 + u * 20;
+      y = WORLD.canopy + 360 + Math.pow(u, 0.90) * 1900;
+      gasFill = 0.28 + u * 0.28;
+      fallState = 'sinking';
+      vy = rand(world, 10, 31);
+    } else {                                    // gas-rich ascent: same veteran bloom returning
+      u = (phase - 0.77) / 0.23;
+      bm = 116 - u * 12;
+      structural = 112 - u * 16;
+      y = WORLD.canopy + 2180 - Math.pow(u, 0.88) * 1980;
+      gasFill = 0.96 - u * 0.28;
+      fallState = 'rising';
+      vy = -rand(world, 10, 34);
     }
+    y = clamp(y + rand(world, -150, 150), WORLD.canopy + 45, WORLD.h - 80);
+    const mature = structural > 54;
+    const e = spawnAlgae(world, { mature, biomass: bm, y, x: rand(world, 0, WORLD.w), fallState });
+    e.biomassMass = structural;
+    e.ballastGas = caps(e).ballastGas * gasFill;
+    e.vy = vy;
+    e.organelles.photosystem = clamp(2 + Math.floor(structural / 38), 2, ORGANELLES.photosystem.max);
+    e._capsEpoch = -1;
+    if (fallState) e._dove = true;
   }
 
-  // A starting predator guild, stratified; fission will grow or crash it from here under selection.
-  for (let i = 0; i < 18; i++) spawnPredator(world, {
-    y: WORLD.ruptureTop - 120 + rand(world, 0, 1900),
-    x: rand(world, 0, WORLD.w)
-  });
-  for (let i = 0; i < 8; i++) spawnProtozoan(world, {
-    y: WORLD.deepTop + rand(world, 80, 1900),
-    x: rand(world, 0, WORLD.w)
-  });
-  for (let i = 0; i < 3; i++) spawnMetazoan(world, {
-    y: WORLD.deepTop + rand(world, 700, 2200),
-    x: rand(world, 0, WORLD.w)
-  });
-  for (let i = 0; i < 2; i++) spawnBrood(world, {
+  // A mature hunter guild is a distribution, not a synchronized healthy platoon. Counts vary by
+  // seed and reserves span post-fission recovery through charged prowlers, removing the guaranteed
+  // t=0 predator explosion while preserving later food-driven pulses.
+  const predN = 3 + Math.floor(world.rng() * 5);   // 3..7
+  const protoN = 9 + Math.floor(world.rng() * 5); // 9..13
+  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3
+  const broodN = 1 + Math.floor(world.rng() * 2); // 1..2
+  for (let i = 0; i < predN; i++) seedMatureHunterState(world, spawnPredator(world, {
+    y: WORLD.ruptureTop - 120 + rand(world, 0, 1900), x: rand(world, 0, WORLD.w)
+  }));
+  for (let i = 0; i < protoN; i++) seedMatureHunterState(world, spawnProtozoan(world, {
+    y: WORLD.deepTop + rand(world, 80, 1900), x: rand(world, 0, WORLD.w)
+  }));
+  for (let i = 0; i < metaN; i++) seedMatureHunterState(world, spawnMetazoan(world, {
+    y: WORLD.deepTop + rand(world, 700, 2200), x: rand(world, 0, WORLD.w)
+  }));
+  for (let i = 0; i < broodN; i++) spawnBrood(world, {
     y: WORLD.deepTop + rand(world, 500, 2000),
     x: rand(world, 0, WORLD.w)
   });
@@ -1071,16 +1154,24 @@ function seedMatureEcosystem(world) {
   // Seed the field economy at its steady density (~5000 matter) and stratified across the
   // whole column, so the player spawns among resource patches everywhere — not a sparse few
   // that only thicken minutes later. Richer, wider corpse/rupture slurry from the running fall.
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 14; i++) {
     const nearPlayer = i < 6;
     const x = nearPlayer ? WORLD.w / 2 + rand(world, -420, 420) : rand(world, 0, WORLD.w);
     const y = nearPlayer ? WORLD.ruptureTop + rand(world, -90, 520) : WORLD.nurseryTop + rand(world, 0, 2600);
     spawnResourceField(world, x, y, {
-      biomass: rand(world, 90, 230),
-      lipids: rand(world, 18, 55),
-      toxins: rand(world, 0, 12),
+      biomass: rand(world, 120, 220),
+      lipids: rand(world, 20, 42),
+      toxins: rand(world, 0, 10),
       energy: rand(world, 0, 8)
     }, { radius: rand(world, 52, 135), sourceKind: 'mature_rupture_slurry', decayRate: 0.045, maxAge: rand(world, 38, 72), maxRadius: 240 });
+  }
+
+  // The running ecology maintains a handful of shallow-safe nursery patches. Seed those explicitly
+  // so the opening does not spend its first seconds manufacturing a special t=0→t=6 field ramp.
+  for (let i = 0; i < 6; i++) {
+    spawnResourceField(world, rand(world, 0, WORLD.w), WORLD.canopy + rand(world, 800, 1180),
+      { biomass: rand(world, 45, 90), lipids: rand(world, 8, 22), energy: rand(world, 3, 11) },
+      { radius: rand(world, 44, 68), sourceKind: 'nursery_slurry', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
   }
 
   for (let i = 0; i < 20; i++) {
@@ -1090,6 +1181,7 @@ function seedMatureEcosystem(world) {
   world.spawn.algae = rand(world, 0.8, 1.4);
   world.spawn.npc = rand(world, 0.9, 1.6);
   world.spawn.exotic = rand(world, 1.4, 2.4);
+  world.spawn.nursery = rand(world, 2.0, 3.8);
 }
 
 function makeSoftBody(world, kind, x, y, opts = {}) {
@@ -1115,8 +1207,8 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // cost under load (V8 LoadIC_Megamorphic). Spawn helpers reassign these slots, never add them.
     strain: opts.strain || null, strainPotency: opts.strainPotency ?? 1, bodyPlan: opts.bodyPlan || null,
     companionType: opts.companionType || null, ownerId: opts.ownerId || null, photophobic: opts.photophobic || false,
-    ballast: false, maxDepth: 0, combatHit: 0, warded: 0,
-    chill: 0, chillMult: 1, charmTimer: 0, friendLife: 0, marked: 0, markedBy: null,
+    ballast: false, maxDepth: 0, combatHit: 0, warded: 0, fissionCooldown: opts.fissionCooldown || 0,
+    chill: 0, chillMult: 1, charmTimer: 0, friendLife: 0, marked: 0, markedBy: null, reproHeat: opts.reproHeat || 0,
     carriedStrains: null, _chemoWasFeeding: false,
     // Policy-graph brain state (free hunters only, but declared on every body to keep one hidden
     // class). brainState = current node; _targetRef = committed prey/threat object (steered toward
@@ -1248,6 +1340,12 @@ function biomassWeight(entity) {
   return Math.max(0, (entity.cargo.biomass || 0) * cargoFactor + entity.biomassMass * structuralFactor + Math.pow(entity.r, 1.18) * 0.010 + stone);
 }
 
+function algaeBallastWorkDepth(entity) {
+  // Bigger veteran blooms must fall farther before pressure/deep fermentation can reinflate them.
+  // This is the amplitude law: size changes the turning depth, while full gas still guarantees return.
+  return WORLD.canopy + clamp(300 + (entity.biomassMass || 0) * 13, 520, 2300);
+}
+
 function buoyancy(entity) {
   // Lift is stored ballast GAS in the bladder — no oxygen term. A bladder-less body has only
   // the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation.
@@ -1259,6 +1357,20 @@ function buoyancy(entity) {
   const lb = orgCount(entity, 'lipid_bladder');
   let lipidLift = 0;
   if (lb > 0) { const c = caps(entity); lipidLift = lb * ORGANELLES.lipid_bladder.stats.lipidLift * clamp((entity.cargo.lipids || 0) / Math.max(1, c.lipids), 0, 1); }
+  if (entity.controller === 'algae' && bladders > 0) {
+    // A viable bloom must always be able to return: full gas beats its current weight, while a big
+    // bloom needs a larger fraction of the bladder filled and therefore falls farther before turning.
+    // The bladder is one organ, but its physical volume grows with the bloom that carries it.
+    const gasCap = Math.max(0.001, caps(entity).ballastGas);
+    const gasFill = clamp((entity.ballastGas || 0) / gasCap, 0, 1);
+    // Most of a gas bladder only offsets part of a mature bloom's weight. Its
+    // final compressed charge gives a smooth recovery margin, so a fully inflated
+    // heavy bloom can return from depth without a merely high fill pinning it at Yuki.
+    const recoveryMargin = 0.75 + 0.55 * Math.pow(gasFill, 8);
+    const weightScaledLift = biomassWeight(entity) * recoveryMargin;
+    const bladderLift = Math.max(gasCap * s.liftPerGas, weightScaledLift) * gasFill;
+    return BASE_BUOYANCY + aero + lipidLift + bladders * s.baseLift + bladderLift;
+  }
   return BASE_BUOYANCY + aero + lipidLift + bladders * (s.baseLift + (entity.ballastGas || 0) * s.liftPerGas);
 }
 
@@ -1377,16 +1489,31 @@ function hostReadiness(entity, world) {
 }
 
 export function step(world, commands = {}, dt = 1 / 60) {
+  const player = getPlayer(world);
+  if (!player) return stepEcology(world, dt);
   dt = clamp(dt, 0, 0.05);
   CAPS_EPOCH++; // invalidate every entity's per-frame caps() memo
   world.t += dt;
   world.events.length = 0;
-  const player = getPlayer(world);
-  if (!player) return world;
   if (!player.alive) { removeDead(world); return world; }
 
   spawnTick(world, dt);
   applyPlayerCommands(world, player, commands, dt);
+  return finishWorldStep(world, player, dt);
+}
+
+// Advance the autonomous ecology with no player body in the world. This is intentionally the same
+// environment/NPC/contact/population pipeline used by gameplay; only player input and respawn are absent.
+export function stepEcology(world, dt = 1 / 60) {
+  dt = clamp(dt, 0, 0.05);
+  CAPS_EPOCH++;
+  world.t += dt;
+  world.events.length = 0;
+  spawnTick(world, dt);
+  return finishWorldStep(world, null, dt);
+}
+
+function finishWorldStep(world, player, dt) {
   updateNPCs(world, player, dt);
   updateEnvironmentAndMetabolism(world, dt);
   updateFields(world, dt);
@@ -1414,6 +1541,7 @@ export function step(world, commands = {}, dt = 1 / 60) {
     const damp = e.kind === 'player' ? 0.986 : 0.965;   // the player coasts (submarine INERTIA); NPCs settle quicker
     e.vx *= Math.pow(damp, dt * 60); e.vy *= Math.pow(damp, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
+    e.fissionCooldown = Math.max(0, (e.fissionCooldown || 0) - dt);
     e.maxDepth = Math.max(e.maxDepth || 0, e.y - WORLD.canopy);
     if (e.cooldowns) for (const k of Object.keys(e.cooldowns)) e.cooldowns[k] = Math.max(0, e.cooldowns[k] - dt);
     // Strain-effect timers: chill wears off; charm reverts to hostility; a fission bud dissolves.
@@ -1516,12 +1644,18 @@ function applyPlayerCommands(world, player, commands, dt) {
 
 // The free deep hunters run on the policy graph; leashed swarms/companions/broods keep their
 // director/leash logic in the classic updateNPCs path below.
+// FREE_HUNTERS use the full policy graph. HUNTER_GUILD is the broader trophic family used for
+// crowding and cannibalism pressure; broods and their swarm are predators even though their steering
+// is specialized. Keeping these concepts separate prevents directors from being scored as easy prey.
 const FREE_HUNTERS = new Set(['predator', 'protozoan', 'metazoan']);
-// Predators are ATP-vampires: a kill strips the victim's stored charge into the killer's reservoir
-// (drainFrac of what it held, plus a little digested from the flesh by radius), and the corpse is
-// left biomass+lipids only — the scavengers' share. drainFrac 1.0 = take it all; the victim's ATP
-// is always zeroed so no charge leaks into the field. Player/companions harvest too (same lineage).
-const ATP_HARVEST = Object.freeze({ drainFrac: 1.0, perRadius: 2.5 });
+const HUNTER_GUILD = new Set(['predator', 'protozoan', 'metazoan', 'brood', 'swarm_agent']);
+// A kill strips ATP out of the corpse, but wild hunters assimilate only a fraction of that charge.
+// Keeping the player's generous yield preserves combat feel while making an NPC fission event cost
+// several successful hunts instead of letting one large algae kill finance an outbreak by itself.
+const ATP_HARVEST = Object.freeze({
+  playerDrainFrac: 1.0, playerPerRadius: 2.5,
+  npcDrainFrac: 0.35, npcPerRadius: 0.15
+});
 const ATP_HARVESTERS = new Set(['predator', 'protozoan', 'metazoan', 'companion']);
 
 // Predator policy graph — a fixed little state machine ("the game is a graph"). Nodes are the
@@ -1536,10 +1670,13 @@ const BRAIN = Object.freeze({
   GIVEUP_DIST: 1180,     // drop a committed target once it strays past this
   FLEE_HP: 0.34,         // HP fraction under which caution can trip a retreat
   FLEE_SIZE: 1.35,       // a close live body this many× my radius can trip a retreat
+  RECOVER_ENTER: 0.005,  // only genuinely near-empty bodies pause; low charge otherwise motivates hunting
+  RECOVER_EXIT: 0.04,    // enough charge to move and pursue an ATP-bearing meal
   prowl:  { speedMult: 0.55, homeBias: 0.38 },
   stalk:  { speedMult: 1.28, homeBias: 0.05 }, // committed chase — must run down fleeing prey
   strike: { speedMult: 1.12, homeBias: 0.02 },
   feed:   { speedMult: 0.65, homeBias: 0.20 },
+  recover:{ speedMult: 0.32, homeBias: 0.52 },
   flee:   { speedMult: 1.25, homeBias: 0.10 }
 });
 
@@ -1560,63 +1697,116 @@ function initBrain(world, e, depthT = 0) {
 // Ranged + melee attack gates against a committed prey. Each weapon self-gates on its own range
 // and ammo; rasp only flags on contact. Extracted verbatim from the classic prey block so ranged
 // hunters still poke during the approach, not only in melee.
-function fireOnPrey(world, e, prey, preyDist) {
-  if (hasOrg(e, 'toxin_launcher') && preyDist < 520 && e.cargo.energy > ORGANELLES.toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.toxin_launcher.stats.toxinCost && world.rng() < 0.018) acidPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-  if (hasOrg(e, 'spore_toxin_launcher') && preyDist < 540 && e.cargo.energy > ORGANELLES.spore_toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.spore_toxin_launcher.stats.toxinCost && (e.cargo.spores || 0) >= ORGANELLES.spore_toxin_launcher.stats.sporeCost && world.rng() < 0.014) sporePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-  if (hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && world.rng() < 0.02) harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+function tickChance(world, perFrameChance, dt) {
+  return world.rng() < 1 - Math.pow(1 - perFrameChance, dt * 60);
+}
+
+function fireOnPrey(world, e, prey, preyDist, dt) {
+  // Preserve a small charge reserve. An ATP-vampire can keep stalking with passive lances while low,
+  // but it does not repeatedly spend its last molecule on launchers and collapse into immobility.
+  if ((e.cargo.energy || 0) / Math.max(1, caps(e).energy) < 0.06) return;
+  if (hasOrg(e, 'toxin_launcher') && preyDist < 520 && e.cargo.energy > ORGANELLES.toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.toxin_launcher.stats.toxinCost && tickChance(world, 0.018, dt)) acidPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'spore_toxin_launcher') && preyDist < 540 && e.cargo.energy > ORGANELLES.spore_toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.spore_toxin_launcher.stats.toxinCost && (e.cargo.spores || 0) >= ORGANELLES.spore_toxin_launcher.stats.sporeCost && tickChance(world, 0.014, dt)) sporePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && tickChance(world, 0.02, dt)) harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
   if (hasOrg(e, 'combustion_vesicle') && preyDist < e.r + prey.r + ORGANELLES.combustion_vesicle.stats.reach) flamePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-  if (hasOrg(e, 'pheromone_gland') && preyDist < 520 && (e.cargo.spores || 0) >= ORGANELLES.pheromone_gland.stats.sporeCost && (prey.marked || 0) <= 0 && world.rng() < 0.014) markPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
+  if (hasOrg(e, 'pheromone_gland') && preyDist < 520 && (e.cargo.spores || 0) >= ORGANELLES.pheromone_gland.stats.sporeCost && (prey.marked || 0) <= 0 && tickChance(world, 0.014, dt)) markPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
   if (hasRasp(e) && preyDist < e.r + prey.r + BRAIN.STRIKE_PAD) e.action = 'rasp';
 }
 
-// Survival check, run cheaply every frame. Returns the thing to run from — a threat body, the
-// string 'dive' (the shallows are lethal: O2-rich water poisons this hunter, or the light cooks a
-// photophobic one → dive back down), 'scatter' (wounded, no clear threat → bolt), or null (no
-// panic). Cautious individuals break earlier; reckless ones tough it out.
-function fleeThreat(world, e, myCapHp) {
-  // The shallows are death: a hunter with no mito/tolerance poisons on the surface's O2, and a
-  // dark-adapted deep body cooks in the light. Either way, dive — this stops the "predators swim
-  // to the top and suicide on oxygen" behavior by making them break off before the lethal band.
-  if (oxygenAt(e.y) - oxygenTolerance(e) > 0.12) return 'dive';
-  if (e.photophobic && lightAt(e.y) > LIGHT_BURN.threshold) return 'dive';
-  // Break off a COSTLY skirmish: a hunter that is actively TAKING combat damage and isn't clearly
-  // winning bolts rather than trade blows to the death — so the deep skirmishes and disengages
-  // instead of dogpiling into mutual attrition. A clear kill in reach (weak/small target) still presses.
-  if ((e.combatHit || 0) > 0 && e.hp < myCapHp * (0.66 + e.caution * 0.16)) {
-    const t = e._targetRef;
-    const winning = t && t.alive && (t.hp < caps(t).hp * 0.30 || t.r < e.r * 0.70);
-    if (!winning) return (t && t.alive) ? t : 'scatter';
-  }
-  if (e.hp < myCapHp * BRAIN.FLEE_HP * (0.6 + e.caution)) {
-    const t = e._targetRef;
-    return (t && t.alive) ? t : 'scatter';
-  }
-  const t = e._targetRef;
-  if (t && t.alive && t.r > e.r * (BRAIN.FLEE_SIZE + (1 - e.caution) * 0.7)) {
-    if (distWrap(e.x, e.y, t.x, t.y) < e.r + t.r + 160) return t; // outmatched and it's on top of me
-  }
-  return null;
+function logistic(x) { return 1 / (1 + Math.exp(-clamp(x, -24, 24))); }
+
+function normalizeWeights(weights) {
+  let total = 0;
+  for (const value of Object.values(weights)) total += Math.max(0, value);
+  const out = {};
+  for (const [key, value] of Object.entries(weights)) out[key] = Math.max(0, value) / Math.max(1e-9, total);
+  return out;
 }
 
-function enterFlee(e, threat) {
-  e.brainState = 'flee';
-  e._commit = 0.8 + e.caution; // how long it keeps bolting before re-assessing
-  if (threat === 'dive') { e._targetRef = null; e._wander = Math.PI / 2; }           // vy+ is DOWN, away from the deadly shallows
-  else if (threat === 'scatter') { e._targetRef = null; e._wander = e.phase + Math.PI; } // reverse course
-  else e._targetRef = threat;  // a body — steer away from its live position each frame
+function sampleWeights(world, weights) {
+  let roll = world.rng(), last = 'prowl';
+  for (const [key, value] of Object.entries(weights)) {
+    last = key; roll -= value;
+    if (roll <= 0) return key;
+  }
+  return last;
+}
+
+// Threat is a continuous pressure, not a tripwire. Oxygen, light, injury, recent damage, opponent
+// size, distance, and temperament all contribute smoothly. `source` only chooses a flee direction;
+// the magnitude remains continuous and competes with every other behavioral drive.
+function hunterThreatPressure(e, myCapHp) {
+  const target = e._targetRef && e._targetRef.alive ? e._targetRef : null;
+  const hpFill = clamp(e.hp / Math.max(1, myCapHp), 0, 1);
+  const oxygenExcess = oxygenAt(e.y) - oxygenTolerance(e);
+  const oxygenRisk = logistic((oxygenExcess - 0.10) * 42);
+  const lightRisk = e.photophobic ? logistic((lightAt(e.y) - (LIGHT_BURN.threshold - 0.05)) * 24) : 0;
+  const injuryRisk = Math.pow(1 - hpFill, 2.1) * (0.55 + (e.caution || 0.5));
+  const combatRisk = clamp((e.combatHit || 0) / 0.18, 0, 1) * Math.pow(1 - hpFill * 0.65, 1.5);
+  let bodyRisk = 0;
+  if (target) {
+    const sizeRatio = target.r / Math.max(4, e.r);
+    const proximity = logistic((e.r + target.r + 190 - distWrap(e.x, e.y, target.x, target.y)) * 0.018);
+    const targetWeakness = 1 - clamp(target.hp / Math.max(1, caps(target).hp), 0, 1);
+    bodyRisk = logistic((sizeRatio - (1.55 + (1 - (e.caution || 0.5)) * 0.55)) * 4.2)
+      * proximity * (1 - targetWeakness * 0.72);
+  }
+  const risk = clamp(1 - (1 - oxygenRisk) * (1 - lightRisk) * (1 - injuryRisk)
+    * (1 - combatRisk) * (1 - bodyRisk), 0, 1);
+  const dive = oxygenRisk + lightRisk > injuryRisk + combatRisk + bodyRisk;
+  return { risk, source: dive ? null : target, dive };
+}
+
+function hunterPolicy(world, e, player, energyFill, myCapHp) {
+  const prey = bestBodyTarget(e, world, player); // also records the continuous prey score
+  const field = feedingOrgCount(e) > 0 ? bestFieldFor(e, world) : null;
+  const threat = hunterThreatPressure(e, myCapHp);
+  const drive = huntDrive(e);
+  const acceptCenter = BRAIN.ACCEPT_BASE - drive * BRAIN.ACCEPT_SLOPE;
+  const preyAppeal = prey ? logistic((e._preyScore - acceptCenter) * 1.45) : 0;
+  const preyDist = prey ? distWrap(e.x, e.y, prey.x, prey.y) : Infinity;
+  const strikeBlend = prey ? logistic((e.r + prey.r + BRAIN.STRIKE_PAD - preyDist) * 0.045) : 0;
+  const matter = field ? Math.max(0, field._matter || 0) : 0;
+  const fieldAppeal = field ? logistic((Math.log1p(matter) - 2.2) * 1.6) * clamp(e.hunger || 0, 0, 1) : 0;
+  const exhaustion = Math.pow(1 - clamp(energyFill, 0, 1), 7);
+  const safety = 1 - threat.risk;
+
+  const raw = {
+    prowl: 0.10 + 0.62 * (1 - preyAppeal) * (1 - fieldAppeal) + 0.18 * (1 - (e.hunger || 0)),
+    stalk: 2.7 * preyAppeal * (1 - strikeBlend * 0.82) * safety,
+    strike: 3.3 * preyAppeal * strikeBlend * safety,
+    feed: 1.45 * fieldAppeal * (1 - preyAppeal * 0.62) * safety,
+    recover: 0.002 + 1.8 * exhaustion * (1 - preyAppeal * 0.72) * (0.45 + safety * 0.55),
+    flee: 0.002 + 4.4 * Math.pow(threat.risk, 2.15)
+  };
+  // Memory is another continuous term: it makes behavior legible without making a state sticky
+  // until a timer or threshold fires.
+  if (raw[e.brainState] != null) raw[e.brainState] *= 1.8;
+  const probabilities = normalizeWeights(raw);
+  return { probabilities, prey, field, threat, preyAppeal, strikeBlend };
 }
 
 // The policy-graph brain for free hunters. Selection scans (bestBodyTarget/bestFieldFor) run only
 // on the throttled think tick; steering toward the committed target/point runs every frame.
-function updateNpcBrain(world, e, player, dt) {
+function updateNpcBrainThresholdLegacy(world, e, player, dt) {
   const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
   const myCapHp = caps(e).hp;
+  const energyFill = (e.cargo.energy || 0) / Math.max(1, caps(e).energy);
 
   // Free-roamers let their home depth drift toward wherever the hunt takes them, so the predator
   // layer follows the algal fall down instead of pinning to the seam where it spawned.
   if (!e.ownerId) {
     e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
     e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+  }
+
+  // An exhausted hunter must stop spending and let its processors rebuild charge. Without this node,
+  // a zero-ATP body remains committed to strike, loses steering, and becomes part of an inert pile.
+  if (e.brainState !== 'flee' && e.brainState !== 'recover' && energyFill < BRAIN.RECOVER_ENTER) {
+    e.brainState = 'recover'; e._targetRef = null; e._commit = 0;
+  }
+  if (e.brainState === 'recover' && energyFill >= BRAIN.RECOVER_EXIT) {
+    e.brainState = 'prowl'; e._targetRef = null;
   }
 
   // Survival overrides every node.
@@ -1645,7 +1835,7 @@ function updateNpcBrain(world, e, player, dt) {
         if (prey && e._preyScore > acceptBar) {
           e._targetRef = prey; e.brainState = 'stalk';
           e._commit = 2.5 + drive * 3.0;           // hungrier ⇒ chases longer before giving up
-        } else if (field && e.hunger > 0.15 && (field._matter || 0) > 4) {
+        } else if (field && feedingOrgCount(e) > 0 && e.hunger > 0.15 && (field._matter || 0) > 4) {
           e._targetRef = field; e.brainState = 'feed';
         }
       }
@@ -1657,7 +1847,7 @@ function updateNpcBrain(world, e, player, dt) {
       const d = distWrap(e.x, e.y, t.x, t.y);
       tx = t.x; ty = t.y; mode = 'prey';
       e._commit -= dt;
-      if (powered) fireOnPrey(world, e, t, d);      // ranged pokes land during the approach
+      if (powered) fireOnPrey(world, e, t, d, dt);  // ranged pokes land during the approach
       if (d < e.r + t.r + BRAIN.STRIKE_PAD) e.brainState = 'strike';
       else if (d > BRAIN.GIVEUP_DIST || e._commit <= 0) { e.brainState = 'prowl'; e._targetRef = null; }
       else if (think) {
@@ -1682,19 +1872,21 @@ function updateNpcBrain(world, e, player, dt) {
           if (bRoom > 0) e.cargo.biomass = (e.cargo.biomass || 0) + Math.min(bRoom, t.r * 0.7);
           const lRoom = cap.lipids - (e.cargo.lipids || 0);
           if (lRoom > 0) e.cargo.lipids = (e.cargo.lipids || 0) + Math.min(lRoom, t.r * 0.22);
-          e.hunger = clamp(e.hunger - 0.25, 0, 1); // the meal takes the edge off
+          const mealRelief = clamp(0.25 + (t.r / Math.max(12, e.r)) * 0.28, 0.35, 0.72);
+          e.hunger = clamp(e.hunger - mealRelief, 0, 1); // a real kill buys a meaningful satiated interval
         }
         e.brainState = 'prowl'; e._targetRef = null; break;
       }
       const d = distWrap(e.x, e.y, t.x, t.y);
       tx = t.x; ty = t.y; mode = 'prey';
       if (d > (e.r + t.r + BRAIN.STRIKE_PAD) * 1.4) { e.brainState = 'stalk'; e._commit = Math.max(e._commit, 1.5); break; }
-      if (powered) fireOnPrey(world, e, t, d);
+      if (powered) fireOnPrey(world, e, t, d, dt);
       break;
     }
     case 'feed': {
       const t = e._targetRef;
       if (think) {
+        if (feedingOrgCount(e) <= 0) { e.brainState = 'prowl'; e._targetRef = null; break; }
         const field = bestFieldFor(e, world); // refresh to a live field (never chase a ghost)
         if (!field || e.hunger < 0.10) { e.brainState = 'prowl'; e._targetRef = null; break; }
         e._targetRef = field;
@@ -1715,6 +1907,23 @@ function updateNpcBrain(world, e, player, dt) {
       }
       break;
     }
+    case 'recover': {
+      // Recovery is metabolic, not field grazing. It is still predatory: a nearby defenseless bloom
+      // can be shadowed with low thrust and struck by a passive lance, but ATP-consuming attacks stay
+      // quiet until charge recovers. This reads as ambush/rest rather than an inert pile.
+      if (think) {
+        const prey = bestBodyTarget(e, world, player);
+        e._targetRef = prey && prey.controller === 'algae' && distWrap(e.x, e.y, prey.x, prey.y) < 430 ? prey : null;
+      }
+      const t = e._targetRef;
+      if (t && t.alive && t.controller === 'algae') { tx = t.x; ty = t.y; mode = 'prey'; }
+      else {
+        e._targetRef = null;
+        e._wander += Math.sin((world.t + e.phase) * 0.35) * 0.35 * dt;
+        tx = e.x + Math.cos(e._wander) * 90; ty = e.depthHome; mode = 'home';
+      }
+      break;
+    }
     case 'flee': {
       let ax, ay;
       const t = e._targetRef;
@@ -1729,11 +1938,152 @@ function updateNpcBrain(world, e, player, dt) {
 
   // Steering integrate — the classic updateNPCs tail, node-parameterized.
   const dyHome = e.depthHome - e.y;
-  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * node.homeBias);
+  let toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * node.homeBias);
+  // Behavioral separation, not hard collision: hunters still overlap prey, but nearby guild-mates
+  // bias one another apart so a whole layer does not collapse onto one coordinate.
+  let sepX = 0, sepY = 0;
+  for (const other of world.entities) {
+    if (!other.alive || other.id === e.id || !HUNTER_GUILD.has(other.controller)) continue;
+    const dx = dxWrap(e.x, other.x), dy = other.y - e.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const comfort = e.r + other.r + 70;
+    if (d >= comfort) continue;
+    const push = (comfort - d) / comfort;
+    sepX -= dx / d * push; sepY -= dy / d * push;
+  }
+  if (Math.abs(sepX) + Math.abs(sepY) > 0.001) toward = norm(toward.x + sepX * 0.58, toward.y + sepY * 0.58);
   const sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * node.speedMult : 0;
   const accel = mode === 'prey' ? 4.2 : 2.5;
   e.vx += toward.x * sp * accel * dt;
   e.vy += toward.y * sp * accel * dt;
+  e.phase = Math.atan2(toward.y, toward.x);
+  e.x = wrapX(e.x + e.vx * dt);
+  e.y += e.vy * dt;
+}
+
+// Continuous hunter policy. Named states remain as a sampled, observable pose for rendering and
+// telemetry, but no threshold edge decides the next action. Each think tick recomputes a probability
+// distribution from the body's continuous internal and external pressures; one behavior collapses
+// from that distribution. Locomotion parameters are probability-weighted, so even the motion varies
+// continuously instead of jumping wholesale when the label changes.
+function updateNpcBrain(world, e, player, dt) {
+  const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
+  const cap = caps(e);
+  const energyFill = (e.cargo.energy || 0) / Math.max(1, cap.energy);
+
+  if (!e.ownerId) {
+    e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
+    e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+  }
+
+  // A completed hunt pays meat/fat once. ATP itself was transferred at the killing blow in hurt().
+  const meal = e._mealRef;
+  if (meal && !meal.alive) {
+    if (distWrap(e.x, e.y, meal.x, meal.y) < e.r + meal.r + 90) {
+      const bRoom = cap.biomass - (e.cargo.biomass || 0);
+      if (bRoom > 0) e.cargo.biomass = (e.cargo.biomass || 0) + Math.min(bRoom, meal.r * 0.7);
+      const lRoom = cap.lipids - (e.cargo.lipids || 0);
+      if (lRoom > 0) e.cargo.lipids = (e.cargo.lipids || 0) + Math.min(lRoom, meal.r * 0.22);
+      const mealRelief = clamp(0.25 + (meal.r / Math.max(12, e.r)) * 0.28, 0.35, 0.72);
+      e.hunger = clamp(e.hunger - mealRelief, 0, 1);
+    }
+    e._mealRef = null;
+    if (e._targetRef === meal) e._targetRef = null;
+  }
+
+  e._think -= dt;
+  const think = e._think <= 0;
+  if (think) {
+    e._think = BRAIN.THINK_INTERVAL * rand(world, 0.85, 1.15);
+    const policy = hunterPolicy(world, e, player, energyFill, cap.hp);
+    e._policy = policy.probabilities;
+    e._policyDrives = { prey: policy.preyAppeal, strike: policy.strikeBlend, threat: policy.threat.risk, energy: energyFill };
+    e.brainState = sampleWeights(world, policy.probabilities);
+
+    if ((e.brainState === 'stalk' || e.brainState === 'strike') && policy.prey) {
+      e._targetRef = policy.prey;
+      e._mealRef = policy.prey;
+    } else if (e.brainState === 'feed') {
+      e._targetRef = policy.field;
+    } else if (e.brainState === 'flee') {
+      e._targetRef = policy.threat.source;
+      if (!policy.threat.source) e._wander = policy.threat.dive ? Math.PI / 2 : e.phase + Math.PI;
+    } else if (e.brainState === 'recover') {
+      e._targetRef = policy.prey && policy.prey.controller === 'algae' && world.rng() < policy.preyAppeal * 0.45
+        ? policy.prey : null;
+    } else {
+      e._targetRef = null;
+    }
+  }
+
+  const probabilities = e._policy || { prowl: 1 };
+  let speedMult = 0, homeBias = 0;
+  for (const [state, probability] of Object.entries(probabilities)) {
+    const settings = BRAIN[state] || BRAIN.prowl;
+    speedMult += probability * settings.speedMult;
+    homeBias += probability * settings.homeBias;
+  }
+
+  let tx = e.x + Math.cos(e._wander) * 120, ty = e.depthHome, mode = 'home';
+  const target = e._targetRef;
+  switch (e.brainState) {
+    case 'stalk':
+    case 'strike': {
+      if (target && target.alive) {
+        const d = distWrap(e.x, e.y, target.x, target.y);
+        tx = target.x; ty = target.y; mode = 'prey';
+        if (powered) fireOnPrey(world, e, target, d, dt);
+      }
+      break;
+    }
+    case 'feed': {
+      if (target && target.radius != null) {
+        tx = target.x; ty = target.y; mode = 'field';
+        if (powered && distWrap(e.x, e.y, target.x, target.y) < e.r + target.radius * 0.9) {
+          e.feedIntent = true;
+          feedFromFields(world, e, dt);
+          collectParticles(world, e);
+        }
+      }
+      break;
+    }
+    case 'recover': {
+      if (target && target.alive) { tx = target.x; ty = target.y; mode = 'prey'; }
+      else {
+        e._wander += Math.sin((world.t + e.phase) * 0.35) * 0.35 * dt;
+        tx = e.x + Math.cos(e._wander) * 90;
+      }
+      break;
+    }
+    case 'flee': {
+      let ax, ay;
+      if (target && target.alive) { const away = norm(dxWrap(target.x, e.x), e.y - target.y); ax = away.x; ay = away.y; }
+      else { ax = Math.cos(e._wander); ay = Math.sin(e._wander); }
+      tx = e.x + ax * 320; ty = e.y + ay * 320; mode = 'prey';
+      break;
+    }
+    default:
+      e._wander += Math.sin((world.t + e.phase) * 0.5) * 0.6 * dt;
+      tx = e.x + Math.cos(e._wander) * 220; ty = e.depthHome + Math.sin(e._wander) * 60;
+      break;
+  }
+
+  const dyHome = e.depthHome - e.y;
+  let toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * homeBias);
+  let sepX = 0, sepY = 0;
+  for (const other of world.entities) {
+    if (!other.alive || other.id === e.id || !HUNTER_GUILD.has(other.controller)) continue;
+    const dx = dxWrap(e.x, other.x), dy = other.y - e.y;
+    const d = Math.hypot(dx, dy) || 1, comfort = e.r + other.r + 70;
+    if (d >= comfort) continue;
+    const push = (comfort - d) / comfort;
+    sepX -= dx / d * push; sepY -= dy / d * push;
+  }
+  if (Math.abs(sepX) + Math.abs(sepY) > 0.001) toward = norm(toward.x + sepX * 0.58, toward.y + sepY * 0.58);
+  const speed = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * speedMult : 0;
+  const accel = mode === 'prey' ? 4.2 : 2.5;
+  e.vx += toward.x * speed * accel * dt;
+  e.vy += toward.y * speed * accel * dt;
   e.phase = Math.atan2(toward.y, toward.x);
   e.x = wrapX(e.x + e.vx * dt);
   e.y += e.vy * dt;
@@ -1798,6 +2148,14 @@ function updateScavengerBrain(world, e, dt) {
 }
 
 function updateNPCs(world, player, dt) {
+  // Previous-frame commitments provide a cheap congestion signal during this frame's think scans.
+  // Large prey can carry several attackers; small prey should not attract the whole predator layer.
+  const claims = new Map();
+  for (const e of world.entities) {
+    const t = e.alive ? e._targetRef : null;
+    if (t && t.controller && t.alive) claims.set(t.id, (claims.get(t.id) || 0) + 1);
+  }
+  world._targetClaims = claims;
   for (const e of world.entities) {
     if (!e.alive || e.kind === 'player') continue;
     e.hunger = clamp(e.hunger + dt * (e.controller === 'algae' ? 0.012 : 0.04), 0, 1);
@@ -1832,30 +2190,11 @@ function updateNPCs(world, player, dt) {
 
     const hunts = ['predator', 'protozoan', 'metazoan', 'companion', 'brood', 'swarm_agent'].includes(e.controller);
     if (prey && hunts) {
+      e._targetRef = prey; // collision weapons obey this deliberate choice
       tx = prey.x; ty = prey.y; targetMode = 'prey';
       const preyDist = distWrap(e.x, e.y, prey.x, prey.y);
-      if (powered && hasOrg(e, 'toxin_launcher') && preyDist < 520 && e.cargo.energy > ORGANELLES.toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.toxin_launcher.stats.toxinCost && world.rng() < 0.018) {
-        acidPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-      }
-      if (powered && hasOrg(e, 'spore_toxin_launcher') && preyDist < 540 && e.cargo.energy > ORGANELLES.spore_toxin_launcher.stats.energyCost && e.cargo.toxins > ORGANELLES.spore_toxin_launcher.stats.toxinCost && (e.cargo.spores || 0) >= ORGANELLES.spore_toxin_launcher.stats.sporeCost && world.rng() < 0.014) {
-        sporePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-      }
-      if (powered && hasOrg(e, 'harpoon_spine') && preyDist < 480 && e.cargo.energy > ORGANELLES.harpoon_spine.stats.energyCost && world.rng() < 0.02) {
-        harpoonPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-      }
-      // Fire-breathers hose their prey at close range — a continuous stream (flamePulse
-      // self-gates on its own short cooldown and on O2/lipid/toxin fuel).
-      if (powered && hasOrg(e, 'combustion_vesicle') && preyDist < e.r + prey.r + ORGANELLES.combustion_vesicle.stats.reach) {
-        flamePulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-      }
-      // A swarm-director paints its prey with a death-pheromone so its own swarm converges.
-      if (powered && hasOrg(e, 'pheromone_gland') && preyDist < 520 && (e.cargo.spores || 0) >= ORGANELLES.pheromone_gland.stats.sporeCost && (prey.marked || 0) <= 0 && world.rng() < 0.014) {
-        markPulse(world, e, dxWrap(e.x, prey.x), prey.y - e.y);
-      }
-      // With collision removed, predators should commit to standing on the target.
-      // Rasping is overlap-based; orbiting just outside contact is explicitly wrong.
-      if (powered && hasRasp(e) && preyDist < e.r + prey.r + 42) e.action = 'rasp';
-    }
+      if (powered) fireOnPrey(world, e, prey, preyDist, dt);
+    } else if (hunts && e._targetRef?.controller) e._targetRef = null;
 
     // Symbionts leash to their owner: they hover near the player and only break off
     // to fight prey that comes close. Stray too far and they abandon the hunt to catch up.
@@ -1912,12 +2251,13 @@ function updateAlgaeAI(world, e, dt) {
   // doesn't chatter its fall flag every frame. Only used for the terminal-plunge accelerant +
   // the algae_fall stat/event; the actual up/down is the buoyancy force below either way.
   const tooFat = sinkPressure > 12 || (fullness > 0.95 && sinkPressure > 0);
-  if (tooFat && !e.fallState) {
+  if (tooFat && e.fallState !== 'sinking') {
     e.fallState = 'sinking';
     world.stats.algaeFalls += 1;
     world.events.push({ type: 'algae_fall', entityId: e.id });
   }
-  if (e.fallState === 'sinking' && sinkPressure < -5 && fullness < 0.85) e.fallState = null;
+  if (e.fallState === 'sinking' && sinkPressure < -3) e.fallState = 'rising';
+  if (e.fallState === 'rising' && e.y < WORLD.canopy + 240) e.fallState = null;
 
   // Horizontal graze drift, per-bloom phase so the crop doesn't slide in lockstep.
   e.vx += Math.cos(world.t * 0.35 + e.phase) * speedOf(e) * 0.28 * dt;
@@ -1969,6 +2309,16 @@ function updateAlgaeAI(world, e, dt) {
 function updateEnvironmentAndMetabolism(world, dt) {
   for (const e of world.entities) {
     if (!e.alive) continue;
+    // Successful hunters retain a fading reproductive heat: it makes a local run of kills capable
+    // of producing a pulse, but the opportunity cools away when the food web goes quiet.
+    e.reproHeat = Math.max(0, (e.reproHeat || 0) * Math.exp(-0.012 * dt));
+    // Mass tax: stored biomass carries a flat basal ATP upkeep (MASS_TAX_K). It self-regulates — the
+    // drain opens ATP headroom, the fermentation engine burns biomass to refill it, so biomass FLOWS
+    // and can never be hoarded even at idle. Lean bodies barely notice; a fat body pays constant rent.
+    // Applies to every body (no player exception) — it is the metabolic basis of the 2×2 archetypes.
+    if ((e.cargo.biomass || 0) > 0) {
+      e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - (e.cargo.biomass || 0) * MASS_TAX_K * dt);
+    }
     const light = lightAt(e.y);
     const extO2 = oxygenAt(e.y);
     const porosity = membranePorosity(e);
@@ -1980,18 +2330,34 @@ function updateEnvironmentAndMetabolism(world, dt) {
     if (gill > 0 && extO2 > e.oxygen) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + (extO2 - e.oxygen) * gill * ORGANELLES.countercurrent_gill.stats.uptake * dt);
     // Ballast gas leaks out through the membrane ∝ porosity — a soft cell deflates fast (bobs),
     // a hardened cell holds its dive. This is the passive sink that lets a fat bloom fall.
-    if ((e.ballastGas || 0) > 0) e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * porosity * GAS_LEAK_K * dt);
+    if ((e.ballastGas || 0) > 0) {
+      const lightVent = e.controller === 'algae' ? light * ALGAE_LIGHT_GAS_VENT_K * (e.ecologyRate || 1) : 0;
+      e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * (porosity * GAS_LEAK_K + lightVent) * dt);
+    }
 
     // Photosynthesis: surface light turns into biomass but creates oxygen stress/waste and weight.
     const photo = orgCount(e, 'photosystem');
-    if (photo > 0 && light > 0.04) {
+    if (photo > 0) {
       // Growth scales with porosity — a porous membrane grows fast (and leaks gas fast); hardening slows both.
-      const gain = light * photo * ORGANELLES.photosystem.stats.biomassGain * clamp(porosity / 0.32, 0.2, 1.0) * dt;
+      const lightResponse = light * light / (light * light + 0.04 * 0.04);
+      // The new broad light shelf feeds algae over a much larger vertical span. Lower per-photon
+      // algal throughput keeps the integrated growth budget stable while still rewarding the shelf.
+  // The broadened light shelf is a much larger resource than the former
+  // exponential falloff, so algae convert each unit of light more slowly.
+  // This preserves their buoyancy cycle without turning every bright pass
+  // into a net biomass ratchet.
+  const photoScale = e.controller === 'algae' ? 0.08 : 1;
+      const gain = lightResponse * photo * ORGANELLES.photosystem.stats.biomassGain * photoScale * clamp(porosity / 0.32, 0.2, 1.0) * dt;
       const room = caps(e).biomass - (e.cargo.biomass || 0);
       const actual = Math.min(room, gain);
       e.cargo.biomass += actual;
       e.biomassMass += actual * 0.18;
-      if (e.controller === 'algae') e.biomassMass += light * photo * 0.09 * dt;
+      if (e.controller === 'algae') {
+        e.biomassMass += lightResponse * photo * 0.09 * photoScale * dt;
+        // Veteran blooms grow larger over successive bobs, but structural tissue has a finite
+        // turnover ceiling. Cargo remains the reversible weight that drives each individual cycle.
+        e.biomassMass = Math.min(e.biomassMass, 70 + photo * 18);
+      }
       // Photosynthetic O2 only matters for ALGAE (they generate it, then vent it to the water as
       // their surface-organism mechanic). For every other body — the PLAYER included — photosynthesis
       // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
@@ -2022,7 +2388,9 @@ function updateEnvironmentAndMetabolism(world, dt) {
         e.cargo.energy += lipidBurn * 3.2 + oxygenBurn * 70;
         e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - oxygenBurn * 5);
       }
-    } else if ((e.cargo.energy || 0) < caps(e).energy && (e.cargo.biomass || 0) > 0.05) {
+    } else if (((e.cargo.energy || 0) < caps(e).energy
+      || (e.controller === 'algae' && e.fallState === 'sinking' && e.y > algaeBallastWorkDepth(e) && (e.ballastGas || 0) < caps(e).ballastGas * 0.98))
+      && (e.cargo.biomass || 0) > 0.05) {
       const biomassFill = clamp((e.cargo.biomass || 0) / Math.max(1, caps(e).biomass), 0, 1);
       // v1.3.3 flow curve: fuller biomass tanks process a larger volume faster,
       // but the conversion is less efficient. Bare reserves are slow but frugal.
@@ -2033,16 +2401,32 @@ function updateEnvironmentAndMetabolism(world, dt) {
         if (level <= 0) continue;
         const st = ORGANELLES[procId].stats;
         const efficiency = st.energyPerBiomass * (1.16 - 0.34 * biomassFill);
+        const algaeDepth = e.controller === 'algae'
+          ? clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
+          : 0;
+        const deepBoost = 1 + ALGAE_DEEP_FERMENT_K * algaeDepth;
         // Catalytic processors run faster the more enzymes you carry, spending a trickle.
-        const rate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * potency(world, e, procId);
-        const room = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
-        if (room <= 0) break;
-        const desiredATP = Math.min(level * rate * volumeCurve * dt, room);
+        const baseRate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * potency(world, e, procId);
+        const rate = baseRate * (e.controller === 'algae' ? (1 + algaeDepth * 0.65) * (e.ecologyRate || 1) : 1);
+        const atpRoom = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
+        // A descending bloom may keep fermenting solely to inflate ballast after ATP is full. The
+        // excess ATP is dissipated as metabolic work; biomass and gas remain fully accounted.
+        const ballastWork = e.controller === 'algae' && e.fallState === 'sinking'
+          && e.y > algaeBallastWorkDepth(e) && st.gasPerBiomass;
+        const gasRoom = ballastWork ? Math.max(0, caps(e).ballastGas - (e.ballastGas || 0)) : 0;
+        const gasBioRoom = ballastWork ? gasRoom / Math.max(0.001, st.gasPerBiomass * deepBoost) : 0;
+        const metabolicRoom = atpRoom + gasBioRoom * efficiency;
+        if (metabolicRoom <= 0) break;
+        const desiredATP = Math.min(level * rate * volumeCurve * dt, metabolicRoom);
         const ferment = Math.min(e.cargo.biomass, desiredATP / Math.max(0.1, efficiency));
         if (ferment <= 0) continue;
         e.cargo.biomass -= ferment;
-        e.cargo.energy += ferment * efficiency;
-        e.cargo.toxins += ferment * st.toxinPerBiomass * (0.65 + 0.9 * biomassFill);
+        e.cargo.energy += Math.min(atpRoom, ferment * efficiency);
+        // Dirty fermentation: toxin waste per unit burned climbs sharply with how FULL the biomass tank
+        // is — a lean cell burns clean (~0.3×), a gorged one is a sludge factory (~2.0×, a ~6× spread).
+        // This makes toxins the natural byproduct/currency of the high-biomass anaerobic (venom) build,
+        // while a clean_processor (tiny toxinPerBiomass) stays clean at any fill.
+        e.cargo.toxins += ferment * st.toxinPerBiomass * (0.3 + 1.7 * Math.pow(biomassFill, 1.4));
         // Ballast gas is the OFFGAS of this biomass→ATP fermentation, nothing more: it is made
         // ONLY when the engine actually runs (i.e. ATP has headroom), so a cell at full ATP vents
         // no gas and holds its biomass. Buoyancy is then about working the offgas + your reserves
@@ -2050,9 +2434,6 @@ function updateEnvironmentAndMetabolism(world, dt) {
         // algae vent offgas harder (depth boost), so a sunk bloom refills its ballast and rides
         // back toward the light — the engine of the algal bob, now driven by the same fermentation.
         if (st.gasPerBiomass) {
-          const deepBoost = e.controller === 'algae'
-            ? 1 + ALGAE_DEEP_FERMENT_K * clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
-            : 1;
           const glandBoost = 1 + orgCount(e, 'gas_gland') * ORGANELLES.gas_gland.stats.fermentBonus; // capture more offgas per ferment
           e.ballastGas = Math.min(caps(e).ballastGas, (e.ballastGas || 0) + ferment * st.gasPerBiomass * deepBoost * glandBoost);
         }
@@ -2164,10 +2545,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // Vampire burn: a dark-adapted deep body cooks in the light of the shallows.
     if (e.photophobic && e.grace <= 0) {
       const l = lightAt(e.y);
-      if (l > LIGHT_BURN.threshold) {
-        e.hp -= (l - LIGHT_BURN.threshold) * LIGHT_BURN.rate * dt;
-        e.hit = Math.max(e.hit, 0.05);
-      }
+      // A smooth, very steep exposure curve: the dim tail is survivable, the transition hurts,
+      // and a real shallow incinerates a dark lineage. No light/no-light cliff is involved.
+      const exposure = Math.pow(1 / (1 + Math.exp(-(l - LIGHT_BURN.threshold) * LIGHT_BURN.slope)), 2);
+      e.hp -= exposure * LIGHT_BURN.rate * dt;
+      e.hit = Math.max(e.hit, exposure * 0.12);
     }
 
     // Vertical for NON-algae bodies. A BALLAST-equipped cell (the player) is a submarine: its
@@ -2197,7 +2579,8 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // faster the emptier it is. No more sitting dead-in-the-water waiting on nothing;
     // you feed, you flee, or you dissolve (and the froth already smells you — see starving aggro).
     if ((e.cargo.energy || 0) <= 0.02 && (e.cargo.biomass || 0) < 4) {
-      e.hp -= (5 + 8 * (1 - (e.cargo.biomass || 0) / 4)) * dt;
+      const failedHunter = HUNTER_GUILD.has(e.controller) ? 3.0 : 1.0;
+      e.hp -= (5 + 8 * (1 - (e.cargo.biomass || 0) / 4)) * failedHunter * dt;
       e.hit = Math.max(e.hit, 0.05);
     }
     if ((e.cargo.energy || 0) <= 0.01 && (e.cargo.biomass || 0) <= 0.03) hurt(world, e, caps(e).hp + 10, 'energy_biomass_collapse');
@@ -2421,6 +2804,14 @@ function applyActiveActionCosts(world, dt) {
   }
 }
 
+function deliberateWeaponTarget(attacker, target) {
+  if (attacker.kind === 'player') return true;
+  const directedHunter = HUNTER_GUILD.has(attacker.controller) || attacker.controller === 'companion';
+  if (!directedHunter) return true; // defensive/mutant spines on non-hunters remain contact organs
+  return attacker._targetRef === target
+    || ((attacker.combatHit || 0) > 0 && attacker.targetId === target.id); // immediate self-defense
+}
+
 function resolveContacts(world, dt) {
   const ents = world.entities.filter(e => e.alive);
   // Broad-phase: the world is 5600px tall and bodies are spread across it, so the vast
@@ -2466,8 +2857,8 @@ function resolveContacts(world, dt) {
       // Lances don't spray every overlap — they gather the hostiles in reach and, after the
       // scan, strike only ONE: the LARGEST one they can actually skewer (in real reach + aligned).
       const hostile = !areAllied(a, b);
-      if (a._hasLance && hostile && d < a._lanceReach + b.r) a._lanceCands.push({ t: b, d, nx, ny });
-      if (b._hasLance && hostile && d < b._lanceReach + a.r) b._lanceCands.push({ t: a, d, nx: -nx, ny: -ny });
+      if (a._hasLance && hostile && deliberateWeaponTarget(a, b) && d < a._lanceReach + b.r) a._lanceCands.push({ t: b, d, nx, ny });
+      if (b._hasLance && hostile && deliberateWeaponTarget(b, a) && d < b._lanceReach + a.r) b._lanceCands.push({ t: a, d, nx: -nx, ny: -ny });
     }
   }
   for (const a of ents) {
@@ -3012,12 +3403,10 @@ function hurt(world, entity, amount, sourceId = null) {
     // Remember who struck me (a real attacker, not self/hazard-less): the scavenger brain reads
     // this to bolt away from its attacker. `hit` (0.18 combat vs 0.05 environmental) times the flee.
     if (sourceId && sourceId !== entity.id) entity.targetId = sourceId;
-    // Struck by another cell (or its weapon/hazard) → a red damage flash, distinct from the white
-    // flash of environmental stress (oxygen/light/starvation set e.hit directly, never through here).
-    // Scoped to the player and gated on the source being a real entity, so metabolism tags don't red-flash.
-    if (entity.kind === 'player' && sourceId && sourceId !== entity.id && world.entities.some(x => x.id === sourceId)) {
-      entity.combatHit = 0.32;
-    }
+    // Struck by another cell (or its weapon/hazard) → recent combat damage. Hunter policy uses this
+    // to disengage from losing exchanges; the renderer also uses it for the player's red hit flash.
+    // Environmental stress has no entity source and therefore never trips combat retreat.
+    if (sourceId && sourceId !== entity.id && world.entities.some(x => x.id === sourceId)) entity.combatHit = 0.32;
     if (entity.colony && entity.colony.length > 0) {
       for (let i = entity.colony.length - 1; i >= 0; i--) {
         const seg = entity.colony[i];
@@ -3065,10 +3454,17 @@ function hurt(world, entity, amount, sourceId = null) {
       // field is left biomass+lipids only: the scavengers eat the meat, the hunters keep the charge.
       if (ATP_HARVESTERS.has(killer.controller) || killer.kind === 'player') {
         const room = caps(killer).energy - (killer.cargo.energy || 0);
+        const playerYield = killer.kind === 'player' || killer.friendly;
+        const drainFrac = playerYield ? ATP_HARVEST.playerDrainFrac : ATP_HARVEST.npcDrainFrac;
+        const perRadius = playerYield ? ATP_HARVEST.playerPerRadius : ATP_HARVEST.npcPerRadius;
         if (room > 0) {
-          killer.cargo.energy += Math.min(room, (entity.cargo.energy || 0) * ATP_HARVEST.drainFrac + entity.r * ATP_HARVEST.perRadius);
+          killer.cargo.energy += Math.min(room, (entity.cargo.energy || 0) * drainFrac + entity.r * perRadius);
         }
         entity.cargo.energy = 0; // charge stripped — the corpse field carries no ATP
+      }
+      if (HUNTER_GUILD.has(killer.controller) && !killer.friendly) {
+        const feast = clamp(entity.r / 72 + (entity.cargo.biomass || 0) / 150, 0.10, 1);
+        killer.reproHeat = clamp((killer.reproHeat || 0) + 0.10 + 0.28 * feast, 0, 1);
       }
       if (hasOrg(killer, 'necrosis_gland')) {
         const st = ORGANELLES.necrosis_gland.stats;
@@ -3197,8 +3593,17 @@ function bloomDeath(world, e) {
 // drifts in, so a wiped layer can recover instead of dying forever — "keep the quota, but small."
 const POP_CAP = 150;                // performance ceiling only — normal life sits well below it
 const ALGAE_CAP = 72;               // the canopy fungus mints algae up to here (the food base)
-const SCAV_TARGET = 26;             // scavengers immigrate toward this; they emigrate when starved
+const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
 const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood: 1 }); // fission-guild safety net
+
+function scavengerTarget(world) {
+  let detritus = 0, hunterPressure = 0;
+  for (const f of world.fields) detritus += (f.stock.biomass || 0) + (f.stock.lipids || 0) + (f.stock.energy || 0);
+  for (const e of world.entities) if (e.alive && HUNTER_GUILD.has(e.controller)) hunterPressure++;
+  // Open-boundary carrying signal: corpse pulses draw scavengers in; barren or predator-heavy water
+  // lets them flow back out. The response is deliberately broad and capped for performance.
+  return Math.round(clamp(8 + detritus / 220 - hunterPressure * 0.14, 8, 42));
+}
 
 // A hunter is ready to divide when it is GORGED (the user's spec): ATP brimming AND biomass and
 // lipids near full. Only the fission guild (predator/protozoan/metazoan + player) carries the
@@ -3206,14 +3611,30 @@ const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood:
 // — so reproduction is fuelled by successful predation, and fission spends it all. Food paces it.
 function fissionReady(entity) {
   if (!hasOrg(entity, 'cleavage_furrow')) return false;
+  if ((entity.fissionCooldown || 0) > 0) return false;
   const cap = caps(entity), st = ORGANELLES.cleavage_furrow.stats;
   // Must be healthy and carry a little matter to build the daughter from...
   if (entity.hp < cap.hp * 0.6) return false;
   if ((entity.cargo.biomass || 0) < cap.biomass * st.biomassFrac) return false;
-  // ...then EITHER a full ATP reservoir (fast path, prey-rich) OR a full fat reserve (robust floor,
-  // prey-poor deep). ATP is the flavourful primary; lipids are the never-burn safety net.
-  return (entity.cargo.energy || 0) >= cap.energy * st.atpFrac
-      || (entity.cargo.lipids || 0) >= cap.lipids * st.lipidFrac;
+  const atpReady = (entity.cargo.energy || 0) >= cap.energy * st.atpFrac;
+  const lipidReady = (entity.cargo.lipids || 0) >= cap.lipids * st.lipidFrac;
+  return atpReady || lipidReady;
+}
+
+// Wild reproduction is a continuous stochastic hazard rather than a reserve tripwire. Every fill
+// fraction contributes smoothly; ATP is steepest so a fat but empty hunter is dormant, while a
+// repeatedly successful hunter becomes increasingly likely to divide. This is intentionally separate
+// from fissionReady(), which is the player's explicit, legible command affordance.
+function wildFissionRate(entity) {
+  if (!hasOrg(entity, 'cleavage_furrow') || (entity.fissionCooldown || 0) > 0) return 0;
+  const cap = caps(entity);
+  const hp = clamp(entity.hp / Math.max(1, cap.hp), 0, 1);
+  const biomass = clamp((entity.cargo.biomass || 0) / Math.max(1, cap.biomass), 0, 1);
+  const energy = clamp((entity.cargo.energy || 0) / Math.max(1, cap.energy), 0, 1);
+  const lipids = clamp((entity.cargo.lipids || 0) / Math.max(1, cap.lipids), 0, 1);
+  const heat = clamp(entity.reproHeat || 0, 0, 1);
+  const pulse = 0.15 + 5.5 * heat * heat;
+  return 0.35 * pulse * Math.pow(hp, 2.3) * Math.pow(biomass, 1.5) * Math.pow(energy, 3.2) * Math.pow(lipids, 1.8);
 }
 
 // Binary fission: cleave one gorged cell into two. Drains ALL ATP (mitosis is expensive) and
@@ -3221,17 +3642,31 @@ function fissionReady(entity) {
 // spent building the second body. Both daughters roll genetic drift (mutateOnFission).
 function doFission(world, e) {
   const cap = caps(e), res = ORGANELLES.cleavage_furrow.stats.childReserve;
+  const fissionFuel = {
+    energy: (e.cargo.energy || 0) / Math.max(1, cap.energy),
+    biomass: (e.cargo.biomass || 0) / Math.max(1, cap.biomass),
+    lipids: (e.cargo.lipids || 0) / Math.max(1, cap.lipids)
+  };
   const daughter = makeSoftBody(world, e.kind, wrapX(e.x + rand(world, -e.r - 6, e.r + 6)), e.y + rand(world, -8, 8), {
     r: e.r, baseR: e.baseR, biomassMass: e.biomassMass, mass: e.mass,
     controller: e.controller, color: e.color, depthHome: e.depthHome, trophicRole: e.trophicRole,
     organelles: { ...e.organelles }, strain: e.strain, strainPotency: e.strainPotency,
     bodyPlan: e.bodyPlan, photophobic: e.photophobic, friendly: e.friendly, ownerId: e.ownerId,
-    ruptureThreshold: e.ruptureThreshold, ballastGas: (e.ballastGas || 0) * 0.5,
+    ruptureThreshold: e.ruptureThreshold, ballastGas: (e.ballastGas || 0) * 0.5, reproHeat: (e.reproHeat || 0) * 0.35,
     cargo: { biomass: cap.biomass * res, lipids: cap.lipids * res, energy: 0 }, grace: 1.6
   });
   e.cargo.biomass = cap.biomass * res;
   e.cargo.lipids = cap.lipids * res;
   e.cargo.energy = 0;
+  e.reproHeat = (e.reproHeat || 0) * 0.25;
+  // Wild fission is a real reproductive cycle, not an attack cooldown. A longer refractory
+  // window lets a successful lineage bloom in visible generations while preventing a rich algae
+  // patch from becoming a frame-by-frame doubling cascade. Player/friendly division keeps its
+  // responsive original cadence; their supply and command path already pace reproduction.
+  const wildHunter = e.kind !== 'player' && !e.friendly;
+  const refractory = wildHunter ? rand(world, 48, 72) : rand(world, 14, 22);
+  e.fissionCooldown = refractory;
+  daughter.fissionCooldown = refractory + rand(world, 0, 5);
   mutateOnFission(world, daughter);
   mutateOnFission(world, e);
   e._capsEpoch = -1; e.hp = Math.min(e.hp, caps(e).hp);
@@ -3239,7 +3674,8 @@ function doFission(world, e) {
   if (FREE_HUNTERS.has(daughter.controller)) initBrain(world, daughter, clamp((daughter.y - WORLD.ruptureTop) / 1700, 0, 1));
   else if (daughter.controller === 'scavenger') daughter.brainState = 'forage';
   world.entities.push(daughter);
-  world.events.push({ type: 'fission', entityId: e.id, childId: daughter.id, controller: e.controller });
+  world.stats.fissions += 1;
+  world.events.push({ type: 'fission', entityId: e.id, childId: daughter.id, controller: e.controller, fuel: fissionFuel });
   return daughter;
 }
 
@@ -3282,19 +3718,31 @@ function mutateOnFission(world, e) {
 function populationTick(world, dt) {
   const n = world.entities.length;
   let emigrants = null;
+  let scavN = 0;
+  for (const e of world.entities) if (e.alive && e.controller === 'scavenger') scavN++;
+  const scavTarget = scavengerTarget(world);
   for (let i = 0; i < n; i++) {
     const e = world.entities[i];
     if (!e.alive || e.kind === 'player' || e.ownerId) continue; // owned buds/companions don't self-divide
     // Fission guild: a gorged hunter cleaves in two → the froth's self-replication + selection.
-    if (fissionReady(e)) { if (world.entities.length < POP_CAP) doFission(world, e); continue; }
+    const divisionRate = wildFissionRate(e);
+    if (divisionRate > 0 && world.rng() < 1 - Math.exp(-divisionRate * dt)) {
+      if (world.entities.length < POP_CAP) doFission(world, e);
+      continue;
+    }
     // Scavengers emigrate once their reserves run out — they drift off to forage elsewhere rather
     // than starving in place. Removed cleanly (no corpse), the outbound half of their migration.
     if (e.controller === 'scavenger') {
       const cap = caps(e);
-      if ((e.cargo.biomass || 0) < cap.biomass * 0.10 && (e.cargo.energy || 0) < cap.energy * 0.10) {
+      const starved = (e.cargo.biomass || 0) < cap.biomass * 0.10 && (e.cargo.energy || 0) < cap.energy * 0.10;
+      const overPressure = Math.max(0, (scavN - scavTarget) / Math.max(1, scavTarget));
+      if (starved) {
         e._emigrate += dt;
-        if (e._emigrate > 4) { e.alive = false; (emigrants ||= []).push(e); world.events.push({ type: 'emigrate', entityId: e.id }); }
+        if (e._emigrate > 4) { e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller }); }
       } else e._emigrate = 0;
+      if (e.alive && overPressure > 0 && world.rng() < overPressure * 0.18 * dt) {
+        e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller });
+      }
     }
   }
   if (emigrants) world.entities = world.entities.filter(x => x.alive || !emigrants.includes(x));
@@ -3340,6 +3788,8 @@ function spawnTick(world, dt) {
   if (world.spawn.algae <= 0 && algaeN < ALGAE_CAP) {
     world.spawn.algae = rand(world, 0.5, 1.1);
     spawnAlgae(world, { mature: false, y: WORLD.canopy + rand(world, 40, 170) });
+    world.stats.algaeBirths += 1;
+    world.events.push({ type: 'algae_birth', controller: 'algae' });
   }
   // SCAVENGERS immigrate toward a soft target (they emigrate when starved, see populationTick) —
   // a migratory forager pool that flows through. Below target the froth draws foragers in.
@@ -3347,7 +3797,11 @@ function spawnTick(world, dt) {
   // real numbers come from fission — so a crashed hunter layer can still recover.
   if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
     world.spawn.npc = rand(world, 0.7, 1.5);
-    if (scavN < SCAV_TARGET) spawnScavenger(world);
+    if (scavN < scavengerTarget(world)) {
+      spawnScavenger(world);
+      world.stats.immigrations += 1;
+      world.events.push({ type: 'immigrate', controller: 'scavenger' });
+    }
     else {
       const esc = escalationLevel(world);
       // The deep floor GROWS with escalation, and its mix tilts toward the monstrous castes: at low
@@ -3367,6 +3821,10 @@ function spawnTick(world, dt) {
       else if (want === 'protozoan') spawnProtozoan(world, { escalation: esc });
       else if (want === 'metazoan') spawnMetazoan(world, { escalation: esc });
       else if (want === 'brood') spawnBrood(world, { escalation: esc });
+      if (want) {
+        world.stats.immigrations += 1;
+        world.events.push({ type: 'immigrate', controller: want });
+      }
     }
   }
   if (world.spawn.exotic <= 0) {
@@ -3444,6 +3902,9 @@ function spawnAlgae(world, opts = {}) {
   });
   // Seed a starting charge of ballast gas so a fresh bloom is mildly buoyant (mature more so).
   e.ballastGas = e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
+  // Lineage-scale metabolic variation prevents a shared light/depth field from phase-locking the
+  // whole crop into one global bob. It changes period, not the guarantee that full gas can return.
+  e.ecologyRate = opts.ecologyRate ?? rand(world, 0.62, 1.48);
   applyStrain(world, e);
   world.entities.push(e);
   return e;
@@ -3479,7 +3940,7 @@ function spawnPredator(world, opts = {}) {
   const roll = world.rng();
   if (roll < 0.42 + depthT * 0.3) e.organelles.lance_bristle = 1 + Math.round(depthT);
   if (roll > 0.62 - depthT * 0.2) { e.organelles.toxin_launcher = 1; e.cargo.toxins = Math.max(e.cargo.toxins || 0, rand(world, 8, 18)); }
-  e.photophobic = y >= WORLD.deepTop; // only the deepest predators are dark-adapted
+  e.photophobic = y >= WORLD.ruptureTop; // rupture/deep predators are light-vampires, not surface pursuers
   applyEscalation(e, opts.escalation || 0);
   applyStrain(world, e);
   assignBody(e);
@@ -3658,7 +4119,6 @@ function bestBodyTarget(entity, world, player) {
     if (entity.friendly && other.kind === 'player') continue;
     if (entity.friendly && other.friendly) continue; // allies never hunt allies
     if (other.friendly && entity.kind === 'player') continue;
-    if (entity.controller === 'predator' && other.controller === 'protozoan') continue;
     const d = distWrap(entity.x, entity.y, other.x, other.y);
     // Distant bodies can never win the score (the -d/280 penalty alone sinks them, and
     // marks are only ever painted at close range), so skip the megamorphic stat reads
@@ -3670,26 +4130,34 @@ function bestBodyTarget(entity, world, player) {
     // Algae are DEFENSELESS food — the froth's easiest, safest meal. Hunters strongly prefer a bloom
     // to another armed hunter, so the deep grazes the algae instead of grinding itself to the floor
     // in attrition wars. A sinking/deep bloom is easier still (it can't drift away).
-    const algaeBonus = other.controller === 'algae' ? (2.2 + ((other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 2.0 : 0)) : 0;
-    const weak = other.hp / Math.max(1, oCapHp) < 0.55 ? 1.3 : 0;
+    const algaeBonus = other.controller === 'algae'
+      ? 2.2 + 2.0 * logistic((other.y - WORLD.nurseryBottom) / 240) + (other.fallState === 'sinking' ? 0.35 : 0)
+      : 0;
+    const otherHpFill = other.hp / Math.max(1, oCapHp);
+    const weak = 1.3 * logistic((0.55 - otherHpFill) * 10);
     // Live prey that strays close is aggravating — but a FELLOW HUNTER nearby does NOT trigger the
     // lock-on (that mutual proximity-aggro is what made clustered hunters dogpile each other). Only
     // non-guild bodies (the player, scavengers) provoke the reflex.
-    const proximityAggro = (other.controller !== 'algae' && !FREE_HUNTERS.has(other.controller) && d < 270) ? 3.0 * (1 - d / 270) : 0;
+    const proximityAggro = (other.controller !== 'algae' && !HUNTER_GUILD.has(other.controller)) ? 3.0 * Math.exp(-d / 150) : 0;
     // The froth smells weakness: a body running out of ATP draws the hunters in (but not fellow hunters).
-    const starving = (other.controller !== 'algae' && !FREE_HUNTERS.has(other.controller) && (other.cargo.energy || 0) < 1.5) ? 1.8 : 0;
+    const starving = (other.controller !== 'algae' && !HUNTER_GUILD.has(other.controller))
+      ? 1.8 * Math.exp(-(other.cargo.energy || 0) / 5) : 0;
     // Death-pheromone: the swarm converges on whatever its own director marked.
     const marked = ((other.marked || 0) > 0 && other.markedBy === entity.ownerId) ? 6.0 : 0;
     // Risk: prey bigger and/or far tankier than me is dangerous. Scaled by my caution and
     // discounted by my drive — a bold, starving hunter charges anyway; a fed, timid one balks.
     const sizeRatio = other.r / Math.max(10, entity.r);
-    const tanky = oCapHp > myCapHp * 1.3 ? 0.6 : 0;
+    const tanky = 0.6 * logistic((oCapHp / Math.max(1, myCapHp) - 1.3) * 5);
     const risk = ((sizeRatio > 1 ? sizeRatio - 1 : 0) + tanky) * (2.4 * caution) * riskTolerance;
     // Cannibalism tax: a hunter prefers the food chain (scavengers, falling blooms) to its own
     // guild, so the predator layer competes for prey instead of slaughtering itself down to the
     // floor — but a weak or right-on-top-of-me rival is still fair game (selection still bites).
-    const guildTax = (FREE_HUNTERS.has(other.controller) && !entity.friendly) ? 6.5 : 0;
-    const score = reward + algaeBonus + weak + proximityAggro + starving + marked - risk - guildTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    const guildTax = (HUNTER_GUILD.has(entity.controller) && HUNTER_GUILD.has(other.controller) && !entity.friendly) ? 14 : 0;
+    const rawClaims = world._targetClaims?.get(other.id) || 0;
+    const claimsByOthers = Math.max(0, rawClaims - (entity._targetRef === other ? 1 : 0));
+    const claimCapacity = Math.max(1, Math.ceil(other.r / 30));
+    const crowdTax = Math.max(0, claimsByOthers - claimCapacity + 1) * 1.7;
+    const score = reward + algaeBonus + weak + proximityAggro + starving + marked - risk - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   entity._preyScore = best ? bestScore : -Infinity;
@@ -4224,4 +4692,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, escalation: world.escalation || 0, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, fleeThreat, BRAIN, FREE_HUNTERS, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation };
