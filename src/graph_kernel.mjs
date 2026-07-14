@@ -103,6 +103,7 @@ const STRAINS = Object.freeze({
   // venom-fuel metabolism.
   predator: [
     { org: 'velocity_lance', tint: '#ff3d9a' },
+    { org: 'cleavage_furrow', tint: '#ff9ad2' },
     { org: 'saw_lance', tint: '#c07fb0' },
     { org: 'rupture_auger', tint: '#ff5f8f' },
     { org: 'siphon_rasp', tint: '#c0304f' },
@@ -175,6 +176,7 @@ const OVERLAP_STACK_K = 1.0;
 // jointly set a combustion multiplier that scales the Volatile Vacuole blast and the
 // flamethrower stream, and firing BURNS that fuel — an empty tank pops weakly, a full,
 // oxygen-charged, fat-rich body erupts. Ties combat back into the algal O2/lipid economy.
+const FLAME_TICK = 2.4;       // flamethrower damage multiplier per contact tick — substantial reward for the hard-to-aim cone
 const COMBUSTION = Object.freeze({
   o2Gain: 1.3,        // full O2 tank adds +130% to fire output
   lipidGain: 0.7,     // full lipid reserve adds +70%
@@ -594,7 +596,7 @@ export const ORGANELLES = Object.freeze({
   saw_lance: {
     name: 'Saw Lance', tier: 3, action: null, stackable: true, max: 6, category: 'lance',
     desc: 'A grinding blade from deep predators. Flat, reliable damage regardless of speed, and it bites from wider angles — but it never spikes.',
-    stats: { damage: 30, length: 44, rupturePower: 1.05, alignmentFloor: 0.12, flat: true }
+    stats: { damage: 18, length: 44, rupturePower: 1.05, alignmentFloor: 0.12, flat: true }
   },
   siphon_rasp: {
     name: 'Siphon Rasp', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'rasp',
@@ -610,7 +612,7 @@ export const ORGANELLES = Object.freeze({
     name: 'Combustion Vesicle', tier: 3, action: 'flame', stackable: true, max: 4, category: 'execute',
     desc: 'A flamethrower organ. Sprays a held cone of burning slurry — igniting your lipids (fuel) with banked oxygen (oxidizer) and toxins (accelerant). Runs far hotter the more O2 you carry, and drains all three tanks fast. More vesicles widen and thicken the flame.',
     // Per emitted puff (fires ~1/cooldown while held). Costs are small per-puff but relentless.
-    stats: { damage: 11, o2Cost: 0.05, lipidCost: 0.4, toxinCost: 0.35, energyCost: 0.7, cooldown: 0.05, puffRadius: 26, puffLife: 0.34, reach: 96, coneSpread: 0.5 }
+    stats: { damage: 24, o2Cost: 0.05, lipidCost: 0.4, toxinCost: 0.35, energyCost: 0.7, cooldown: 0.05, puffRadius: 30, puffLife: 0.34, reach: 96, coneSpread: 0.5 }
   },
   leech_rasp: {
     name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
@@ -834,6 +836,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'neuro_barb', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Neuro-Toxin Barb', desc: 'Struck bodies sometimes turn and fight for you for a while.', cost: { biomass: 22, enzymes: 2 }, organelle: 'neuro_barb', requiresDiscovery: 'neuro_barb', stackLimit: 3 },
   { id: 'orbital_spores', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Orbital Spore-Bodies', desc: 'Daughter cells circle you and grind anything they brush.', cost: { biomass: 22, spores: 2 }, organelle: 'orbital_spores', requiresDiscovery: 'orbital_spores', stackLimit: 3 },
   { id: 'fission_bud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Fission Bud', desc: 'Each kill may bud a short-lived allied grazer that fights at your side.', cost: { biomass: 22, crystals: 1 }, organelle: 'fission_bud', requiresDiscovery: 'fission_bud', stackLimit: 3 },
+  { id: 'cleavage_furrow', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Cleavage Furrow', desc: 'The binary-fission engine sequenced from the predator lineage: gorge a full ATP reservoir (or a full fat reserve) and cleave into a friendly clone — daughters drift genetically. Not innate; you tear this gene from the deep.', cost: { biomass: 20, lipids: 12, enzymes: 1 }, organelle: 'cleavage_furrow', requiresDiscovery: 'cleavage_furrow', stackLimit: 1 },
 
   // Symbiotic colony: nothing here works without the Pheromone Gland — the swarm-
   // conducting organ you harvest from a deep swarm-director. Graft the gland, then
@@ -985,7 +988,7 @@ export function createWorld(options = {}) {
   const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
   player.carriedStrains = new Map();
   world.playerId = player.id;
@@ -2368,8 +2371,11 @@ function updateHazards(world, dt) {
         burst = true; break;
       }
       const isProjectile = h.kind === 'toxic_projectile' || h.kind === 'spore_projectile' || h.kind === 'seeker' || h.kind === 'harpoon';
-      const overlap = clamp((h.radius + e.r - d) / Math.max(8, h.radius), 0, 1.4);
-      hurt(world, e, h.damage * overlap * dt * (isProjectile ? 18 : 1), h.sourceId || h.id);
+      const flame = h.kind === 'flame';
+      // Flame hits EVERYTHING inside its strike zone for FULL damage — no overlap falloff, so a body
+      // caught anywhere in the cone burns at full rate (the tricky-to-aim flamethrower earns its keep).
+      const overlap = flame ? 1.0 : clamp((h.radius + e.r - d) / Math.max(8, h.radius), 0, 1.4);
+      hurt(world, e, h.damage * overlap * dt * (isProjectile ? 18 : flame ? FLAME_TICK : 1), h.sourceId || h.id);
       // Harpoon Spine hauls the struck body toward whoever fired it.
       if (h.kind === 'harpoon' && h.pull) {
         const src = world.entities.find(x => x.id === h.sourceId);
@@ -3094,7 +3100,7 @@ function removeDead(world) {
       // the death, so the long swim home to Yuki is where you bank your discoveries.
       const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
