@@ -65,6 +65,7 @@ const STRAINS = Object.freeze({
   // and defensive genes live here: self-mending, oily fuel-synthesis, a thorned skin,
   // an acid pellicle. No spines, no lances, no mouths — a bloom has none of those.
   algae: [
+    { org: 'jettison_vesicle', tint: '#a8e0d0' },
     { org: 'lipid_repair_loom', tint: '#4fbf6f' },
     { org: 'lipogenic_processor', tint: '#c9e86f' },
     { org: 'thorn_coat', tint: '#8fbf5f' },
@@ -774,7 +775,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'oxygen_vacuole', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Ballast Bladder', desc: 'Your gas-ballast tank. Fermentation fills it with lift-gas; hold S to flood (vent gas, dive), W to hold trim. Diving needs this organ — nothing else gives lift.', cost: { biomass: 12, lipids: 7 }, organelle: 'oxygen_vacuole', stackLimit: 6 },
   { id: 'oxygen_store', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Vesicle', desc: 'Banks more internal oxygen as respiration fuel for the oxidase / mitochondrion path — capacity, not lift. Lets a diver carry a deep breath.', cost: { biomass: 12, lipids: 5 }, organelle: 'oxygen_store', requiresDiscovery: 'oxygen_store', stackLimit: 5 },
   { id: 'oxygen_tolerance', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Oxygen Tolerance Vesicle', desc: 'Raises the fraction of your oxygen tank you can safely hold, so a full breath near the bright surface no longer poisons you. Tolerance, not storage.', cost: { biomass: 12, lipids: 4 }, organelle: 'oxygen_tolerance', requiresDiscovery: 'oxygen_tolerance', stackLimit: 5 },
-  { id: 'jettison_vesicle', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Jettison Vesicle', desc: 'Eject a slug of biomass (T): shed weight, lurch upward, and spill a feed-field — a deliberate ascent and an escape from a swarm.', cost: { biomass: 14, lipids: 5 }, organelle: 'jettison_vesicle', stackLimit: 3 },
+  { id: 'jettison_vesicle', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Jettison Vesicle', desc: 'Eject a slug of biomass (T): shed weight, lurch upward, and spill a feed-field — a deliberate ascent and an escape from a swarm.', cost: { biomass: 14, lipids: 5 }, organelle: 'jettison_vesicle', requiresDiscovery: 'jettison_vesicle', stackLimit: 3 },
   { id: 'gas_gland', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Gas Gland', desc: 'Ferments biomass into lift-gas faster, so you re-inflate ballast and float back up quicker after a sink or a dive.', cost: { biomass: 14, lipids: 6 }, organelle: 'gas_gland', requiresDiscovery: 'gas_gland', stackLimit: 4 },
   { id: 'pressure_bladder', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Pressure Bladder', desc: 'Packs in more ballast gas — a bigger float and a deeper reserve to blow when diving.', cost: { biomass: 13, lipids: 8 }, organelle: 'pressure_bladder', requiresDiscovery: 'pressure_bladder', stackLimit: 5 },
   { id: 'ballast_siphon', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Ballast Siphon', desc: 'Dumps ballast gas faster while flooded — a sharper, quicker dive.', cost: { biomass: 12, lipids: 6 }, organelle: 'ballast_siphon', requiresDiscovery: 'ballast_siphon', stackLimit: 4 },
@@ -1995,7 +1996,14 @@ function updateEnvironmentAndMetabolism(world, dt) {
 
     const mito = orgCount(e, 'mitochondrion');
     if (mito > 0 && (e.cargo.lipids || 0) > 0.04 && (e.cargo.energy || 0) < caps(e).energy && e.oxygen > 0.025) {
-      const lipidBurn = Math.min(e.cargo.lipids, ORGANELLES.mitochondrion.stats.lipidBurn * mito * dt);
+      // Smooth homeostatic burn (the fermentation curve, but lipids↔ATP instead of biomass↔ATP): burn
+      // FAST when lipids are full and ATP is low; TAPER as ATP fills so a full fat reserve isn't dumped
+      // into ATP you can't hold (the old flat rate burned at full speed until ATP hit the exact cap);
+      // and SLOW when lipids run low, protecting the fat reserve you need for the deep.
+      const atpFill = clamp((e.cargo.energy || 0) / Math.max(1, caps(e).energy), 0, 1);
+      const lipidFill = clamp((e.cargo.lipids || 0) / Math.max(1, caps(e).lipids), 0, 1);
+      const burnDrive = (0.10 + 1.4 * Math.pow(lipidFill, 1.3)) * (1 - atpFill);
+      const lipidBurn = Math.min(e.cargo.lipids, ORGANELLES.mitochondrion.stats.lipidBurn * mito * burnDrive * dt);
       const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.12);
       if (oxygenBurn > 0.001) {
         e.cargo.lipids -= lipidBurn;

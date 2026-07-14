@@ -22,35 +22,39 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 /* Stage-guidance line inside the shop (reaches touch + desktop). */
 .shopGuide{flex:0 0 auto;padding:8px 16px;font-size:11px;line-height:1.38;color:#d3ecda;background:linear-gradient(180deg,rgba(134,210,255,.09),rgba(8,8,22,0));border-bottom:1px solid rgba(255,255,255,.10)}
 .shopGuide b{color:var(--good)}.shopGuide .stg{color:var(--gold);font-weight:950;text-transform:uppercase;letter-spacing:.05em;font-size:9px}
-/* "Your Body" panel — only shown in the shop, its own scroll for big late-game cells. */
-.bodyPanel{flex:0 0 auto;border-bottom:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(158,240,189,.05),rgba(8,8,22,0))}
-.bodyPanelHead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 16px;font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--good);cursor:pointer;user-select:none}
-.bodyPanelHead small{color:var(--muted);font-weight:800;letter-spacing:0;text-transform:none}
-.bodyPanelHead .chev{transition:transform .2s ease;opacity:.8}
-.bodyPanel.collapsed .chev{transform:rotate(-90deg)}
-.bodyPanel.collapsed .bodyScroll{display:none}
-.bodyScroll{max-height:32vh;overflow:auto;padding:2px 16px 12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}
-.bodyScroll .sub{margin:8px 0 6px;color:#d6a2ff;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em}
-.org{cursor:pointer}
-.org .orgDetail{display:none;margin-top:6px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px;color:var(--muted);font-size:10px;line-height:1.34}
-.org .orgDetail .meta{margin-top:4px;color:#9fd0ff;font-weight:800}
-.org.open{grid-column:1/-1;border-color:rgba(158,240,189,.55);background:rgba(158,240,189,.09)}
-.org.open .orgDetail{display:block}
-/* Body-panel action buttons: grow this organ, or jump to its shop system (DNA variants live there). */
-.bodyActs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.bodyBtn{appearance:none;border:1px solid rgba(158,240,189,.4);border-radius:9px;padding:6px 9px;font-size:10px;font-weight:950;color:#eaffee;background:rgba(18,38,30,.72);cursor:pointer;letter-spacing:.02em;text-align:left}
-.bodyBtn.graft{border-color:rgba(158,240,189,.55);background:rgba(158,240,189,.14);color:#eaffee}
-.bodyBtn.graft:hover{background:rgba(158,240,189,.24)}
-.bodyBtn.graft.dis{opacity:.5;border-color:rgba(255,150,90,.4);color:#ffdca6;background:rgba(255,120,80,.08);cursor:not-allowed}
-.bodyBtn.dna{border-color:rgba(176,109,255,.45);color:#d6a2ff;background:rgba(176,109,255,.10)}
-.bodyBtn.dna:hover{background:rgba(176,109,255,.2)}
-.bodyBtn.maxed{border-color:rgba(255,255,255,.18);color:var(--muted);background:rgba(255,255,255,.04);cursor:default}
+/* "Your Body" IS the shop: a frozen header over the scrollable organelle store (#shopBody). */
+.bodyHead{flex:0 0 auto;padding:9px 16px 7px;font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--good)}
+.bodyHead small{color:var(--muted);font-weight:800;letter-spacing:0;text-transform:none}
+/* Organelle cards: compact collapsed row (name + ×N + ⊕ + cost); TAP the card to expand its detail. */
+.offer.organelle{cursor:pointer;min-height:auto}
+.offer.organelle .oTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.offer.organelle .oName{font-weight:950;font-size:12px;color:#fff;line-height:1.15}
+.offer.organelle .ownBadge{display:inline-block;margin-left:6px;font-size:10px;font-weight:950;color:#9ef0bd;border:1px solid rgba(158,240,189,.4);border-radius:99px;padding:0 6px}
+.offer.organelle .oSub{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px}
+.offer.organelle .oCost{font-size:10px;font-weight:900;color:var(--good);white-space:nowrap}
+.offer.organelle .oReason{font-size:10px;font-weight:900;margin-top:5px;line-height:1.25}
+.offer.organelle .oReason.unaff{color:#ffcf8a}.offer.organelle .oReason.lock{color:#b98ad6}
+.offer.organelle .oDetail{display:none;margin-top:7px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px;color:var(--muted);font-size:10px;line-height:1.34}
+.offer.organelle .oDetail .meta{margin-top:4px;color:#9fd0ff;font-weight:800}
+.offer.organelle .oDetail .catNote{font-size:9px;font-weight:900;color:#f5d47a;opacity:.9;margin-top:5px}
+.offer.organelle.open{grid-column:1/-1}
+.offer.organelle.open .oDetail{display:block}
+/* The ⊕ graft/buy button — a 1-CLICK buy that needs no expand. */
+.oBuy{appearance:none;border:1px solid rgba(158,240,189,.5);border-radius:9px;padding:6px 10px;font-size:10px;font-weight:950;color:#eaffee;background:rgba(158,240,189,.16);cursor:pointer;white-space:nowrap;flex:0 0 auto}
+.oBuy:hover{background:rgba(158,240,189,.28)}
+.oBuy.dis{border-color:rgba(255,180,90,.5);color:#ffcf8a;background:rgba(255,150,60,.10)}
+.oBuy.maxed{border-color:rgba(255,255,255,.16);color:var(--muted);background:rgba(255,255,255,.04);cursor:default}
+.oBuy.lockicon{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.03);cursor:default;opacity:.7}
+/* Tri-state tints so the cases READ apart: READY (green, buy now) · CAN'T-AFFORD (amber, you own the recipe) · LOCKED (dim, DNA-gated). */
+.offer.organelle.ready{border-color:rgba(158,240,189,.5);background:rgba(158,240,189,.075)}
+.offer.organelle.unaff{border-color:rgba(255,180,90,.42);background:rgba(255,160,70,.07);opacity:1}
+.offer.organelle.lock{border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.02);opacity:.6;cursor:pointer}
+.offer.organelle.maxed{border-color:rgba(158,240,189,.28);background:rgba(158,240,189,.045);cursor:pointer;opacity:1}
 .section.grpFlash{animation:grpFlash 1.1s ease}
 @keyframes grpFlash{0%{background:rgba(176,109,255,.22);box-shadow:0 0 0 1px rgba(176,109,255,.5)}100%{background:transparent;box-shadow:none}}
 /* The recommended survival exchange — a bright ribbon so the eye lands on Repair/ATP/Detox, not ammo. */
 .offer.exchange.rec{position:relative;outline:1.5px solid rgba(255,255,255,.5);outline-offset:1px}
 .offer.exchange .recTag{display:block;font-size:8px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#fff;margin-bottom:3px;text-shadow:0 1px 4px rgba(0,0,0,.7)}
-@media(max-width:900px){.bodyScroll{max-height:38vh}}
 </style>
 </head>
 <body>
@@ -76,7 +80,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
     </div>
     <div class="toast card" id="toast"></div>
   </div>
-  <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1>Yuki Graft Chamber</h1><p id="shopIntro">Bring Yuki your harvest and be remade. Trade matter across the membrane, graft new organs, and sequence the DNA you tear from the deep — then, when your body is ready, take the mitochondrial Eucharist.</p></div><div class="close" id="closeShop">Close</div></div><div id="shopGuide" class="shopGuide"></div><div id="shopExchange" class="shopExchange"></div><div id="shopWarn" class="shopWarn" style="display:none"></div><div id="bodyPanel" class="bodyPanel"><div class="bodyPanelHead" id="bodyPanelHead"><span>Your Body <small id="bodyCount"></small></span><span class="chev">▾</span></div><div class="bodyScroll"><div class="orgList" id="orgList"></div><div id="colonySection" style="display:none"><div class="sub">Colony</div><div class="orgList" id="colonyList"></div></div></div></div><div id="shopBody"></div></div></div>
+  <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1>Yuki Graft Chamber</h1><p id="shopIntro">Bring Yuki your harvest and be remade. Trade matter across the membrane, graft new organs, and sequence the DNA you tear from the deep — then, when your body is ready, take the mitochondrial Eucharist.</p></div><div class="close" id="closeShop">Close</div></div><div id="shopGuide" class="shopGuide"></div><div id="shopExchange" class="shopExchange"></div><div id="shopWarn" class="shopWarn" style="display:none"></div><div id="bodyHead" class="bodyHead"><span>Your Body <small id="bodyCount"></small></span></div><div id="shopBody"></div></div></div>
   <div class="gameOver" id="gameOver"><div class="box card"><h1>Membrane Cleaved</h1><p>The world did not reset. Your corpse bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
   <div class="focusGate" id="focusGate"><h2>Click to play</h2><p>Click anywhere to sink in and take the controls</p></div>
 </div>
@@ -87,7 +91,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
 const ui = {
-  hpText: el('hpText'), hpFill: el('hpFill'), hpLayers: el('hpLayers'), energyText: el('energyText'), energyFill: el('energyFill'), depthText: el('depthText'), depthFill: el('depthFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), chips: el('chips'), status: el('status'), orgList: el('orgList'), colonySection: el('colonySection'), colonyList: el('colonyList'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyPanel: el('bodyPanel'), bodyPanelHead: el('bodyPanelHead'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), hpVital: el('hpVital'), energyVital: el('energyVital'), depthVital: el('depthVital'), o2Vital: el('o2Vital'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
+  hpText: el('hpText'), hpFill: el('hpFill'), hpLayers: el('hpLayers'), energyText: el('energyText'), energyFill: el('energyFill'), depthText: el('depthText'), depthFill: el('depthFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), chips: el('chips'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), hpVital: el('hpVital'), energyVital: el('energyVital'), depthVital: el('depthVital'), o2Vital: el('o2Vital'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
 };
 function el(id){return document.getElementById(id)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -335,70 +339,68 @@ function closeShop(force){
 }
 // The offerings captured on the last shop render — the "Your Body" panel reads these to wire
 // its "graft another" buttons (an organ's own buyable offering) and its jump-to-system link.
-let lastOffers=[];
-function offerForOrgan(id){return lastOffers.find(o=>o.organelle===id)||lastOffers.find(o=>o.id===id)||null;}
-function groupIndexOf(id){for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;return -1;}
-function scrollToGroup(i){const sec=ui.shopBody.querySelector(`#grp${i}`);if(!sec)return;sec.scrollIntoView({behavior:'smooth',block:'start'});sec.classList.remove('grpFlash');void sec.offsetWidth;sec.classList.add('grpFlash');}
+// "Your Body" IS the shop now: the exchange bar stays a frozen top cross-bar; everything else —
+// your owned organs AND the whole organelle store — lives in one scrollable body, grouped by system.
 function renderShop(){
   const offers=K.getYukiOfferings(world);
-  lastOffers=offers;
-  // Exchange + genome sequencing live in a frozen cross-bar at the top; organelles scroll under.
-  const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
-  // Survival exchanges lead (Repair · Charge ATP · Detox); matter conversions follow; Distill
-  // Toxins (weapon-ammo restock) sinks to the end so it never reads as the thing to do.
   const EXCH_ORDER=['repair','buy_energy','detox','buy_lipids','buy_biomass','buy_toxins'];
   const exOffers=offers.filter(o=>o.kind==='exchange').sort((a,b)=>{const ia=EXCH_ORDER.indexOf(a.id),ib=EXCH_ORDER.indexOf(b.id);return (ia<0?99:ia)-(ib<0?99:ib)});
-  // Flag the single most-needed survival exchange as THE recommendation (never the ammo restock).
   for(const o of exOffers) o._rec=false;
   let topRec=null,topNeed=0.34;
   for(const o of exOffers){if(o.locked)continue;const n=exchangeNeed(o);if(n>topNeed){topNeed=n;topRec=o;}}
   if(topRec) topRec._rec=true;
   const exchanges=[...exOffers, ...offers.filter(o=>o.kind==='sequence')];
-  const rest=offers.filter(o=>!inBar(o));
   ui.shopExchange.innerHTML = exchanges.map(offerCard).join('');
-  // Function-based groups: each system holds its basic organs AND its DNA-gated exotics
-  // together; within a group, ready-to-graft floats to the top and locked/undiscovered sink.
+  const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
+  const rest=offers.filter(o=>!inBar(o));
   const buckets=SHOP_GROUPS.map(()=>[]);
   const groupOf=id=>{for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
   for(const o of rest) buckets[groupOf(o.id)].push(o);
-  const rank=o=>o.locked?(o.undiscovered?3:2):(o.maxed?1:0);
-  const keepScroll=ui.shopBody.scrollTop; // preserve scroll across rebuild (e.g. after a buy deep in the list)
-  ui.shopBody.innerHTML = SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp${i}"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(offerCard).join('')}</div></section>`}).join('');
+  // Order within a system: your owned+affordable grafts, then new affordable, then can't-afford, then locked, maxed last.
+  const rank=o=>{const s=organState(o);if(s==='maxed')return 5;if(s==='lock')return 4;if(s==='unaff')return 3;return orgCardCount(o)>0?0:1;};
+  const keepScroll=ui.shopBody.scrollTop;
+  const total=(hud&&hud.organelles)?hud.organelles.reduce((s,o)=>s+o.count,0):0;
+  const types=(hud&&hud.organelles)?hud.organelles.length:0;
+  if(ui.bodyCount) ui.bodyCount.textContent=`— ${types} types · ${total} organelles · ⊕ to graft · tap for details`;
+  let html=SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp${i}"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(organCard).join('')}</div></section>`}).join('');
+  if(hud.colony&&hud.colony.length>0){html+=`<section class="section"><div class="sectionTitle"><span>Colony</span><small>attached cells</small></div><div class="grid">${hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="offer organelle maxed"><div class="oTop"><div class="oName">${s.label}</div></div><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:7px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('')}</div></section>`;}
+  ui.shopBody.innerHTML=html;
   ui.shopBody.scrollTop=keepScroll;
-  renderBody(); renderGuide(); // the body panel + stage guidance refresh on open and after each buy
-  // Persistent leave-warning banner in the frozen header: low ATP and/or high toxin/O2 stress.
-  // Updates on open + every buy (incl. after a graft's toxin spike — the detox reminder).
+  renderGuide();
   if(ui.shopWarn){const s=shopStress();if(s.stressed){ui.shopWarn.style.display='block';ui.shopWarn.innerHTML='⚠ '+s.msg+' before you leave';}else{ui.shopWarn.style.display='none';}}
-  for(const card of ui.shopOverlay.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault(); const id=card.dataset.id; const kind=card.dataset.kind; const res=K.buyOffering(world,id); if(res.ok){if(kind!=='sequence')toast(kind==='exchange'?'Yuki obliges — the exchange flows through you.':kind==='sacrament'?'Eucharist begun.':kind==='organelle'?'Graft accepted — the body inflames.':'Yuki\'s graft settles into you.'); renderShop();} else toast(res.reason||'Locked.');};
+  // Exchange bar: the whole card buys. Body organelle cards: the ⊕ button buys (1-click, no expand
+  // needed); tapping the card body toggles the detail (description, category, DNA variant notes).
+  for(const card of ui.shopExchange.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault();doBuy(card.dataset.id,card.dataset.kind);};
+  for(const btn of ui.shopBody.querySelectorAll('.oBuy[data-id]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doBuy(btn.dataset.id,btn.closest('.offer').dataset.kind);};
+  for(const card of ui.shopBody.querySelectorAll('.offer.organelle,.offer.sacrament,.offer.colony')) card.onclick=e=>{if(e.target.closest('.oBuy'))return;card.classList.toggle('open');};
 }
-// "Your Body" panel — only rendered in the shop (on open + after each buy), scrollable, with
-// click-to-expand organelle details. Live per-organ activity metrics are a future add.
-function renderBody(){
-  if(!hud) return;
-  const orgs=hud.organelles.slice().sort((a,b)=>(b.tier-a.tier)||a.name.localeCompare(b.name));
-  const total=orgs.reduce((s,o)=>s+o.count,0);
-  ui.bodyCount.textContent=`— ${orgs.length} types · ${total} organelles · tap an organ to grow it`;
-  ui.orgList.innerHTML=orgs.map(o=>{
-    const gi=groupIndexOf(o.id);
-    const sysLabel=gi>=0?SHOP_GROUPS[gi][0]:(o.category||'trait');
-    const meta=[`Tier ${o.tier}`,o.count>1?`×${o.count} copies`:'single',o.action?`Action: ${o.action}`:'Structure',`system: ${sysLabel}`,o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ');
-    // "Graft another" — this organ's own buyable offering, if it has one and isn't maxed.
-    const off=offerForOrgan(o.id);
-    let graftBtn='';
-    if(off&&off.maxed){graftBtn=`<span class="bodyBtn maxed">✓ maxed · ×${o.count}</span>`;}
-    else if(off){const can=off.affordable&&!off.locked;const why=(off.reasons&&off.reasons.length)?off.reasons[0]:'';graftBtn=`<button class="bodyBtn graft${can?'':' dis'}" data-buy="${off.id}">⊕ Graft another${off.costText?` · ${off.costText}`:''}${can?'':(why?` — ${why}`:'')}</button>`;}
-    // "DNA variants" — jump to the shop system this organ belongs to (its DNA-gated variants live there).
-    const dnaBtn=gi>=0?`<button class="bodyBtn dna" data-grp="${gi}">⌕ Variants &amp; DNA — ${SHOP_GROUPS[gi][0]}</button>`:'';
-    return `<div class="org on" data-org="${o.id}"><b>${o.name}${o.count>1?' ×'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}<div class="orgDetail">${o.desc||'A cell organelle.'}<div class="meta">${meta}</div><div class="bodyActs">${graftBtn}${dnaBtn}</div></div></div>`;
-  }).join('');
-  for(const row of ui.orgList.querySelectorAll('.org')) row.onclick=e=>{if(e.target.closest('.bodyBtn'))return;row.classList.toggle('open')};
-  for(const b of ui.orgList.querySelectorAll('.bodyBtn.graft:not(.dis)')) b.onpointerup=e=>{e.preventDefault();e.stopPropagation();const res=K.buyOffering(world,b.dataset.buy);if(res.ok){toast('Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');};
-  for(const b of ui.orgList.querySelectorAll('.bodyBtn.dna')) b.onpointerup=e=>{e.preventDefault();e.stopPropagation();scrollToGroup(+b.dataset.grp);};
-  if(hud.colony&&hud.colony.length>0){ui.colonySection.style.display='';ui.colonyList.innerHTML=hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="org on"><b>${s.label}</b><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('');}else{ui.colonySection.style.display='none';}
+function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='exchange'?'Yuki obliges — the exchange flows through you.':kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
+// How many of this organ you already carry (drives the ×N badge + "Graft +1" wording).
+function orgCardCount(o){if(!hud||!o.organelle)return 0;const oc=hud.organelles.find(x=>x.id===o.organelle);return oc?oc.count:0;}
+// Tri-state so the three cases READ differently (not just in text): ready to graft (affordable),
+// unlocked-but-can't-afford (you own the recipe, just need matter), and locked (DNA-gated / undiscovered).
+function organState(o){if(o.maxed)return 'maxed';if(!o.locked)return 'ready';const onlyMoney=o.reasons&&o.reasons.length&&o.reasons.every(r=>r.startsWith('needs '));return onlyMoney?'unaff':'lock';}
+function organCard(o){
+  const st=organState(o), cnt=orgCardCount(o), theme=o.theme?` theme-${o.theme}`:'';
+  let head;
+  if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';const unlocked=o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>';const pot=(!o.undiscovered&&o.potency)?`<span class="cat" style="border-color:${c}66;color:${c};margin-left:4px">${Math.round(o.potency*100)}%</span>`:'';const upg=(o.carriedPotency&&(!o.potency||o.carriedPotency>o.potency))?`<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a;margin-left:4px">▲ carried — sequence to ${o.potency?'upgrade':'unlock'}</span>`:'';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${unlocked}${pot}${upg}`;}
+  else head=`<span class="cat">${o.kind}</span>`;
+  const catLabel={feeding:'Feeding',metabolism:'Metabolism',structure:'Structure',oxygen:'Oxygen/Buoyancy',movement:'Movement',weapons:'Weapons',swarm:'Swarm'};
+  const catNote=(o.categoryMult>1)?`<div class="catNote">⛓ ${catLabel[o.funcCategory]||o.funcCategory} ×${o.categoryMult} — ${o.categoryOwned} in category inflate exotic cost</div>`:'';
+  const initiation=(o.kind==='organelle')?`<div class="initiation">⚠ initiation: −HP · +toxins</div>`:'';
+  const meta=[cnt>1?`×${cnt} copies`:'',o.funcCategory?`system: ${o.funcCategory}`:'',o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ');
+  let btn;
+  if(st==='maxed')btn=`<span class="oBuy maxed">✓ maxed</span>`;
+  else if(st==='ready')btn=`<button class="oBuy" data-id="${o.id}">⊕ ${cnt>0?'Graft +1':'Graft'}</button>`;
+  else if(st==='unaff')btn=`<button class="oBuy dis" data-id="${o.id}">⊕ Graft</button>`;
+  else btn=`<span class="oBuy lockicon">🔒</span>`;
+  const badge=cnt>0?`<span class="ownBadge">×${cnt}</span>`:'';
+  const cost=o.costText?`<span class="oCost">${o.costText}</span>`:'';
+  const reason=(st==='lock'||st==='unaff')&&o.reasons&&o.reasons.length?`<div class="oReason ${st}">${o.reasons[0]}</div>`:'';
+  return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${catNote}${initiation}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
 }
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 function renderGuide(){ if(ui.shopGuide&&hud) ui.shopGuide.innerHTML=`<span class="stg">Now</span> &nbsp; ${hud.objective||''}`; }
-ui.bodyPanelHead.onclick=()=>ui.bodyPanel.classList.toggle('collapsed');
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';if(o.kind==='exchange'){const need=exchangeNeed(o);const urgent=need>0.55?' urgent':'';const rec=o._rec?' rec':'';return `<div class="offer exchange${out}${theme} ${state}${urgent}${rec}" style="--need:${need.toFixed(3)}" data-kind="exchange" data-id="${o.id}">${o._rec?'<span class="recTag">◉ recommended</span>':''}${exchangeCard(o)}</div>`}if(o.kind==='sequence'){return `<div class="offer sequence ${state}" data-kind="sequence" data-id="${o.id}">${sequenceCard(o)}</div>`}return `<div class="offer ${o.kind}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${graftCard(o)}</div>`}
 // Compact genome-sequencing chip for the exchange bar; greyed (locked) when there's no DNA.
