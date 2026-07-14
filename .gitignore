@@ -1,0 +1,18 @@
+# Dependencies / build artifacts
+node_modules/
+deploy/electron/dist/
+deploy/electron/out/
+**/dist/
+**/build/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+
+# Scratch
+scratchpad/
+*.tmp
+
+# Separate GitHub Pages publishing repo (its own .git)
+deploy/web/
