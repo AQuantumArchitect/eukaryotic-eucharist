@@ -199,7 +199,8 @@ const GRAFT_INITIATION = Object.freeze({ hpFrac: 0.09, hpMin: 7, toxins: 6 });
 // goes dense and plunges. Venting is free, but it spends the internal O2 you need for
 // lift, oxygen tolerance, and aerobic ATP — and you can only re-inflate in oxygenated
 // water. So a heavy tank dives cheaply, but the deep is O2-poor and the ascent is earned.
-const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', ventRate: 1.15, sinkForce: 26 }); // ventRate is now in ballast-GAS units
+const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', trimRate: 0.16 }); // ballast-GAS pumped/vented per second at full W/S — an ANALOG trim, not a binary flood
+const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives a ballast cell's vertical drift (submarine feel)
 // The deepest creatures are dark-adapted — sunlight burns them like vampires. A body
 // tagged photophobic (spawned in the deep) takes HP damage wherever light exceeds the
 // threshold, so it cannot chase you up into the lit shallows without cooking. Surface
@@ -578,7 +579,7 @@ export const ORGANELLES = Object.freeze({
   mineralizing_gland: {
     name: 'Mineralizing Gland', tier: 2, action: null, stackable: true, max: 4, category: 'metabolic',
     desc: 'Precipitates hard crystal from waste: consumes toxins and biomass to grow crystal reserve — turning metabolic poison and bulk into exotic ammunition.',
-    stats: { rate: 0.5, toxinPerCrystal: 3, biomassPerCrystal: 4 }
+    stats: { rate: 0.06, toxinPerCrystal: 3, biomassPerCrystal: 4 }
   },
   catalytic_processor: {
     name: 'Catalytic Processor', tier: 3, action: null, stackable: true, max: 6, category: 'metabolic',
@@ -1407,7 +1408,8 @@ export function step(world, commands = {}, dt = 1 / 60) {
       continue;
     }
     e.x = wrapX(e.x); e.y = clamp(e.y, WORLD.canopy + 2, WORLD.h - 30);
-    e.vx *= Math.pow(0.965, dt * 60); e.vy *= Math.pow(0.965, dt * 60);
+    const damp = e.kind === 'player' ? 0.986 : 0.965;   // the player coasts (submarine INERTIA); NPCs settle quicker
+    e.vx *= Math.pow(damp, dt * 60); e.vy *= Math.pow(damp, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
     e.maxDepth = Math.max(e.maxDepth || 0, e.y - WORLD.canopy);
     if (e.cooldowns) for (const k of Object.keys(e.cooldowns)) e.cooldowns[k] = Math.max(0, e.cooldowns[k] - dt);
@@ -1451,7 +1453,7 @@ function applyPlayerCommands(world, player, commands, dt) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
       player.vx += move.x * sp * 3.8 * dt;
-      player.vy += move.y * sp * 3.8 * dt;
+      player.vy += move.y * sp * 1.5 * dt;   // vertical is mostly BALLAST-driven — direct swim is a weak correction, not a jetpack
       if (!(Number.isFinite(commands.aimX) && Number.isFinite(commands.aimY))) player.phase = Math.atan2(move.y, move.x);
     }
   }
@@ -1488,24 +1490,18 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (commands.divide && fissionReady(player) && world.entities.length < POP_CAP) playerFission(world, player);
   }
 
-  // Ballast trim is flattened onto vertical swim (W/S): sustained DOWN intent floods the
-  // vacuoles (commit to a dive), sustained UP releases them (abort, rise). It latches, so
-  // neutral holds your trim. Gated on the oxygen vacuole — no float organ, no ballast.
+  // SUBMARINE BALLAST: W/S GRADUALLY pump or vent the gas bladder (an analog trim — a light touch
+  // adjusts it slightly, it no longer dumps the whole reserve in an instant). Hold W to fill (grow
+  // buoyant → the buoyancy force in updateEnvironment lifts you); hold S to vent (grow heavy → you
+  // sink). Neutral holds your trim (minus a slow leak). Gas is the lift you MANAGE — an empty bladder
+  // is heavy, so you sink and must pump gas or swim to hold depth. Gated on the oxygen vacuole.
   if (hasOrg(player, BALLAST.requires)) {
-    const vy = commands.moveY || 0;
-    if (vy > 0.4 && !player.ballast) { player.ballast = true; world.events.push({ type: 'ballast', entityId: player.id, flooded: true }); }
-    else if (vy < -0.4 && player.ballast) { player.ballast = false; world.events.push({ type: 'ballast', entityId: player.id, flooded: false }); }
-  }
-  if (player.ballast) {
-    if (!hasOrg(player, BALLAST.requires)) { player.ballast = false; }
-    else {
-      // Vent ballast GAS (not fuel O2 — so diving no longer starves your mitochondria) and
-      // take a plunge force scaled by how much gas is left to blow out.
-      const gasFull = clamp((player.ballastGas || 0) / Math.max(0.05, caps(player).ballastGas), 0, 1);
-      const ventRate = BALLAST.ventRate * (1 + orgCount(player, 'ballast_siphon') * ORGANELLES.ballast_siphon.stats.ventBonus);
-      player.ballastGas = Math.max(0, (player.ballastGas || 0) - ventRate * dt);
-      player.vy += BALLAST.sinkForce * (0.35 + 0.65 * gasFull) * dt;
-    }
+    const vy = commands.moveY || 0;   // W = negative (up), S = positive (down)
+    const gasCap = caps(player).ballastGas;
+    const trim = BALLAST.trimRate * (1 + orgCount(player, 'ballast_siphon') * ORGANELLES.ballast_siphon.stats.ventBonus);
+    if (vy > 0.05) player.ballastGas = Math.max(0, (player.ballastGas || 0) - trim * vy * dt);              // S: vent → sink
+    else if (vy < -0.05) player.ballastGas = Math.min(gasCap, (player.ballastGas || 0) + trim * (-vy) * dt); // W: pump → rise
+    player.ballast = false; // legacy binary-flood flag retired
   }
 
   player.x = wrapX(player.x + player.vx * dt);
@@ -1580,6 +1576,14 @@ function fleeThreat(world, e, myCapHp) {
   // to the top and suicide on oxygen" behavior by making them break off before the lethal band.
   if (oxygenAt(e.y) - oxygenTolerance(e) > 0.12) return 'dive';
   if (e.photophobic && lightAt(e.y) > LIGHT_BURN.threshold) return 'dive';
+  // Break off a COSTLY skirmish: a hunter that is actively TAKING combat damage and isn't clearly
+  // winning bolts rather than trade blows to the death — so the deep skirmishes and disengages
+  // instead of dogpiling into mutual attrition. A clear kill in reach (weak/small target) still presses.
+  if ((e.combatHit || 0) > 0 && e.hp < myCapHp * (0.66 + e.caution * 0.16)) {
+    const t = e._targetRef;
+    const winning = t && t.alive && (t.hp < caps(t).hp * 0.30 || t.r < e.r * 0.70);
+    if (!winning) return (t && t.alive) ? t : 'scatter';
+  }
   if (e.hp < myCapHp * BRAIN.FLEE_HP * (0.6 + e.caution)) {
     const t = e._targetRef;
     return (t && t.alive) ? t : 'scatter';
@@ -2159,20 +2163,22 @@ function updateEnvironmentAndMetabolism(world, dt) {
       }
     }
 
-    // Vertical ecology for NON-algae bodies (predators/scavengers/player): biomass is weight,
-    // ballast gas is lift, flagella add a little lift. Algae own their vertical entirely in
-    // updateAlgaeAI (pure ballast); applying this to them too would double-count their buoyancy.
+    // Vertical for NON-algae bodies. A BALLAST-equipped cell (the player) is a submarine: its
+    // buoyancy is the GAS it manages (plus a whisker of base), NOT the bladder's structural baseLift —
+    // so an EMPTY bladder is heavy and SINKS (you fight it by pumping gas or swimming), a filled
+    // bladder LIFTS, and a fat cell sinks harder (more biomass weight). This is a strong background
+    // force you feel, not the old imperceptible drift. Non-ballast NPCs keep their gentle settling.
     if (e.controller !== 'algae') {
-      let sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
-      // A ballast-equipped cell (the player) DRIFTS on its trim — you slide UP on fermented lift-gas
-      // and SETTLE when the bladder is empty, hands-off, so trim actually matters (it felt hard-locked
-      // to WASD before because the weak coefficient was swamped by damping). But the bladder's constant
-      // baseLift would otherwise float an EMPTY-gas cell upward into the O2 forever; we cancel most of
-      // that base term from the DRIFT calc only (not from buoyancy() itself, which the algae bob needs)
-      // so an empty bladder reads ~neutral and only actual gas earns the rise.
-      const k = hasOrg(e, 'oxygen_vacuole') ? 1.6 : 0.026;
-      if (k > 0.1) sink += ORGANELLES.oxygen_vacuole.stats.baseLift * orgCount(e, 'oxygen_vacuole') * 0.9;
-      e.vy += clamp(sink * k, -55, 60) * dt;
+      const bladders = orgCount(e, 'oxygen_vacuole');
+      const flagLift = orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
+      if (bladders > 0) {
+        const gasLift = (e.ballastGas || 0) * ORGANELLES.oxygen_vacuole.stats.liftPerGas;
+        const sink = biomassWeight(e) - (1.0 + gasLift + flagLift);
+        e.vy += clamp(sink * BALLAST_DRIFT_K, -62, 74) * dt;
+      } else {
+        const sink = biomassWeight(e) - buoyancy(e) - flagLift;
+        e.vy += clamp(sink * 0.026, -8, 22) * dt;
+      }
     }
 
     if (e.incubating) updateEucharistIncubation(world, e, dt);
@@ -3651,14 +3657,17 @@ function bestBodyTarget(entity, world, player) {
     const oCapHp = caps(other).hp;
     // Reward ≈ how much biomass the kill yields, CAPPED so a giant isn't auto-top-scored.
     const reward = Math.min(2.4, other.r / 26 + (other.cargo.biomass || 0) / 60);
-    // A sinking/deep bloom is free food — the froth's easiest meal.
-    const fallingValue = other.controller === 'algae' && (other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 3.0 : 0;
+    // Algae are DEFENSELESS food — the froth's easiest, safest meal. Hunters strongly prefer a bloom
+    // to another armed hunter, so the deep grazes the algae instead of grinding itself to the floor
+    // in attrition wars. A sinking/deep bloom is easier still (it can't drift away).
+    const algaeBonus = other.controller === 'algae' ? (2.2 + ((other.fallState === 'sinking' || other.y > WORLD.nurseryBottom) ? 2.0 : 0)) : 0;
     const weak = other.hp / Math.max(1, oCapHp) < 0.55 ? 1.3 : 0;
-    // Live prey that strays close is aggravating — a predator locks onto whatever
-    // swims through its space (the player is no safer than any scavenger).
-    const proximityAggro = (other.controller !== 'algae' && d < 270) ? 3.0 * (1 - d / 270) : 0;
-    // The froth smells weakness: a body running out of ATP draws the hunters in.
-    const starving = (other.controller !== 'algae' && (other.cargo.energy || 0) < 1.5) ? 1.8 : 0;
+    // Live prey that strays close is aggravating — but a FELLOW HUNTER nearby does NOT trigger the
+    // lock-on (that mutual proximity-aggro is what made clustered hunters dogpile each other). Only
+    // non-guild bodies (the player, scavengers) provoke the reflex.
+    const proximityAggro = (other.controller !== 'algae' && !FREE_HUNTERS.has(other.controller) && d < 270) ? 3.0 * (1 - d / 270) : 0;
+    // The froth smells weakness: a body running out of ATP draws the hunters in (but not fellow hunters).
+    const starving = (other.controller !== 'algae' && !FREE_HUNTERS.has(other.controller) && (other.cargo.energy || 0) < 1.5) ? 1.8 : 0;
     // Death-pheromone: the swarm converges on whatever its own director marked.
     const marked = ((other.marked || 0) > 0 && other.markedBy === entity.ownerId) ? 6.0 : 0;
     // Risk: prey bigger and/or far tankier than me is dangerous. Scaled by my caution and
@@ -3669,8 +3678,8 @@ function bestBodyTarget(entity, world, player) {
     // Cannibalism tax: a hunter prefers the food chain (scavengers, falling blooms) to its own
     // guild, so the predator layer competes for prey instead of slaughtering itself down to the
     // floor — but a weak or right-on-top-of-me rival is still fair game (selection still bites).
-    const guildTax = (FREE_HUNTERS.has(other.controller) && !entity.friendly) ? 4.5 : 0;
-    const score = reward + fallingValue + weak + proximityAggro + starving + marked - risk - guildTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    const guildTax = (FREE_HUNTERS.has(other.controller) && !entity.friendly) ? 6.5 : 0;
+    const score = reward + algaeBonus + weak + proximityAggro + starving + marked - risk - guildTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   entity._preyScore = best ? bestScore : -Infinity;
@@ -4082,13 +4091,16 @@ export function getHudProjection(world, entityId = world.playerId) {
     actions: getAvailableActions(world, entityId),
     nearYuki: nearYuki(world, e),
     ballast: (() => {
-      // Trim = net vertical tendency, centered at 0.5: >0.5 buoyant (rising), <0.5 heavy
-      // (sinking). Mirrors the same lift/weight the physics uses in updateEnvironment.
+      // Trim = net vertical tendency, centered at 0.5: >0.5 buoyant (rising), <0.5 heavy (sinking).
+      // Mirrors the SAME gas-vs-weight the submarine drift uses (gas is lift, biomass is weight; the
+      // bladder's structural baseLift is excluded), so the gauge matches how the cell actually drifts.
       const flag = orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
-      const net = buoyancy(e) + flag - biomassWeight(e);
       const gasCap = caps(e).ballastGas;
+      const bladders = orgCount(e, 'oxygen_vacuole');
+      const gasLift = (e.ballastGas || 0) * ORGANELLES.oxygen_vacuole.stats.liftPerGas;
+      const net = bladders > 0 ? (1.0 + gasLift + flag - biomassWeight(e)) : (buoyancy(e) + flag - biomassWeight(e));
       const gasFill = clamp((e.ballastGas || 0) / Math.max(0.05, gasCap), 0, 1);
-      return { flooded: !!e.ballast, hasOrgan: hasOrg(e, BALLAST.requires), net, trim: clamp(0.5 + net / 160, 0, 1), gas: e.ballastGas || 0, gasCap, gasFill };
+      return { flooded: false, hasOrgan: hasOrg(e, BALLAST.requires), net, trim: clamp(0.5 + net / 12, 0, 1), gas: e.ballastGas || 0, gasCap, gasFill };
     })(),
     tier: hasMito(e) ? 3 : 2,
     hostReadiness: readiness,
