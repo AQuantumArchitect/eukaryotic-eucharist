@@ -2155,12 +2155,15 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // ballast gas is lift, flagella add a little lift. Algae own their vertical entirely in
     // updateAlgaeAI (pure ballast); applying this to them too would double-count their buoyancy.
     if (e.controller !== 'algae') {
-      const sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
-      // A ballast-equipped cell (the player) DRIFTS on its buoyancy like a bloom — you slide up when
-      // gas-buoyant and settle when heavy, hands-off, so trim actually matters. The weak coefficient
-      // was swamped by velocity damping, which is why the player felt hard-locked to WASD. Non-ballast
-      // NPCs keep the gentle settling drift they had.
-      const k = hasOrg(e, 'oxygen_vacuole') ? 3.0 : 0.026;
+      let sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
+      // A ballast-equipped cell (the player) DRIFTS on its trim — you slide UP on fermented lift-gas
+      // and SETTLE when the bladder is empty, hands-off, so trim actually matters (it felt hard-locked
+      // to WASD before because the weak coefficient was swamped by damping). But the bladder's constant
+      // baseLift would otherwise float an EMPTY-gas cell upward into the O2 forever; we cancel most of
+      // that base term from the DRIFT calc only (not from buoyancy() itself, which the algae bob needs)
+      // so an empty bladder reads ~neutral and only actual gas earns the rise.
+      const k = hasOrg(e, 'oxygen_vacuole') ? 1.6 : 0.026;
+      if (k > 0.1) sink += ORGANELLES.oxygen_vacuole.stats.baseLift * orgCount(e, 'oxygen_vacuole') * 0.9;
       e.vy += clamp(sink * k, -55, 60) * dt;
     }
 
