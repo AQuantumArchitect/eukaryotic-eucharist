@@ -214,6 +214,14 @@ const FEED_INHALE_RATE = 0.9;     // active O2 gulp multiplier while feeding in 
 const GAS_LEAK_K = 0.35;          // ballast-gas leak per unit membrane porosity per second
 const GAS_FERMENT_RATE = 0.045;   // lift-gas made per bladder per second (biomass → gas, ATP-independent)
 const GAS_FERMENT_YIELD = 0.05;   // gas produced per unit biomass fermented for buoyancy
+// Algal bob-lifecycle (tuning): a bloom bloats in the canopy light, sinks under its own weight,
+// then in the lightless deep ferments gas FASTER (scaled by depth) so it bottoms out and rides
+// back up — a vertical bob whose depth/amplitude escalate with the bloom's size. The bright top
+// is a steep heal band (bask to mend); the deep is attrition (climb back to Yuki or dissolve).
+const ALGAE_DEEP_FERMENT_K = 1.6; // deep blooms ferment lift-gas up to (1+K)× faster → they bottom out & rise
+const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
+const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
+const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep bloom reads big
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
 // buoyant lipids float up toward the canopy, and volatile ATP/toxins diffuse outward into
@@ -1886,7 +1894,10 @@ function updateAlgaeAI(world, e, dt) {
   // sinkPressure>0 (heavy) → down. Gentle gain + clamp so it's a smooth drift, not a lurch.
   e.vy += clamp(sinkPressure * 0.42, -14, 22) * dt;
   e.vy += Math.sin(world.t * 0.5 + e.phase) * 3 * dt;          // slow bob
-  if (e.fallState === 'sinking') e.vy += (fullness * 10 + 4) * dt; // committed plunge picks up speed
+  // A committed plunge picks up speed, but the deeper it goes the harder its ballast fights back
+  // (deep fermentation, below), so the fall is a bob that bottoms out — not a one-way drop to the
+  // floor. Softened from the old runaway accelerant that showered small blooms past the scavengers.
+  if (e.fallState === 'sinking') e.vy += (fullness * 5 + 2) * dt;
   // Soft ceiling: a buoyant bloom grazes the lit band instead of pinning to the very roof.
   const ceil = WORLD.canopy + 70;
   if (e.y < ceil) e.vy += (ceil - e.y) * 0.05 * dt;
@@ -1894,6 +1905,21 @@ function updateAlgaeAI(world, e, dt) {
   e.phase = Math.atan2(e.vy, e.vx || 0.001);
   e.x = wrapX(e.x + e.vx * dt);
   e.y += e.vy * dt;
+
+  // Bloat with mass: a fat bloom swells visibly, so the biggest blooms are the deep divers and
+  // the shallow crop reads small — size escalates with depth exactly as the descent sorts them.
+  const c = caps(e);
+  e.r = clamp(e.baseR * (0.72 + ALGAE_BLOAT_K * Math.sqrt(Math.max(0, e.biomassMass || 0) / 60)), e.baseR * 0.7, e.baseR * 2.6);
+  // Yuki's canopy is a steep, strong heal: bask in the bright top band to mend before the next
+  // bloat-and-fall. The lightless deep is attrition — a bloom must ride its ballast back up to the
+  // light to survive; one that can't recover starves and dissolves into deep slurry for the froth.
+  const light = lightAt(e.y);
+  e.hp = Math.min(c.hp, e.hp + ALGAE_HEAL * light * dt); // bask: heal ∝ light, so a rising bloom mends on the way up
+  const depthFrac = clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.h - WORLD.ruptureTop), 0, 1);
+  if (depthFrac > 0) {
+    e.hp -= ALGAE_DEEP_ATTR * depthFrac * dt; // the true deep starves a bloom — ride the ballast back up or dissolve
+    if (e.hp <= 0) e.alive = false; // removeDead turns it into an abyssal feed-field for the deep froth
+  }
 }
 
 function updateEnvironmentAndMetabolism(world, dt) {
@@ -1998,7 +2024,13 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const gasRoom = caps(e).ballastGas - (e.ballastGas || 0);
       if (gasRoom > 0.001) {
         const glandBoost = 1 + orgCount(e, 'gas_gland') * ORGANELLES.gas_gland.stats.fermentBonus;
-        const made = Math.min(gasRoom, GAS_FERMENT_RATE * bladders * glandBoost * dt, ((e.cargo.biomass || 0) - 3) * GAS_FERMENT_YIELD);
+        // A sunk bloom ferments FASTER the deeper (and darker) it is, so its ballast fights the
+        // fall harder as it descends — it bottoms out and rides back toward the light. This is the
+        // engine of the algal bob: bigger blooms sink deeper before this reverses them.
+        const depthBoost = e.controller === 'algae'
+          ? 1 + ALGAE_DEEP_FERMENT_K * clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
+          : 1;
+        const made = Math.min(gasRoom, GAS_FERMENT_RATE * bladders * glandBoost * depthBoost * dt, ((e.cargo.biomass || 0) - 3) * GAS_FERMENT_YIELD);
         if (made > 0) { e.ballastGas += made; e.cargo.biomass -= made / GAS_FERMENT_YIELD; }
       }
     }
