@@ -249,7 +249,9 @@ function updateUI(){
   if(layers>1){const seg=100/layers,st=[];for(let L=1;L<layers;L++){const x=seg*L;st.push(`transparent ${x-0.7}%`,`rgba(4,6,17,.7) ${x-0.7}%`,`rgba(4,6,17,.7) ${x+0.7}%`,`transparent ${x+0.7}%`);}ui.hpLayers.style.backgroundImage=`linear-gradient(90deg,${st.join(',')})`;}else ui.hpLayers.style.backgroundImage='';
   const energy=hud.resources.find(r=>r.id==='energy'); ui.energyText.textContent=`${fmt(energy.value)}/${fmt(energy.max)}`; ui.energyFill.style.width=pct(energy.value,energy.max);
   ui.depthText.textContent=fmt(hud.depth.value); ui.depthFill.style.width=pct(hud.depth.value,hud.depth.max);
-  ui.o2Text.textContent=`${Math.round(hud.oxygen.value*100)}/${Math.round(hud.oxygen.tolerance*100)}`; ui.o2Fill.style.width=pct(hud.oxygen.value,hud.oxygen.max); ui.o2Fill.style.opacity=hud.oxygen.value>hud.oxygen.tolerance?1:.72;
+  // Stored O2 is an ABSOLUTE volume (value / your capacity); "air" is the ENVIRONMENT'S saturation %
+  // at this depth — feed (breathe) to pull your fill toward it: high air fills you, low air empties you.
+  ui.o2Text.innerHTML=`${Math.round(hud.oxygen.value*100)}/${Math.round(hud.oxygen.max*100)} · <span style="color:#9fd0ff;font-weight:800">air ${Math.round((hud.oxygen.external||0)*100)}%</span>`; ui.o2Fill.style.width=pct(hud.oxygen.value,hud.oxygen.max); ui.o2Fill.style.opacity=hud.oxygen.value>hud.oxygen.tolerance?1:.72;
   // ── Duress flashing: HP when a cell wounds you, ATP when critically low, O2 over the poison line ──
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
   ui.hpVital.classList.toggle('duress', hpFlash>0);

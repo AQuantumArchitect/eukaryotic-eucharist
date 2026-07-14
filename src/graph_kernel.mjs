@@ -694,7 +694,7 @@ export const ORGANELLES = Object.freeze({
   orbital_spores: {
     name: 'Orbital Spore-Bodies', tier: 3, action: null, stackable: true, max: 3, category: 'orbital',
     desc: 'Daughter cells that circle you and grind anything they brush against — a constant, hands-free perimeter.',
-    stats: { count: 2, damage: 16, radius: 11, orbitDist: 30, spin: 1.8 }
+    stats: { count: 2, damage: 34, radius: 14, orbitDist: 30, spin: 1.8 }
   },
   fission_bud: {
     name: 'Fission Bud', tier: 3, action: null, stackable: true, max: 3, category: 'orbital',
@@ -1203,7 +1203,7 @@ function capsCompute(entity) {
     enzymes: exotic * x.enzymes,
     crystals: exotic * x.crystals,
     dna: dnaSlots * ORGANELLES.dna_memory_vesicle.stats.dna,
-    oxygen: BASE_OXYGEN_CAP + oc('oxygen_store') * os.oxygenCapBonus,   // O2 FUEL capacity (respiration)
+    oxygen: BASE_OXYGEN_CAP + oc('membrane') * 0.12 + oc('oxygen_store') * os.oxygenCapBonus,   // O2 volume: a bigger body (membranes) holds more; Oxygen Vesicles add dedicated fuel capacity
     ballastGas: oc('oxygen_vacuole') * ov.gasCapBonus + oc('pressure_bladder') * ORGANELLES.pressure_bladder.stats.gasCapBonus  // buoyancy GAS capacity
   };
 }
@@ -1972,8 +1972,9 @@ function updateEnvironmentAndMetabolism(world, dt) {
     const light = lightAt(e.y);
     const extO2 = oxygenAt(e.y);
     const porosity = membranePorosity(e);
-    // Passive O2 (fuel) diffusion across the membrane — ballast gas no longer touches oxygen.
-    e.oxygen += (extO2 - e.oxygen) * porosity * dt;
+    // No passive O2 diffusion any more: your stored O2 stays put unless you BREATHE (feed, which
+    // equilibrates it toward the water's saturation — see feedFromFields) or RESPIRE (burn it for
+    // ATP below). So you don't bleed oxygen just by sitting in the deep; you manage it by where you feed.
     // Countercurrent Gill: active O2 uptake far beyond bare diffusion, when the water is richer.
     const gill = orgCount(e, 'countercurrent_gill');
     if (gill > 0 && extO2 > e.oxygen) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + (extO2 - e.oxygen) * gill * ORGANELLES.countercurrent_gill.stats.uptake * dt);
@@ -1991,14 +1992,17 @@ function updateEnvironmentAndMetabolism(world, dt) {
       e.cargo.biomass += actual;
       e.biomassMass += actual * 0.18;
       if (e.controller === 'algae') e.biomassMass += light * photo * 0.09 * dt;
-      // Photosynthetic oxygen is mostly exported into the water. Algae are specialized
-      // surface organisms, so they vent it especially well instead of self-poisoning.
-      e.oxygen += ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
-      // Photolytic Vacuole: split water in the light to bank extra O2 FUEL (for the mito path).
+      // Photosynthetic O2 only matters for ALGAE (they generate it, then vent it to the water as
+      // their surface-organism mechanic). For every other body — the PLAYER included — photosynthesis
+      // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
+      if (e.controller === 'algae') {
+        e.oxygen += ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
+        const vent = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85 * dt;
+        e.oxygen = Math.max(0, e.oxygen - vent);
+      }
+      // Photolytic Vacuole: split water in the light to bank extra O2 FUEL (for the mito path). Any body.
       const photol = orgCount(e, 'photolytic_vacuole');
       if (photol > 0) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + photol * ORGANELLES.photolytic_vacuole.stats.o2PerLight * light * dt);
-      const vent = ORGANELLES.photosystem.stats.oxygenVent * photo * light * (e.controller === 'algae' ? 1.85 : 0.55) * dt;
-      e.oxygen = Math.max(0, e.oxygen - vent);
     }
 
     const mito = orgCount(e, 'mitochondrion');
@@ -3696,12 +3700,13 @@ function feedFromFields(world, entity, dt) {
   const radius = feedRadius(entity);
   const rate = feedRate(entity);
   if (radius <= 0 || rate <= 0) return 0;
-  // Feed-inhale: an open feeding membrane gulps water, pulling O2 fuel faster than passive
-  // diffusion whenever the water is richer than the body's internal oxygen. Generic (NPCs too).
-  const extO2 = oxygenAt(entity.y);
-  if (extO2 > (entity.oxygen || 0)) {
-    entity.oxygen = Math.min(caps(entity).oxygen, (entity.oxygen || 0) + (extO2 - (entity.oxygen || 0)) * FEED_INHALE_RATE * dt);
-  }
+  // BREATHE: feeding filters O2 across the open membrane, equilibrating your internal SATURATION
+  // toward the WATER'S saturation at this depth. At the O2-rich top you breathe IN (fill); down in
+  // the deep dark you breathe OUT (empty). So WHERE you feed sets your oxygen, and it's the only
+  // passive O2 flow — otherwise your reserve just sits (until respiration burns it). Generic (NPCs too).
+  const cap = caps(entity).oxygen;
+  const targetO2 = oxygenAt(entity.y) * cap;   // env saturation (0..1) × your capacity = the volume you equilibrate toward
+  entity.oxygen = clamp((entity.oxygen || 0) + (targetO2 - (entity.oxygen || 0)) * FEED_INHALE_RATE * dt, 0, cap);
   const affinity = {
     biomass: 1.0,
     lipids: hasMito(entity) ? 0.95 : 0.55,
