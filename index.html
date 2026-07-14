@@ -36,6 +36,20 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .org .orgDetail .meta{margin-top:4px;color:#9fd0ff;font-weight:800}
 .org.open{grid-column:1/-1;border-color:rgba(158,240,189,.55);background:rgba(158,240,189,.09)}
 .org.open .orgDetail{display:block}
+/* Body-panel action buttons: grow this organ, or jump to its shop system (DNA variants live there). */
+.bodyActs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.bodyBtn{appearance:none;border:1px solid rgba(158,240,189,.4);border-radius:9px;padding:6px 9px;font-size:10px;font-weight:950;color:#eaffee;background:rgba(18,38,30,.72);cursor:pointer;letter-spacing:.02em;text-align:left}
+.bodyBtn.graft{border-color:rgba(158,240,189,.55);background:rgba(158,240,189,.14);color:#eaffee}
+.bodyBtn.graft:hover{background:rgba(158,240,189,.24)}
+.bodyBtn.graft.dis{opacity:.5;border-color:rgba(255,150,90,.4);color:#ffdca6;background:rgba(255,120,80,.08);cursor:not-allowed}
+.bodyBtn.dna{border-color:rgba(176,109,255,.45);color:#d6a2ff;background:rgba(176,109,255,.10)}
+.bodyBtn.dna:hover{background:rgba(176,109,255,.2)}
+.bodyBtn.maxed{border-color:rgba(255,255,255,.18);color:var(--muted);background:rgba(255,255,255,.04);cursor:default}
+.section.grpFlash{animation:grpFlash 1.1s ease}
+@keyframes grpFlash{0%{background:rgba(176,109,255,.22);box-shadow:0 0 0 1px rgba(176,109,255,.5)}100%{background:transparent;box-shadow:none}}
+/* The recommended survival exchange — a bright ribbon so the eye lands on Repair/ATP/Detox, not ammo. */
+.offer.exchange.rec{position:relative;outline:1.5px solid rgba(255,255,255,.5);outline-offset:1px}
+.offer.exchange .recTag{display:block;font-size:8px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#fff;margin-bottom:3px;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 @media(max-width:900px){.bodyScroll{max-height:38vh}}
 </style>
 </head>
@@ -294,21 +308,23 @@ let shopLeaveArmed=false;
 // close gate. atpLow (<10% ATP) is the blocker; toxin/O2 stress is a softer detox reminder.
 function shopStress(){
   const e=hud&&hud.resources?hud.resources.find(r=>r.id==='energy'):null;
-  const atpLow=e?e.value/Math.max(1,e.max)<0.10:false;
+  const atpLow=e?e.value/Math.max(1,e.max)<0.25:false; // leave with a spare quarter-tank to climb/dive out of the oxygen ceiling
   const tox=hud&&hud.resources?hud.resources.find(r=>r.id==='toxins'):null;
   const toxHi=tox?tox.value/Math.max(1,tox.max)>0.6:false;
   const o2=hud?hud.oxygen:null; const o2Hi=o2?o2.value>o2.tolerance:false;
+  const hpLow=hud?hud.hp.value/Math.max(1,hud.hp.max)<0.55:false;
   const parts=[];
-  if(atpLow) parts.push('almost no ATP — Charge ATP');
+  if(hpLow) parts.push('wounded — Repair Communion');
+  if(atpLow) parts.push('low ATP — Charge ATP to escape the oxygen');
   if(toxHi||o2Hi) parts.push('toxin / O2 stress — Detox');
-  return {atpLow, stressed:atpLow||toxHi||o2Hi, msg:parts.join(' · ')};
+  return {atpLow, hpLow, stressed:hpLow||atpLow||toxHi||o2Hi, msg:parts.join(' · ')};
 }
 function openShop(){shopLeaveArmed=false;ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(force){
   const s=shopStress();
-  // Hard warning: don't let the player wander off with a dead ATP tank (a common death). First
-  // Close arms + flashes the banner; a second Close (or fixing ATP) lets them out.
-  if(!force && s.atpLow && !shopLeaveArmed){
+  // Send them off whole: don't let the player wander off wounded, toxic, or with a near-dead ATP
+  // tank (all common deaths). First Close arms + flashes the banner; a second Close lets them out.
+  if(!force && s.stressed && !shopLeaveArmed){
     shopLeaveArmed=true;
     if(ui.shopWarn){ui.shopWarn.classList.remove('flash'); void ui.shopWarn.offsetWidth; ui.shopWarn.classList.add('flash');}
     toast('⚠ Leaving with '+s.msg+'. Tap Close again to leave anyway.');
@@ -317,11 +333,27 @@ function closeShop(force){
   shopLeaveArmed=false;
   ui.shopOverlay.style.display='none';document.body.classList.remove('shopping');
 }
+// The offerings captured on the last shop render — the "Your Body" panel reads these to wire
+// its "graft another" buttons (an organ's own buyable offering) and its jump-to-system link.
+let lastOffers=[];
+function offerForOrgan(id){return lastOffers.find(o=>o.organelle===id)||lastOffers.find(o=>o.id===id)||null;}
+function groupIndexOf(id){for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;return -1;}
+function scrollToGroup(i){const sec=ui.shopBody.querySelector(`#grp${i}`);if(!sec)return;sec.scrollIntoView({behavior:'smooth',block:'start'});sec.classList.remove('grpFlash');void sec.offsetWidth;sec.classList.add('grpFlash');}
 function renderShop(){
   const offers=K.getYukiOfferings(world);
+  lastOffers=offers;
   // Exchange + genome sequencing live in a frozen cross-bar at the top; organelles scroll under.
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
-  const exchanges=[...offers.filter(o=>o.kind==='exchange'), ...offers.filter(o=>o.kind==='sequence')];
+  // Survival exchanges lead (Repair · Charge ATP · Detox); matter conversions follow; Distill
+  // Toxins (weapon-ammo restock) sinks to the end so it never reads as the thing to do.
+  const EXCH_ORDER=['repair','buy_energy','detox','buy_lipids','buy_biomass','buy_toxins'];
+  const exOffers=offers.filter(o=>o.kind==='exchange').sort((a,b)=>{const ia=EXCH_ORDER.indexOf(a.id),ib=EXCH_ORDER.indexOf(b.id);return (ia<0?99:ia)-(ib<0?99:ib)});
+  // Flag the single most-needed survival exchange as THE recommendation (never the ammo restock).
+  for(const o of exOffers) o._rec=false;
+  let topRec=null,topNeed=0.34;
+  for(const o of exOffers){if(o.locked)continue;const n=exchangeNeed(o);if(n>topNeed){topNeed=n;topRec=o;}}
+  if(topRec) topRec._rec=true;
+  const exchanges=[...exOffers, ...offers.filter(o=>o.kind==='sequence')];
   const rest=offers.filter(o=>!inBar(o));
   ui.shopExchange.innerHTML = exchanges.map(offerCard).join('');
   // Function-based groups: each system holds its basic organs AND its DNA-gated exotics
@@ -331,7 +363,7 @@ function renderShop(){
   for(const o of rest) buckets[groupOf(o.id)].push(o);
   const rank=o=>o.locked?(o.undiscovered?3:2):(o.maxed?1:0);
   const keepScroll=ui.shopBody.scrollTop; // preserve scroll across rebuild (e.g. after a buy deep in the list)
-  ui.shopBody.innerHTML = SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(offerCard).join('')}</div></section>`}).join('');
+  ui.shopBody.innerHTML = SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp${i}"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(offerCard).join('')}</div></section>`}).join('');
   ui.shopBody.scrollTop=keepScroll;
   renderBody(); renderGuide(); // the body panel + stage guidance refresh on open and after each buy
   // Persistent leave-warning banner in the frozen header: low ATP and/or high toxin/O2 stress.
@@ -345,24 +377,43 @@ function renderBody(){
   if(!hud) return;
   const orgs=hud.organelles.slice().sort((a,b)=>(b.tier-a.tier)||a.name.localeCompare(b.name));
   const total=orgs.reduce((s,o)=>s+o.count,0);
-  ui.bodyCount.textContent=`— ${orgs.length} types · ${total} organelles`;
+  ui.bodyCount.textContent=`— ${orgs.length} types · ${total} organelles · tap an organ to grow it`;
   ui.orgList.innerHTML=orgs.map(o=>{
-    const meta=[`Tier ${o.tier}`,o.count>1?`×${o.count} copies`:'single',o.action?`Action: ${o.action}`:'Structure',o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ');
-    return `<div class="org on" data-org="${o.id}"><b>${o.name}${o.count>1?' ×'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}<div class="orgDetail">${o.desc||'A cell organelle.'}<div class="meta">${meta}</div></div></div>`;
+    const gi=groupIndexOf(o.id);
+    const sysLabel=gi>=0?SHOP_GROUPS[gi][0]:(o.category||'trait');
+    const meta=[`Tier ${o.tier}`,o.count>1?`×${o.count} copies`:'single',o.action?`Action: ${o.action}`:'Structure',`system: ${sysLabel}`,o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ');
+    // "Graft another" — this organ's own buyable offering, if it has one and isn't maxed.
+    const off=offerForOrgan(o.id);
+    let graftBtn='';
+    if(off&&off.maxed){graftBtn=`<span class="bodyBtn maxed">✓ maxed · ×${o.count}</span>`;}
+    else if(off){const can=off.affordable&&!off.locked;const why=(off.reasons&&off.reasons.length)?off.reasons[0]:'';graftBtn=`<button class="bodyBtn graft${can?'':' dis'}" data-buy="${off.id}">⊕ Graft another${off.costText?` · ${off.costText}`:''}${can?'':(why?` — ${why}`:'')}</button>`;}
+    // "DNA variants" — jump to the shop system this organ belongs to (its DNA-gated variants live there).
+    const dnaBtn=gi>=0?`<button class="bodyBtn dna" data-grp="${gi}">⌕ Variants &amp; DNA — ${SHOP_GROUPS[gi][0]}</button>`:'';
+    return `<div class="org on" data-org="${o.id}"><b>${o.name}${o.count>1?' ×'+o.count:''}</b>${o.action?'Action: '+o.action:'Structure'}<div class="orgDetail">${o.desc||'A cell organelle.'}<div class="meta">${meta}</div><div class="bodyActs">${graftBtn}${dnaBtn}</div></div></div>`;
   }).join('');
-  for(const row of ui.orgList.querySelectorAll('.org')) row.onclick=()=>row.classList.toggle('open');
+  for(const row of ui.orgList.querySelectorAll('.org')) row.onclick=e=>{if(e.target.closest('.bodyBtn'))return;row.classList.toggle('open')};
+  for(const b of ui.orgList.querySelectorAll('.bodyBtn.graft:not(.dis)')) b.onpointerup=e=>{e.preventDefault();e.stopPropagation();const res=K.buyOffering(world,b.dataset.buy);if(res.ok){toast('Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');};
+  for(const b of ui.orgList.querySelectorAll('.bodyBtn.dna')) b.onpointerup=e=>{e.preventDefault();e.stopPropagation();scrollToGroup(+b.dataset.grp);};
   if(hud.colony&&hud.colony.length>0){ui.colonySection.style.display='';ui.colonyList.innerHTML=hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="org on"><b>${s.label}</b><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('');}else{ui.colonySection.style.display='none';}
 }
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 function renderGuide(){ if(ui.shopGuide&&hud) ui.shopGuide.innerHTML=`<span class="stg">Now</span> &nbsp; ${hud.objective||''}`; }
 ui.bodyPanelHead.onclick=()=>ui.bodyPanel.classList.toggle('collapsed');
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
-function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';if(o.kind==='exchange'){const need=exchangeNeed(o);const urgent=need>0.55?' urgent':'';return `<div class="offer exchange${out}${theme} ${state}${urgent}" style="--need:${need.toFixed(3)}" data-kind="exchange" data-id="${o.id}">${exchangeCard(o)}</div>`}if(o.kind==='sequence'){return `<div class="offer sequence ${state}" data-kind="sequence" data-id="${o.id}">${sequenceCard(o)}</div>`}return `<div class="offer ${o.kind}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${graftCard(o)}</div>`}
+function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';if(o.kind==='exchange'){const need=exchangeNeed(o);const urgent=need>0.55?' urgent':'';const rec=o._rec?' rec':'';return `<div class="offer exchange${out}${theme} ${state}${urgent}${rec}" style="--need:${need.toFixed(3)}" data-kind="exchange" data-id="${o.id}">${o._rec?'<span class="recTag">◉ recommended</span>':''}${exchangeCard(o)}</div>`}if(o.kind==='sequence'){return `<div class="offer sequence ${state}" data-kind="sequence" data-id="${o.id}">${sequenceCard(o)}</div>`}return `<div class="offer ${o.kind}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${graftCard(o)}</div>`}
 // Compact genome-sequencing chip for the exchange bar; greyed (locked) when there's no DNA.
 function sequenceCard(o){const n=o.dnaHeld||0;const sub=o.locked?(o.reasons&&o.reasons[0]?o.reasons[0]:'nothing to sequence'):`${n} record${n===1?'':'s'} · tap to sequence`;return `<div><span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence DNA</span><div class="oname">Sequence Genome${n>0?` (${n})`:''}</div></div><div class="buyCue" style="color:${o.locked?'#8a8f9c':'#8fe37a'};text-transform:none;letter-spacing:0">${sub}</div>`}
 // How badly does the player need this exchange right now? 0 = fine, 1 = desperate.
 // Drives the bar's glow/intensity — Repair brightens as HP falls, Detox as oxygen/toxins climb.
-function exchangeNeed(o){if(!hud)return 0;const out=o.output||exchangeMainOutput(o);if(out==='hp')return clamp(1-hud.hp.value/Math.max(1,hud.hp.max),0,1);if(out==='detox'){const tox=hud.resources.find(r=>r.id==='toxins');const toxNeed=tox?clamp(tox.value/Math.max(1,tox.max),0,1):0;const o2=hud.oxygen;const oxNeed=o2?clamp((o2.value-o2.tolerance)/Math.max(1,o2.max-o2.tolerance),0,1):0;return Math.max(toxNeed,oxNeed)}const r=hud.resources.find(x=>x.id===out);return r?clamp(1-r.value/Math.max(1,r.max),0,1):0}
+function exchangeNeed(o){if(!hud)return 0;const out=o.output||exchangeMainOutput(o);
+  if(out==='hp')return clamp(1-hud.hp.value/Math.max(1,hud.hp.max),0,1);
+  if(out==='detox'){const tox=hud.resources.find(r=>r.id==='toxins');const toxNeed=tox?clamp(tox.value/Math.max(1,tox.max),0,1):0;const o2=hud.oxygen;const oxNeed=o2?clamp((o2.value-o2.tolerance)/Math.max(1,o2.max-o2.tolerance),0,1):0;return Math.max(toxNeed,oxNeed)}
+  // ATP is survival: ramp hard as the tank empties so "Charge ATP" is the loud recommendation when
+  // you're about to strand yourself in the oxygen ceiling with no charge left to climb or dive away.
+  if(out==='energy'){const r=hud.resources.find(x=>x.id==='energy');return r?clamp((0.5-r.value/Math.max(1,r.max))/0.5,0,1):0}
+  // Distill Toxins restocks WEAPON ammo — an empty toxin tank is the healthy default, so it must
+  // NEVER glow as "needed". Bulk matter conversions (biomass/lipids) are convenience, not urgency.
+  return 0}
 const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff',leech:'#8fe37a',aura:'#ff5a5a',control:'#6fd6ff',risk:'#ff2d7a',execute:'#ff8a3d',projectile:'#4db8ff',orbital:'#ffd24d',swarm:'#5fe0a0',feed:'#8ef19e',guard:'#bfe8ff',burst:'#c9a0ff'};
 // Resource colors sourced from the kernel (single source of truth) as [r,g,b] triples,
 // used to paint feeding fields by composition and to tint exchange/cost pills.
@@ -455,7 +506,26 @@ function drawFields(){
     // Accent the hazardous (toxin) and prized (ATP) minority components so they never hide in the blend.
     const tox=s.toxins||0, en=s.energy||0;
     if(tox>total*0.16){ctx.strokeStyle=`rgba(${RES_COLORS.toxins.join(',')},.36)`;ctx.lineWidth=1.6;ctx.setLineDash([3,5]);ctx.beginPath();ctx.arc(f.x,f.y,f.radius*.7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
-    if(en>total*0.10){ctx.fillStyle=`rgba(${RES_COLORS.energy.join(',')},.55)`;for(let i=0;i<3;i++){const a=world.t*2+i*2.1;ctx.beginPath();ctx.arc(f.x+Math.cos(a)*f.radius*.4,f.y+Math.sin(a)*f.radius*.34,1.7,0,Math.PI*2);ctx.fill();}}
+    if(en>total*0.06){
+      // An ATP field must read as a FIELD, not the player's own glow. The player glow is a soft
+      // filled blob that moves; a charge field is a stationary bright cyan ring with radiating
+      // spokes pinned to a fixed footprint — a defined boundary the eye reads as "resource here".
+      const ecol=RES_COLORS.energy.join(',');
+      const ef=clamp(en/total,0,1); // how ATP-dominant this field is
+      const pulse=0.62+0.38*Math.sin(world.t*3+f.x*0.05);
+      const rr=f.radius*0.9;
+      ctx.save();
+      ctx.strokeStyle=`rgba(${ecol},${(0.34+0.5*ef)*pulse})`; ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.stroke();
+      // radiating spokes on the rim — an unmistakable "energy" motif, and clearly non-organic
+      ctx.strokeStyle=`rgba(${ecol},${0.5*pulse})`; ctx.lineWidth=1.7;
+      const spokes=8;
+      for(let i=0;i<spokes;i++){const a=world.t*0.5+i*(Math.PI*2/spokes);const r1=rr+4+3*Math.sin(world.t*4+i);ctx.beginPath();ctx.moveTo(f.x+Math.cos(a)*rr,f.y+Math.sin(a)*rr);ctx.lineTo(f.x+Math.cos(a)*r1,f.y+Math.sin(a)*r1);ctx.stroke();}
+      // bright core sparks so even a minority-ATP (greenish) field shows its charge
+      ctx.fillStyle=`rgba(${ecol},${0.85*pulse})`;
+      for(let i=0;i<3;i++){const a=world.t*2+i*2.1;ctx.beginPath();ctx.arc(f.x+Math.cos(a)*f.radius*.34,f.y+Math.sin(a)*f.radius*.30,2.2,0,Math.PI*2);ctx.fill();}
+      ctx.restore();
+    }
   }
 }
 

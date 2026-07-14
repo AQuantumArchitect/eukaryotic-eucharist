@@ -511,7 +511,7 @@ export const ORGANELLES = Object.freeze({
   photosystem: {
     name: 'Photosystem Patch', tier: 2, action: null, stackable: true, max: 5,
     desc: 'The algae road: light grows biomass and exports oxygen stress. It makes abundance, weight, and eventual falling.',
-    stats: { biomassGain: 2.0, oxygenWaste: 0.050, oxygenVent: 0.17 }
+    stats: { biomassGain: 3.0, oxygenWaste: 0.050, oxygenVent: 0.17 }
   },
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 2, action: 'rasp', stackable: true, max: 5,
@@ -952,7 +952,7 @@ export function createWorld(options = {}) {
   const player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
   });
   player.carriedStrains = new Map();
   world.playerId = player.id;
@@ -3004,7 +3004,7 @@ function removeDead(world) {
       // the death, so the long swim home to Yuki is where you bank your discoveries.
       const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, cleavage_furrow: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
@@ -4021,7 +4021,7 @@ function zoneName(y) {
 
 function objectiveText(world, e) {
   if (e.incubating) return 'The Eucharist is incubating inside you. Keep lipids and ATP in reserve, and don\'t let oxygen overload you.';
-  if (!hasOrg(e, 'lipid_repair_loom')) return 'You are a scavenger with no bite and no breath. Feed on drifting fields to make ATP — and every action spends it. Graze the rupture edges, then return to Yuki to graft your first real organs.';
+  if (!hasOrg(e, 'lipid_repair_loom')) return 'You are a young algal cell. Bask at the lit canopy to fatten on light, flood your ballast to dive, and rasp rival scavengers off the richest fields. Feeding makes ATP — every action spends it. Then carry your harvest to Yuki to graft real organs.';
   const lib = world.cellLibrary || [];
   if (!hasMito(e)) {
     if (lib.length > 0) return `Your second form. Shape a specialized body — your archived ${lib[lib.length - 1].label} waits at Yuki to be rejoined.`;
