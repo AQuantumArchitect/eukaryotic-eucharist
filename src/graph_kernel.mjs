@@ -213,6 +213,14 @@ const LIGHT_BURN = Object.freeze({ threshold: 0.30, rate: 90, slope: 22 });
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
+// Cytoplasm baseline: every body holds this much of each fluid with ZERO storage organs — equal to the
+// yield of the old all-in-one Storage Vacuole, so a starter body (which no longer carries one) is
+// unchanged. Per-fluid vacuoles (Biomass/Lipid/Toxin) and atp_reservoir stack capacity ON TOP. This
+// removes the old chicken-and-egg where you needed storage before you could hold anything.
+const BASE_BIOMASS_CAP = 22;
+const BASE_LIPID_CAP = 14;
+const BASE_TOXIN_CAP = 10;
+const BASE_ENERGY_CAP = 24;
 const BASE_BUOYANCY = 2.0;        // flat lift every body has (replaces the old oxygen×1.5 term)
 const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before overload poisons you
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
@@ -271,7 +279,7 @@ const ORGAN_CATEGORY = {
   virulent_processor: 'metabolism', catalytic_processor: 'metabolism', lipogenic_processor: 'metabolism',
   hydrogenosome: 'metabolism', countercurrent_gill: 'metabolism', chemosynthetic_vesicle: 'metabolism',
   lipid_bladder: 'metabolism', enzyme_reserve: 'metabolism',
-  membrane: 'structure', storage_vacuole: 'structure', atp_reservoir: 'structure', nuclease_vesicle: 'structure',
+  membrane: 'structure', storage_vacuole: 'structure', biomass_vacuole: 'structure', lipid_vacuole: 'structure', toxin_vacuole: 'structure', atp_reservoir: 'structure', nuclease_vesicle: 'structure',
   membrane_hardening: 'structure', lipid_repair_loom: 'structure', thorn_coat: 'structure',
   corrosive_pellicle: 'structure', crystal_ward: 'structure', volatile_vacuole: 'structure',
   barophilic_sheath: 'structure', multicell_chassis: 'structure',
@@ -418,8 +426,23 @@ export const ORGANELLES = Object.freeze({
   },
   storage_vacuole: {
     name: 'Storage Vacuole', tier: 2, action: null, stackable: true, max: 8,
-    desc: 'One general storage organ. Expands biomass, lipids, toxins, and ATP. Also increases body size and swimming cost.',
+    desc: 'One general storage organ. Expands biomass, lipids, toxins, and ATP. Also increases body size and swimming cost. (Wild/NPC generalist tank — the player shop stocks the dedicated per-fluid vacuoles instead.)',
     stats: { biomass: 22, lipids: 14, toxins: 10, energy: 24, bulk: 0.030 }
+  },
+  biomass_vacuole: {
+    name: 'Biomass Vacuole', tier: 2, action: null, stackable: true, max: 12,
+    desc: 'A dedicated biomass sac — pure construction-slurry capacity, nothing else. The FAT build stacks these into a huge biomass reserve on nothing but biomass (no exotics). A bigger belly means a bigger, slower body that costs more to armor.',
+    stats: { biomass: 22, bulk: 0.032 }
+  },
+  lipid_vacuole: {
+    name: 'Lipid Vacuole', tier: 2, action: null, stackable: true, max: 8,
+    desc: 'A dedicated fat sac — pure lipid capacity. Fat is your light, tradeable wealth; a deeper lipid reserve also lends lift.',
+    stats: { lipids: 16, bulk: 0.022 }
+  },
+  toxin_vacuole: {
+    name: 'Toxin Vacuole', tier: 2, action: null, stackable: true, max: 8,
+    desc: 'A dedicated venom sac — pure toxin capacity. The venom build needs it to hold the escalating toxin cost of its weapons without capping out.',
+    stats: { toxins: 16, bulk: 0.022 }
   },
   atp_reservoir: {
     name: 'ATP Reservoir', tier: 3, action: null, stackable: true, max: 4, category: 'metabolic',
@@ -776,7 +799,9 @@ export const OFFERINGS = Object.freeze([
   { id: 'anabolic_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anabolic Vesicle', desc: 'Banks surplus ATP as biomass when your energy tank runs high — the inverse of a processor.', cost: { biomass: 14, lipids: 8 }, organelle: 'anabolic_vesicle', requiresDiscovery: 'anabolic_vesicle', stackLimit: 5 },
   { id: 'lipolytic_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Lipolytic Vesicle', desc: 'Breaks stored fat back into biomass — a one-way lipids → biomass flow.', cost: { biomass: 12, lipids: 4 }, organelle: 'lipolytic_vesicle', requiresDiscovery: 'lipolytic_vesicle', stackLimit: 5 },
   { id: 'mineralizing_gland', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Mineralizing Gland', desc: 'Precipitates crystal from toxins and biomass — turn metabolic poison and bulk into exotic ammo (needs exotic storage).', cost: { biomass: 16, lipids: 6 }, organelle: 'mineralizing_gland', requiresDiscovery: 'mineralizing_gland', stackLimit: 4 },
-  { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'One main tank expansion for biomass, lipids, toxins, and ATP. It visibly increases body bulk.', cost: { biomass: 10, lipids: 7, crystals: 1 }, organelle: 'storage_vacuole', stackLimit: 8 },
+  { id: 'biomass_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Biomass Vacuole', desc: 'Dedicated biomass capacity — the FAT tank. Pure biomass, no exotics: stack these to hoard a huge reserve. A bigger belly is a bigger, slower body.', cost: { biomass: 12 }, organelle: 'biomass_vacuole', stackLimit: 12 },
+  { id: 'lipid_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Lipid Vacuole', desc: 'Dedicated fat capacity — your tradeable-wealth tank, and a little extra lift.', cost: { biomass: 6, lipids: 6 }, organelle: 'lipid_vacuole', stackLimit: 8 },
+  { id: 'toxin_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Toxin Vacuole', desc: 'Dedicated venom capacity — hold the escalating toxin cost of a committed venom build.', cost: { biomass: 8, lipids: 4 }, organelle: 'toxin_vacuole', stackLimit: 8 },
   { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, lipids: 4, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 13 },
   { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 13 },
   { id: 'nuclease_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Nuclease Vesicle', desc: 'Digests junk DNA — untagged strands and any genome no better than one you carry or know — into biomass on pickup, keeping your DNA store free for the good stuff.', cost: { biomass: 16, enzymes: 1 }, organelle: 'nuclease_vesicle', requiresDiscovery: 'nuclease_vesicle', stackLimit: 1 },
@@ -1017,7 +1042,7 @@ export function createWorld(options = {}) {
     player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
       r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
       cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
     });
     player.carriedStrains = new Map();
     world.playerId = player.id;
@@ -1292,10 +1317,10 @@ function capsCompute(entity) {
   const os = ORGANELLES.oxygen_store.stats;
   return {
     hp: membrane * m.hp + hard * 8 + oc('multicell_chassis') * 70,
-    energy: storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
-    biomass: storage * s.biomass + oc('multicell_chassis') * 80,
-    lipids: storage * s.lipids + mito * 30,
-    toxins: storage * s.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
+    energy: BASE_ENERGY_CAP + storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
+    biomass: BASE_BIOMASS_CAP + storage * s.biomass + oc('biomass_vacuole') * ORGANELLES.biomass_vacuole.stats.biomass + oc('multicell_chassis') * 80,
+    lipids: BASE_LIPID_CAP + storage * s.lipids + oc('lipid_vacuole') * ORGANELLES.lipid_vacuole.stats.lipids + mito * 30,
+    toxins: BASE_TOXIN_CAP + storage * s.toxins + oc('toxin_vacuole') * ORGANELLES.toxin_vacuole.stats.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
     spores: exotic * x.spores,
     enzymes: exotic * x.enzymes,
     crystals: exotic * x.crystals,
@@ -1403,7 +1428,8 @@ function speedOf(entity) {
   const carriedMass = (entity.cargo.biomass || 0) * 0.026 + (entity.cargo.lipids || 0) * 0.016 + (entity.cargo.toxins || 0) * 0.010;
   const organMass = Object.entries(entity.organelles || {}).reduce((sum, [id, count]) => {
     if (id === 'membrane') return sum + count * 0.6;
-    if (id === 'storage_vacuole') return sum + count * 1.6;
+    if (id === 'biomass_vacuole') return sum + count * 1.9; // FAT tanks are heavy — a big belly swims slow
+    if (id === 'storage_vacuole' || id === 'lipid_vacuole' || id === 'toxin_vacuole') return sum + count * 1.6;
     if (id === 'exotic_vacuole') return sum + count * 0.9;
     if (id === 'membrane_hardening') return sum + count * 1.1;
     return sum + count * 0.42;
@@ -1447,7 +1473,8 @@ function targetRadius(entity) {
   const organBulk = Object.entries(entity.organelles || {}).reduce((sum, [id, count]) => {
     if (id === 'membrane') return sum + count * 5.2; // each layer dramatically enlarges the body (also drives engulf's size gate)
     if (id === 'membrane_intake') return sum + count * 0.32;
-    if (id === 'storage_vacuole') return sum + count * 2.1;
+    if (id === 'biomass_vacuole') return sum + count * 2.6; // FAT tanks enlarge the body the most
+    if (id === 'storage_vacuole' || id === 'lipid_vacuole' || id === 'toxin_vacuole') return sum + count * 2.1;
     if (id === 'exotic_vacuole') return sum + count * 1.25;
     if (id === 'multicell_chassis') return sum + count * 8;
     return sum + count * 0.72;
@@ -1456,7 +1483,7 @@ function targetRadius(entity) {
     const massFill = clamp(((entity.cargo.biomass || 0) + (entity.biomassMass || 0) * 0.35) / Math.max(1, c.biomass), 0, 1.35);
     return clamp(base + massFill * 32 + organBulk * 0.35, 16, 118);
   }
-  const storageAmplifier = 4.5 + orgCount(entity, 'storage_vacuole') * 4.8 + orgCount(entity, 'exotic_vacuole') * 1.8;
+  const storageAmplifier = 4.5 + (orgCount(entity, 'storage_vacuole') + orgCount(entity, 'biomass_vacuole')) * 4.8 + (orgCount(entity, 'lipid_vacuole') + orgCount(entity, 'toxin_vacuole')) * 3.0 + orgCount(entity, 'exotic_vacuole') * 1.8;
   return clamp(base + organBulk + fullness * storageAmplifier, 10, entity.kind === 'player' ? 92 : 108);
 }
 
@@ -3501,7 +3528,7 @@ function removeDead(world) {
       // the death, so the long swim home to Yuki is where you bank your discoveries.
       const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
         r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, photosystem: 1, oxygen_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
       });
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {

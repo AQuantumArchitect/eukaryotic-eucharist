@@ -300,7 +300,7 @@ function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clea
 const SHOP_GROUPS=[
   ['Feeding & Intake','intake pores, selective feeding, field-vacuum',['membrane_intake','selective_membrane','cytostome','chemotaxis_cilia']],
   ['Metabolism & Fuel','biomass ⇄ ATP ⇄ lipids ⇄ crystals ⇄ gas flows',['anaerobic_processor','oxidase_vesicle','anabolic_vesicle','lipolytic_vesicle','mineralizing_gland','clean_processor','virulent_processor','catalytic_processor','lipogenic_processor','hydrogenosome','countercurrent_gill','chemosynthetic_vesicle','lipid_bladder','enzyme_reserve']],
-  ['Structure, Storage & Defense','membranes, tanks, armor, self-repair',['membrane','storage_vacuole','atp_reservoir','exotic_vacuole','dna_memory_vesicle','nuclease_vesicle','membrane_hardening','lipid_repair_loom','thorn_coat','corrosive_pellicle','crystal_ward','volatile_vacuole','barophilic_sheath']],
+  ['Structure, Storage & Defense','membranes, per-fluid tanks, armor, self-repair',['membrane','biomass_vacuole','lipid_vacuole','toxin_vacuole','atp_reservoir','exotic_vacuole','dna_memory_vesicle','nuclease_vesicle','membrane_hardening','lipid_repair_loom','thorn_coat','corrosive_pellicle','crystal_ward','volatile_vacuole','barophilic_sheath']],
   ['Oxygen & Buoyancy','bask · ferment gas to rise · flood ballast to dive · jettison to escape',['photosystem','oxygen_vacuole','oxygen_store','oxygen_tolerance','jettison_vesicle','gas_gland','pressure_bladder','ballast_siphon','aerocyst','catalase_vesicle','photolytic_vacuole','ballast_stone']],
   ['Movement','thrust, dash, burst-vent',['basal_motility','flagella','dash_vacuole','spore_jet']],
   ['Weapons','lances, rasps, launchers, glands',['lance_bristle','rasping_lamella','toxin_launcher','phagosome','velocity_lance','saw_lance','rupture_auger','siphon_rasp','leech_rasp','leech_lance','spore_toxin_launcher','toxin_cloud','harpoon_spine','adrenal_vesicle','discharge_vesicle','cryo_vesicle','neuro_barb','seeker_gland','necrosis_gland','phagocyte_maw','orbital_spores','gas_injector']],
@@ -602,6 +602,9 @@ function drawInternalOrganelles(e,ang){
   if(org.cytostome)add('cytostome','#86d2ff',org.cytostome,4.2,'ring');
   if(org.selective_membrane)add('selective','#8ef19e',1,3.8,'diamond');
   if(org.storage_vacuole)add('storage','#89ef8e',Math.min(7,org.storage_vacuole+1),3.8,'bubble');
+  if(org.biomass_vacuole)add('biomasstank','#89ef8e',Math.min(9,org.biomass_vacuole+1),4.0,'bubble');
+  if(org.lipid_vacuole)add('lipidtank','#f0c46a',Math.min(7,org.lipid_vacuole+1),3.6,'bubble');
+  if(org.toxin_vacuole)add('toxintank','#e8e22c',Math.min(7,org.toxin_vacuole+1),3.4,'bubble');
   if(org.atp_reservoir)add('atp','#ffd24d',Math.min(4,org.atp_reservoir),3.4,'bubble');
   if(org.exotic_vacuole)add('exotic','#d6a2ff',Math.min(6,org.exotic_vacuole+1),3.5,'diamond');
   if(org.anaerobic_processor)add('anaerobic','#86d2ff',Math.min(8,org.anaerobic_processor),3.7,'rod');
