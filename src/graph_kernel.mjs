@@ -245,14 +245,19 @@ const FIELD_TERMINAL_VY = 30;     // px/s cap on field vertical drift, so patche
 const MEMBRANE_COST_RATIO = (1 + Math.sqrt(5)) / 2; // golden ratio φ ≈ 1.618 per added layer
 
 // ── Exotic cost escalation by organ CATEGORY ────────────────────────────────
-// The exotic (spore/enzyme/crystal) portion of an organ's price climbs with how many organs you
-// already own IN THE SAME FUNCTIONAL CATEGORY — every copy counts. The curve is Fibonacci with a
-// DOUBLE-1 start (1,1,2,3,5,8,13,21…): the first two organs in a category are base price, then it
-// rises. Since exotic storage tops out at (racks ≤ 13), a category's exotic capstones become
-// prohibitive ~6 organs deep — a specialization tax paid in the interesting currency. Only exotic
-// keys escalate (biomass/lipids/toxins stay flat) and only organs that already cost an exotic pay,
-// but exotic-free organs still count toward the tally.
-const EXOTIC_KEYS = ['spores', 'enzymes', 'crystals'];
+// The exotic portion of an organ's price climbs with how many organs you already own IN THE SAME
+// FUNCTIONAL CATEGORY — every copy counts. The curve is Fibonacci with a DOUBLE-1 start
+// (1,1,2,3,5,8,13,21…): the first two organs in a category are base price, then it rises. Since exotic
+// storage tops out at (racks ≤ 13), a category's exotic capstones become prohibitive ~6 organs deep —
+// a specialization tax paid in the interesting currency. Only exotic keys escalate (biomass/lipids
+// stay flat) and only organs that already cost an exotic pay, but exotic-free organs still count.
+// TOXINS is the 4th escalation currency — a *self-manufactured* exotic (dirty fermentation waste), so
+// the venom build pays an escalating toxin premium ON TOP of its category signature. Cheap early (you
+// have surplus waste to dump), but geometric toxin costs quickly blow past a non-venom body's small
+// toxin tank → forcing dedicated toxin storage that eats structure slots. Toxins stays in
+// MATTER_RESOURCES for field/feeding/wealth logic (it's still self-made matter); this only makes its
+// SHOP cost escalate.
+const EXOTIC_KEYS = ['spores', 'enzymes', 'crystals', 'toxins'];
 function fib(n) { let a = 1, b = 1; for (let i = 1; i < n; i++) { const t = a + b; a = b; b = t; } return a; }
 // Capacity racks are EXEMPT from paying escalation AND from the tally: escalating them would soft-lock
 // the economy (2nd rack costs more of an exotic than a 1-rack body can hold), and counting the 13
@@ -2340,13 +2345,9 @@ function updateEnvironmentAndMetabolism(world, dt) {
     if (photo > 0) {
       // Growth scales with porosity — a porous membrane grows fast (and leaks gas fast); hardening slows both.
       const lightResponse = light * light / (light * light + 0.04 * 0.04);
-      // The new broad light shelf feeds algae over a much larger vertical span. Lower per-photon
-      // algal throughput keeps the integrated growth budget stable while still rewarding the shelf.
-  // The broadened light shelf is a much larger resource than the former
-  // exponential falloff, so algae convert each unit of light more slowly.
-  // This preserves their buoyancy cycle without turning every bright pass
-  // into a net biomass ratchet.
-  const photoScale = e.controller === 'algae' ? 0.08 : 1;
+      // The broad light shelf feeds algae over a larger vertical span. Lower per-photon
+      // throughput keeps the integrated growth budget stable without a biomass ratchet.
+      const photoScale = e.controller === 'algae' ? 0.08 : 1;
       const gain = lightResponse * photo * ORGANELLES.photosystem.stats.biomassGain * photoScale * clamp(porosity / 0.32, 0.2, 1.0) * dt;
       const room = caps(e).biomass - (e.cargo.biomass || 0);
       const actual = Math.min(room, gain);
