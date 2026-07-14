@@ -1435,7 +1435,6 @@ function applyPlayerCommands(world, player, commands, dt) {
         player.cargo.spores -= bd.spore;
         sp *= bd.impulseMult;
         const h = spawnToxicHazard(world, player.x, player.y, { kind: 'spore_cloud', sourceId: player.id, radius: bd.cloudRadius, damage: bd.cloudDamage, maxAge: bd.cloudAge, color: DNA_CATEGORY_COLORS.launcher });
-        h.side = friendlySide(player);
         world.events.push({ type: 'bloom_dash', entityId: player.id });
       } else {
         world.events.push({ type: 'dash', entityId: player.id });
@@ -2261,7 +2260,7 @@ function updateHazards(world, dt) {
     // Seeker Gland shots steer toward the nearest opposite-side body each tick.
     if (h.homing) {
       let best = null, bestD = 1e9;
-      for (const e of world.entities) { if (!e.alive || friendlySide(e) === h.side) continue; const d = distWrap(h.x, h.y, e.x, e.y); if (d < bestD) { bestD = d; best = e; } }
+      for (const e of world.entities) { if (!e.alive || (h.team !== undefined && allegiance(e) === h.team)) continue; const d = distWrap(h.x, h.y, e.x, e.y); if (d < bestD) { bestD = d; best = e; } }
       if (best) {
         const dir = norm(dxWrap(h.x, best.x), best.y - h.y);
         const sp = h.speed || Math.hypot(h.vx, h.vy) || 1;
@@ -2276,7 +2275,7 @@ function updateHazards(world, dt) {
     let burst = false;
     for (const e of world.entities) {
       if (!e.alive || e.id === h.sourceId) continue;
-      if (h.side !== undefined && friendlySide(e) === h.side) continue; // side-aware shots never hit allies
+      if (h.team !== undefined && allegiance(e) === h.team) continue; // shots never hit the shooter's own group
       const d = distWrap(h.x, h.y, e.x, e.y);
       if (d > h.radius + e.r) continue;
       if (h.hitOnce && h.hitIds.has(e.id)) continue;
@@ -2303,12 +2302,12 @@ function updateHazards(world, dt) {
     if (burst || h.age > h.maxAge || h.y < WORLD.canopy - 40 || h.y > WORLD.h + 80) {
       if (h.kind === 'toxic_projectile') {
         const st = ORGANELLES.toxin_launcher.stats;
-        spawnToxicHazard(world, h.x, h.y, { kind: 'toxic_splash', sourceId: h.sourceId, radius: st.splashRadius, damage: st.splashDamage, maxAge: st.splashAge });
+        spawnToxicHazard(world, h.x, h.y, { kind: 'toxic_splash', sourceId: h.sourceId, team: h.team, radius: st.splashRadius, damage: st.splashDamage, maxAge: st.splashAge });
       } else if (h.kind === 'spore_projectile') {
         // A heavier burst plus a slow spore-toxin cloud that keeps damaging the area.
         const st = ORGANELLES.spore_toxin_launcher.stats;
-        spawnToxicHazard(world, h.x, h.y, { kind: 'toxic_splash', sourceId: h.sourceId, radius: st.splashRadius, damage: st.splashDamage, maxAge: st.splashAge, color: DNA_CATEGORY_COLORS.launcher });
-        spawnToxicHazard(world, h.x, h.y, { kind: 'spore_cloud', sourceId: h.sourceId, radius: st.splashRadius * 0.8, damage: 20, maxAge: 2.4, color: DNA_CATEGORY_COLORS.launcher });
+        spawnToxicHazard(world, h.x, h.y, { kind: 'toxic_splash', sourceId: h.sourceId, team: h.team, radius: st.splashRadius, damage: st.splashDamage, maxAge: st.splashAge, color: DNA_CATEGORY_COLORS.launcher });
+        spawnToxicHazard(world, h.x, h.y, { kind: 'spore_cloud', sourceId: h.sourceId, team: h.team, radius: st.splashRadius * 0.8, damage: 20, maxAge: 2.4, color: DNA_CATEGORY_COLORS.launcher });
       }
       world.hazards.splice(i, 1);
     }
@@ -2375,7 +2374,7 @@ function resolveContacts(world, dt) {
       }
       // Lances don't spray every overlap — they gather the hostiles in reach and, after the
       // scan, strike only ONE: the LARGEST one they can actually skewer (in real reach + aligned).
-      const hostile = !(friendlySide(a) && friendlySide(b));
+      const hostile = !areAllied(a, b);
       if (a._hasLance && hostile && d < a._lanceReach + b.r) a._lanceCands.push({ t: b, d, nx, ny });
       if (b._hasLance && hostile && d < b._lanceReach + a.r) b._lanceCands.push({ t: a, d, nx: -nx, ny: -ny });
     }
@@ -2421,7 +2420,7 @@ function afterDamage(world, attacker, target, dmg) {
 
 function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
   if (!attacker.alive || !target.alive) return 0;
-  if (friendlySide(attacker) && friendlySide(target)) return 0; // no friendly fire (player, companions, buds, charmed)
+  if (areAllied(attacker, target)) return 0; // no friendly fire within a group (player+allies, or a swarm)
   const facing = { x: Math.cos(attacker.phase), y: Math.sin(attacker.phase) };
   const alignmentRaw = facing.x * nx + facing.y * ny;
   const impactSpeed = Math.hypot(attacker.vx || 0, attacker.vy || 0);
@@ -2456,7 +2455,7 @@ function lanceDamage(world, attacker, target, distance, nx, ny, dt) {
 
 function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
   if (!attacker.alive || !target.alive) return;
-  if (friendlySide(attacker) && friendlySide(target)) return; // no friendly fire
+  if (areAllied(attacker, target)) return; // no friendly fire within a group
   const contactFraction = clamp(overlap / Math.min(attacker.r, target.r), 0, 1.35);
   let dps = 0;
   let rupturePower = 0;
@@ -2521,10 +2520,17 @@ function drainLeech(world, attacker, target, amount) {
   if (pulled > 0 && attacker.kind === 'player') world.events.push({ type: 'leech', entityId: attacker.id });
 }
 
-// Sides: the player and anything friendly (companions, charmed enemies, buds) are
-// one team; everything else is the other. Two bodies are hostile only across sides.
+// Allegiance groups decide who never harms whom. The player + its companions, charmed enemies,
+// and buds share group 'P'. A wild swarm/brood shares its director's group (via ownerId). EVERY
+// other wild body is its own group — so wild bodies genuinely fight EACH OTHER, and to an NPC's
+// weapon the player is just one more wild body, treated EXACTLY like a scavenger and never the
+// sole enemy of the entire deep. (The old model made the player a lone faction vs. the whole
+// world, so every side-gated weapon — seekers, harpoons, blasts, auras — could only target it.)
+// friendlySide stays as the player-team identity used by rendering tint and a few UI reads.
 function friendlySide(e) { return e.kind === 'player' || !!e.friendly; }
-function areHostile(a, b) { return a.id !== b.id && friendlySide(a) !== friendlySide(b); }
+function allegiance(e) { return (e.kind === 'player' || e.friendly) ? 'P' : (e.ownerId ? ('g' + e.ownerId) : ('e' + e.id)); }
+function areAllied(a, b) { return allegiance(a) === allegiance(b); }
+function areHostile(a, b) { return a.id !== b.id && !areAllied(a, b); }
 
 // Overlap-triggered strain effects, evaluated per overlapping pair (a acting on b).
 function overlapAura(world, a, b, dt) {
@@ -2610,7 +2616,7 @@ function seekerAutoFire(world, e, living) {
     kind: 'seeker', sourceId: e.id, radius: 9, damage: st.damage * potency(world, e, 'seeker_gland'),
     vx: dir.x * st.speed, vy: dir.y * st.speed, maxAge: st.maxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.projectile
   });
-  h.homing = st.turn; h.speed = st.speed; h.side = friendlySide(e);
+  h.homing = st.turn; h.speed = st.speed;
   world.events.push({ type: 'seeker_launch', entityId: e.id });
 }
 
@@ -2671,7 +2677,7 @@ function harpoonPulse(world, entity, aimX = null, aimY = null) {
     kind: 'harpoon', sourceId: entity.id, radius: 10, damage: o.damage * potency(world, entity, 'harpoon_spine'),
     vx: ax * o.speed + entity.vx * 0.2, vy: ay * o.speed + entity.vy * 0.2, maxAge: o.maxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.projectile
   });
-  h.pull = o.pull; h.side = friendlySide(entity);
+  h.pull = o.pull;
   world.events.push({ type: 'harpoon_launch', entityId: entity.id });
   return true;
 }
@@ -2692,7 +2698,7 @@ function markPulse(world, entity, aimX = null, aimY = null) {
     kind: 'mark_blob', sourceId: entity.id, radius: 12, damage: 0,
     vx: ax * o.markSpeed + entity.vx * 0.2, vy: ay * o.markSpeed + entity.vy * 0.2, maxAge: o.markMaxAge, hitOnce: true, color: DNA_CATEGORY_COLORS.swarm
   });
-  h.side = friendlySide(entity); h.markDur = o.markDur * potency(world, entity, 'pheromone_gland');
+  h.markDur = o.markDur * potency(world, entity, 'pheromone_gland');
   world.events.push({ type: 'mark_launch', entityId: entity.id });
   return true;
 }
@@ -2769,11 +2775,16 @@ function deliverToOwner(world, e, owner, dt) {
 }
 
 function spawnToxicHazard(world, x, y, opts = {}) {
+  // A hazard carries the ALLEGIANCE of whoever fired it: it never harms that shooter's own group
+  // (self, its swarm, or the player's allies) and harms everyone else. Derived from the source so
+  // every weapon is consistent; a burst can pass team explicitly to inherit a dead parent's side.
+  const src = opts.sourceId ? world.entities.find(e => e.id === opts.sourceId) : null;
   const h = {
     id: id('hazard'), kind: opts.kind || 'toxic_splash', sourceId: opts.sourceId || null,
     x: wrapX(x), y: clamp(y, WORLD.canopy, WORLD.h), vx: opts.vx || 0, vy: opts.vy || 0,
     radius: opts.radius || 42, damage: opts.damage || 35, age: 0, maxAge: opts.maxAge || 1.2,
-    color: opts.color || COLORS.toxins, hitOnce: !!opts.hitOnce, hitIds: new Set()
+    color: opts.color || COLORS.toxins, hitOnce: !!opts.hitOnce, hitIds: new Set(),
+    team: opts.team !== undefined ? opts.team : (src ? allegiance(src) : undefined)
   };
   world.hazards.push(h);
   return h;
@@ -2803,7 +2814,6 @@ function detonateVolatile(world, entity) {
     kind: 'blast', sourceId: entity.id, radius: st.radius * cm.rmult,
     damage: power, maxAge: st.age, color: DNA_CATEGORY_COLORS.execute, hitOnce: true
   });
-  h.side = friendlySide(entity); // spares your own colony/companions; hits hostiles
   entity.oxygen = (entity.oxygen || 0) * (1 - COMBUSTION.blastO2Burn);
   entity.cargo.lipids = (entity.cargo.lipids || 0) * (1 - COMBUSTION.blastLipidBurn);
   if (entity.kind === 'player') world.events.push({ type: 'detonate', entityId: entity.id });
@@ -2842,7 +2852,6 @@ function flamePulse(world, entity, aimX = null, aimY = null) {
       vx: dx * speed + entity.vx * 0.3, vy: dy * speed + entity.vy * 0.3,
       maxAge: o.puffLife, color: DNA_CATEGORY_COLORS.execute
     });
-    h.side = friendlySide(entity); // never scorches your own side
   }
   world.events.push({ type: 'flame', entityId: entity.id });
   return true;
