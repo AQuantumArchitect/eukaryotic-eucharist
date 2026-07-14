@@ -211,9 +211,10 @@ const BASE_BUOYANCY = 2.0;        // flat lift every body has (replaces the old 
 const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before overload poisons you
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
 const FEED_INHALE_RATE = 0.9;     // active O2 gulp multiplier while feeding in O2-rich water
-const GAS_LEAK_K = 0.35;          // ballast-gas leak per unit membrane porosity per second
-const GAS_FERMENT_RATE = 0.045;   // lift-gas made per bladder per second (biomass → gas, ATP-independent)
-const GAS_FERMENT_YIELD = 0.05;   // gas produced per unit biomass fermented for buoyancy
+const GAS_LEAK_K = 0.20;          // ballast-gas leak per unit membrane porosity per second (a trimmed bladder holds)
+// Ballast gas is produced ONLY as the offgas byproduct of the biomass→ATP processor (see the
+// fermentation block) — there is no standalone biomass→gas drain, so a cell at full ATP holds its
+// biomass. Buoyancy is about working that offgas + the reserve (vent to dive, ferment to refill).
 // Algal bob-lifecycle (tuning): a bloom bloats in the canopy light, sinks under its own weight,
 // then in the lightless deep ferments gas FASTER (scaled by depth) so it bottoms out and rides
 // back up — a vertical bob whose depth/amplitude escalate with the bloom's size. The bright top
@@ -221,7 +222,7 @@ const GAS_FERMENT_YIELD = 0.05;   // gas produced per unit biomass fermented for
 const ALGAE_DEEP_FERMENT_K = 1.6; // deep blooms ferment lift-gas up to (1+K)× faster → they bottom out & rise
 const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
 const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
-const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep bloom reads big
+const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep-diving bloom reads big
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
 // buoyant lipids float up toward the canopy, and volatile ATP/toxins diffuse outward into
@@ -277,7 +278,9 @@ const ORGAN_CATEGORY = {
 function categoryCount(entity, cat) {
   let n = 0;
   for (const [org, c] of Object.entries(entity.organelles || {})) {
-    if (CATEGORY_EXEMPT.has(org)) continue;
+    // Membrane is φ-scaled on its own and is bought constantly — counting it here would pollute
+    // the 'structure' tally so a Storage Vacuole's crystal price jumps ahead of the 1,1,2,3,5 curve.
+    if (CATEGORY_EXEMPT.has(org) || org === 'membrane') continue;
     if (ORGAN_CATEGORY[org] === cat) n += c;
   }
   return n;
@@ -519,7 +522,7 @@ export const ORGANELLES = Object.freeze({
   photosystem: {
     name: 'Photosystem Patch', tier: 2, action: null, stackable: true, max: 5,
     desc: 'The algae road: light grows biomass and exports oxygen stress. It makes abundance, weight, and eventual falling.',
-    stats: { biomassGain: 3.0, oxygenWaste: 0.050, oxygenVent: 0.17 }
+    stats: { biomassGain: 1.6, oxygenWaste: 0.050, oxygenVent: 0.17 }
   },
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 2, action: 'rasp', stackable: true, max: 5,
@@ -746,10 +749,10 @@ export const ORGANELLES = Object.freeze({
 });
 
 export const OFFERINGS = Object.freeze([
-  { id: 'repair', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Repair Communion', output: 'hp', desc: 'Yuki patches your membrane with fat and a little slurry. Self-repair is Tier 2; this is external communion.', cost: { lipids: 7, biomass: 2 }, effect: { heal: 38 } },
+  { id: 'repair', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Repair Communion', output: 'hp', desc: 'Yuki patches your membrane from whatever matter you bring — pay a fair share of your biomass and fat, no exact recipe.', value: 10, effect: { heal: 38 } },
   { id: 'buy_biomass', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render Lipids into Biomass', output: 'biomass', desc: 'Convert stored fat into construction slurry.', cost: { lipids: 8, energy: 3 }, gain: { biomass: 9 } },
   { id: 'buy_lipids', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Condense Lipids', output: 'lipids', desc: 'Restock membrane fat from biomass and ATP.', cost: { biomass: 6, energy: 3 }, gain: { lipids: 8 } },
-  { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki refills ATP. No waste is mixed into the output.', cost: { biomass: 4, lipids: 2 }, gain: { energy: 10 } },
+  { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki burns a fair share of your matter into a clean ATP charge — no exact recipe, pay from what you carry.', value: 6, gain: { energy: 10 } },
   { id: 'buy_toxins', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Distill Toxins', output: 'toxins', desc: 'Restock toxin chemistry as a single clean tank.', cost: { biomass: 4, energy: 3 }, gain: { toxins: 7 } },
   { id: 'detox', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Yuki Detox', output: 'detox', desc: 'Pass toxins and oxygen stress into the canopy — cuts each by two-thirds. Not a combat vent.', cost: { energy: 4 }, effect: { detoxFrac: 2 / 3, oxygenVentFrac: 2 / 3 } },
 
@@ -879,6 +882,26 @@ function hasStock(cargo, cost = {}) { for (const [k, v] of Object.entries(cost))
 function resourceLabel(k) { return k === 'energy' ? 'ATP' : k; }
 function fmtStock(stock = {}) { return Object.entries(stock).filter(([k, v]) => k !== 'oxygen' && v > 0).map(([k, v]) => `${Math.ceil(v)} ${resourceLabel(k)}`).join(', '); }
 function totalMatter(stock) { return MATTER_RESOURCES.reduce((s, k) => s + Math.max(0, stock[k] || 0), 0); }
+
+// Fair-distribution exchange payment. Instead of a fixed recipe (7 lipids + 2 biomass — which
+// forces the player to shuffle biomass↔lipids to cross a threshold), a value-based exchange has a
+// single WORTH price paid from whatever matter you hold, drawing the SAME fraction of each resource.
+// Each resource's worth is weighted (lipids denser than biomass); ATP is never spent (matter only).
+const RESOURCE_WORTH = Object.freeze({ biomass: 1.0, lipids: 1.35 });
+const PAY_RESOURCES = Object.freeze(['biomass', 'lipids']);
+function payWorth(cargo) { return PAY_RESOURCES.reduce((s, r) => s + Math.max(0, cargo[r] || 0) * RESOURCE_WORTH[r], 0); }
+function canAffordValue(cargo, value) { return payWorth(cargo) + 1e-6 >= value; }
+// The matter this exchange would draw RIGHT NOW: the same fraction f of each resource you hold, so
+// worth debited = value. Used both to preview the split in the shop and to actually charge it.
+function valueSplit(cargo, value) {
+  const total = payWorth(cargo);
+  if (total <= 1e-6) return {};
+  const f = clamp(value / total, 0, 1);
+  const out = {};
+  for (const r of PAY_RESOURCES) { const amt = (cargo[r] || 0) * f; if (amt > 1e-4) out[r] = amt; }
+  return out;
+}
+function payValue(cargo, value) { if (!canAffordValue(cargo, value)) return false; const split = valueSplit(cargo, value); for (const r of PAY_RESOURCES) cargo[r] = Math.max(0, (cargo[r] || 0) - (split[r] || 0)); return true; }
 
 let nextId = 1;
 function id(prefix) { return `${prefix}_${nextId++}`; }
@@ -1422,7 +1445,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     const thrustFactor = 0.18 + 0.82 * Math.pow(energyRatio, 0.65);
     const efficiencyK = 0.70 + 0.90 * energyRatio;
     const preMitoBurden = hasMito(player) ? 1.0 : 1.25;
-    const moveCost = (0.30 + orgCount(player, 'flagella') * 0.090 + (player.cargo.biomass || 0) * 0.016 + Object.values(player.organelles || {}).reduce((a,b)=>a+b,0)*0.017) * thrustFactor * efficiencyK * preMitoBurden * dt;
+    const moveCost = (0.30 + orgCount(player, 'flagella') * 0.090 + (player.cargo.biomass || 0) * 0.016 + Object.values(player.organelles || {}).reduce((a,b)=>a+b,0)*0.008) * thrustFactor * efficiencyK * preMitoBurden * dt;
     if (player.cargo.energy >= moveCost) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
@@ -1915,10 +1938,23 @@ function updateAlgaeAI(world, e, dt) {
   // light to survive; one that can't recover starves and dissolves into deep slurry for the froth.
   const light = lightAt(e.y);
   e.hp = Math.min(c.hp, e.hp + ALGAE_HEAL * light * dt); // bask: heal ∝ light, so a rising bloom mends on the way up
-  const depthFrac = clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.h - WORLD.ruptureTop), 0, 1);
+  const depthFrac = clamp((e.y - WORLD.deepTop) / Math.max(1, WORLD.h - WORLD.deepTop), 0, 1);
   if (depthFrac > 0) {
-    e.hp -= ALGAE_DEEP_ATTR * depthFrac * dt; // the true deep starves a bloom — ride the ballast back up or dissolve
+    e.hp -= ALGAE_DEEP_ATTR * depthFrac * dt; // only the TRUE deep starves a bloom — ride back up or dissolve
     if (e.hp <= 0) e.alive = false; // removeDead turns it into an abyssal feed-field for the deep froth
+  }
+
+  // Growth-by-ascension: a bloom that has sunk out of the bright band and then rides back up to the
+  // light earns another Photosystem patch (up to the organ's max), and the new patch is structural
+  // weight. Blooms therefore GROW over successive bobs — young ones are small and hug the upper
+  // reaches; only veterans that have cycled many times get heavy enough to sink into the scavengers'
+  // nursery and, largest of all, to fall into the true deep. This stratifies the whole crop by size.
+  if (e.y > WORLD.canopy + 300) e._dove = true;
+  if (e._dove && light > 0.5 && orgCount(e, 'photosystem') < ORGANELLES.photosystem.max) {
+    e.organelles.photosystem = orgCount(e, 'photosystem') + 1;
+    e.biomassMass = (e.biomassMass || 0) + 6;
+    e._dove = false;
+    e._capsEpoch = -1;
   }
 }
 
@@ -1988,9 +2024,19 @@ function updateEnvironmentAndMetabolism(world, dt) {
         e.cargo.biomass -= ferment;
         e.cargo.energy += ferment * efficiency;
         e.cargo.toxins += ferment * st.toxinPerBiomass * (0.65 + 0.9 * biomassFill);
-        // Fermentation vents a gaseous byproduct that inflates the ballast bladder — the
-        // algae's engine for floating back up after it has grown heavy and sunk.
-        if (st.gasPerBiomass) e.ballastGas = Math.min(caps(e).ballastGas, (e.ballastGas || 0) + ferment * st.gasPerBiomass);
+        // Ballast gas is the OFFGAS of this biomass→ATP fermentation, nothing more: it is made
+        // ONLY when the engine actually runs (i.e. ATP has headroom), so a cell at full ATP vents
+        // no gas and holds its biomass. Buoyancy is then about working the offgas + your reserves
+        // (vent to dive, ferment to refill), never a standalone organelle that eats biomass. Deep
+        // algae vent offgas harder (depth boost), so a sunk bloom refills its ballast and rides
+        // back toward the light — the engine of the algal bob, now driven by the same fermentation.
+        if (st.gasPerBiomass) {
+          const deepBoost = e.controller === 'algae'
+            ? 1 + ALGAE_DEEP_FERMENT_K * clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
+            : 1;
+          const glandBoost = 1 + orgCount(e, 'gas_gland') * ORGANELLES.gas_gland.stats.fermentBonus; // capture more offgas per ferment
+          e.ballastGas = Math.min(caps(e).ballastGas, (e.ballastGas || 0) + ferment * st.gasPerBiomass * deepBoost * glandBoost);
+        }
         if (st.enzymeDrain && (e.cargo.enzymes || 0) > 0) {
           e.cargo.enzymes = Math.max(0, e.cargo.enzymes - st.enzymeDrain * level * dt);
         }
@@ -2013,25 +2059,6 @@ function updateEnvironmentAndMetabolism(world, dt) {
           e.cargo.lipids += lipidsMade;
           e.cargo.energy = Math.max(0, e.cargo.energy - lst.energyCost * usedBiomass);
         }
-      }
-    }
-
-    // Buoyancy fermentation: a bladder cell ferments a trickle of surplus biomass straight
-    // into lift-gas — independent of the ATP energy-gate — so a sunk bloom in the dark keeps
-    // inflating and can float back up. Only tops toward cap; won't waste biomass on a full bladder.
-    const bladders = orgCount(e, 'oxygen_vacuole');
-    if (bladders > 0 && (e.cargo.biomass || 0) > 3) {
-      const gasRoom = caps(e).ballastGas - (e.ballastGas || 0);
-      if (gasRoom > 0.001) {
-        const glandBoost = 1 + orgCount(e, 'gas_gland') * ORGANELLES.gas_gland.stats.fermentBonus;
-        // A sunk bloom ferments FASTER the deeper (and darker) it is, so its ballast fights the
-        // fall harder as it descends — it bottoms out and rides back toward the light. This is the
-        // engine of the algal bob: bigger blooms sink deeper before this reverses them.
-        const depthBoost = e.controller === 'algae'
-          ? 1 + ALGAE_DEEP_FERMENT_K * clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
-          : 1;
-        const made = Math.min(gasRoom, GAS_FERMENT_RATE * bladders * glandBoost * depthBoost * dt, ((e.cargo.biomass || 0) - 3) * GAS_FERMENT_YIELD);
-        if (made > 0) { e.ballastGas += made; e.cargo.biomass -= made / GAS_FERMENT_YIELD; }
       }
     }
 
@@ -2129,7 +2156,12 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // updateAlgaeAI (pure ballast); applying this to them too would double-count their buoyancy.
     if (e.controller !== 'algae') {
       const sink = biomassWeight(e) - buoyancy(e) - orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
-      e.vy += clamp(sink * 0.026, -8, 22) * dt;
+      // A ballast-equipped cell (the player) DRIFTS on its buoyancy like a bloom — you slide up when
+      // gas-buoyant and settle when heavy, hands-off, so trim actually matters. The weak coefficient
+      // was swamped by velocity damping, which is why the player felt hard-locked to WASD. Non-ballast
+      // NPCs keep the gentle settling drift they had.
+      const k = hasOrg(e, 'oxygen_vacuole') ? 3.0 : 0.026;
+      e.vy += clamp(sink * k, -55, 60) * dt;
     }
 
     if (e.incubating) updateEucharistIncubation(world, e, dt);
@@ -3833,8 +3865,11 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     const needsDiscovery = !!o.requiresDiscovery && !(world.discoveredSources || new Set()).has(o.requiresDiscovery);
     const atCompanionCap = !!o.companion && companionCount(world, entityId) >= swarmCap(e);
     const incubating = o.id === 'mitochondrial_eucharist' && !!e.incubating;
-    const cost = scaledCost(e, o); // membrane cost grows geometrically with layers already grown
-    const affordable = hasStock(e.cargo, cost);
+    // Value-based exchange: pay a fair share of your matter (no fixed recipe). cost is the LIVE
+    // split it would draw from your current stock, so the shop shows exactly what you'd spend now.
+    const isValue = o.value != null;
+    const cost = isValue ? valueSplit(e.cargo, o.value) : scaledCost(e, o); // membrane cost grows geometrically with layers already grown
+    const affordable = isValue ? canAffordValue(e.cargo, o.value) : hasStock(e.cargo, cost);
     const locked = !!owned || !!maxed || needsMito || needsNoMito || needsOrg || needsHost || needsDiscovery || atCompanionCap || incubating || !affordable;
     const reasons = [];
     if (owned || maxed) reasons.push('already grafted or maxed');
@@ -3845,7 +3880,7 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     if (atCompanionCap) reasons.push(swarmCap(e) <= 0 ? 'requires a Pheromone Gland to conduct a swarm' : `colony full — your ${orgCount(e, 'pheromone_gland')} gland(s) conduct ${swarmCap(e)} swarms`);
     if (needsHost) reasons.push(...readiness.reasons.slice(0, 3));
     if (incubating) reasons.push('incubation underway');
-    if (!affordable) reasons.push(`needs ${fmtStock(missingStock(e.cargo, cost))}`);
+    if (!affordable) reasons.push(isValue ? `needs ${Math.ceil(o.value)} worth of matter (biomass + fat)` : `needs ${fmtStock(missingStock(e.cargo, cost))}`);
     const category = o.organelle ? ORGANELLES[o.organelle]?.category || null : null;
     // Functional category + the current Fibonacci exotic-cost multiplier (from same-category organs
     // already grown), so the shop can explain why an exotic price has climbed.
@@ -3983,7 +4018,12 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
     world.events.push({ type: 'companion', entityId, offeringId, companion: offering.companion });
     return { ok: true, offeringId };
   }
-  subStock(entity.cargo, scaledCost(entity, offering)); // membrane costs scale with layers owned
+  if (offering.value != null) {
+    // Value-based exchange: draw a fair share of matter (biomass + fat) rather than a fixed recipe.
+    if (!payValue(entity.cargo, offering.value)) return { ok: false, reason: `needs ${Math.ceil(offering.value)} worth of matter` };
+  } else {
+    subStock(entity.cargo, scaledCost(entity, offering)); // membrane costs scale with layers owned
+  }
   if (offering.gain) addStock(entity.cargo, offering.gain);
   if (offering.effect?.heal) entity.hp = Math.min(caps(entity).hp, entity.hp + offering.effect.heal);
   if (offering.effect?.detoxFrac) entity.cargo.toxins = (entity.cargo.toxins || 0) * (1 - offering.effect.detoxFrac);

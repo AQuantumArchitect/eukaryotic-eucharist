@@ -311,13 +311,13 @@ function shopStress(){
   const atpLow=e?e.value/Math.max(1,e.max)<0.25:false; // leave with a spare quarter-tank to climb/dive out of the oxygen ceiling
   const tox=hud&&hud.resources?hud.resources.find(r=>r.id==='toxins'):null;
   const toxHi=tox?tox.value/Math.max(1,tox.max)>0.6:false;
-  const o2=hud?hud.oxygen:null; const o2Hi=o2?o2.value>o2.tolerance:false;
   const hpLow=hud?hud.hp.value/Math.max(1,hud.hp.max)<0.55:false;
   const parts=[];
+  // Warn on toxin saturation only — O2 stress is transient (dive out of the light) and not worth nagging.
   if(hpLow) parts.push('wounded — Repair Communion');
   if(atpLow) parts.push('low ATP — Charge ATP to escape the oxygen');
-  if(toxHi||o2Hi) parts.push('toxin / O2 stress — Detox');
-  return {atpLow, hpLow, stressed:hpLow||atpLow||toxHi||o2Hi, msg:parts.join(' · ')};
+  if(toxHi) parts.push('toxin stress — Detox');
+  return {atpLow, hpLow, stressed:hpLow||atpLow||toxHi, msg:parts.join(' · ')};
 }
 function openShop(){shopLeaveArmed=false;ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
 function closeShop(force){
