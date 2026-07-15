@@ -3694,10 +3694,10 @@ function hurt(world, entity, amount, sourceId = null) {
     // On-kill riders belonging to the KILLER: necrotic bloom + fission budding.
     const killer = sourceId && sourceId !== entity.id ? world.entities.find(x => x.id === sourceId && x.alive) : null;
     if (killer) {
-      // ATP HARVEST — a predator (or the player/companion) rips the victim's stored charge into its
-      // own reservoir before the body cools. Runs BEFORE bloomDeath spawns the corpse field, so the
-      // field is left biomass+lipids only: the scavengers eat the meat, the hunters keep the charge.
-      if (ATP_HARVESTERS.has(killer.controller) || killer.kind === 'player') {
+      // ATP HARVEST — an ATP Reservoir is the explicit DNA organ that captures a corpse's charge.
+      // Wild predator lineages start with one; the player must sequence and graft one. Without it,
+      // energy stays in the corpse field for field-feeders rather than becoming hidden kill magic.
+      if ((ATP_HARVESTERS.has(killer.controller) || killer.kind === 'player') && hasOrg(killer, 'atp_reservoir')) {
         const room = caps(killer).energy - (killer.cargo.energy || 0);
         const playerYield = killer.kind === 'player' || killer.friendly;
         const drainFrac = playerYield ? ATP_HARVEST.playerDrainFrac : ATP_HARVEST.npcDrainFrac;
