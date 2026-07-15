@@ -66,6 +66,7 @@ const STRAINS = Object.freeze({
   // an acid pellicle. No spines, no lances, no mouths — a bloom has none of those.
   algae: [
     { org: 'jettison_vesicle', tint: '#a8e0d0' },
+    { org: 'biomass_vacuole', tint: '#89ef8e' },
     { org: 'lipid_repair_loom', tint: '#4fbf6f' },
     { org: 'lipogenic_processor', tint: '#c9e86f' },
     { org: 'thorn_coat', tint: '#8fbf5f' },
@@ -103,6 +104,7 @@ const STRAINS = Object.freeze({
   // venom-fuel metabolism.
   predator: [
     { org: 'velocity_lance', tint: '#ff3d9a' },
+    { org: 'lipid_vacuole', tint: '#f0c46a' },
     { org: 'cleavage_furrow', tint: '#ff9ad2' },
     { org: 'saw_lance', tint: '#c07fb0' },
     { org: 'rupture_auger', tint: '#ff5f8f' },
@@ -122,6 +124,7 @@ const STRAINS = Object.freeze({
   // gut. The exotic-weapon core of the endgame.
   protozoan: [
     { org: 'spore_toxin_launcher', tint: '#b06dff' },
+    { org: 'toxin_vacuole', tint: '#e8e22c' },
     { org: 'toxin_cloud', tint: '#9d5fff' },
     { org: 'discharge_vesicle', tint: '#ffe86f' },
     { org: 'cryo_vesicle', tint: '#8fd6ff' },
@@ -247,13 +250,29 @@ const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a
 // than population targets or behavioral switches, so a tuning pass changes the flow field instead
 // of prescribing an outcome. createEcologyWorld({ ecologyTuning: { ... } }) overrides any subset.
 export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
-  algaePhotoScale: 0.08,
+  algaePhotoScale: 0.04,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
   scavengerDetritusGain: 1.0,
   scavengerHunterPressure: 1.0,
   nurserySlurryGain: 1.0,
   predatorHeatGain: 1.0,
   predatorHeatDecay: 1.0
+});
+// A serializable description of the normal producer regime. It is an initial-condition
+// distribution, not a script: every world samples a different collection of phases and
+// metabolic traits from this same aggregate ecology.
+export const DEFAULT_ALGAE_REGIME = Object.freeze({
+  algaeMeanCount: 60,
+  algaeCountSpread: 7,
+  producerMassTarget: 13000,
+  producerMassSpread: 1800,
+  cycleMinSeconds: 45,
+  cycleMaxSeconds: 120,
+  depthMin: 210,
+  depthMax: 2350,
+  structuralMean: 98,
+  structuralSpread: 15,
+  traitSpread: 0.22
 });
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
@@ -289,13 +308,13 @@ function fib(n) { let a = 1, b = 1; for (let i = 1; i < n; i++) { const t = a + 
 const CATEGORY_EXEMPT = new Set(['exotic_vacuole', 'dna_memory_vesicle']);
 // Functional buckets — mirror of index.html SHOP_GROUPS (keep the two in sync).
 const ORGAN_CATEGORY = {
-  membrane_intake: 'feeding', selective_membrane: 'feeding', cytostome: 'feeding', chemotaxis_cilia: 'feeding',
+  membrane_intake: 'feeding', selective_membrane: 'feeding', cytostome: 'feeding', chemotaxis_cilia: 'feeding', nuclease_vesicle: 'feeding',
   anaerobic_processor: 'metabolism', oxidase_vesicle: 'metabolism', anabolic_vesicle: 'metabolism',
   lipolytic_vesicle: 'metabolism', mineralizing_gland: 'metabolism', clean_processor: 'metabolism',
   virulent_processor: 'metabolism', catalytic_processor: 'metabolism', lipogenic_processor: 'metabolism',
   hydrogenosome: 'metabolism', countercurrent_gill: 'metabolism', chemosynthetic_vesicle: 'metabolism',
   lipid_bladder: 'metabolism', enzyme_reserve: 'metabolism',
-  membrane: 'structure', storage_vacuole: 'structure', biomass_vacuole: 'structure', lipid_vacuole: 'structure', toxin_vacuole: 'structure', atp_reservoir: 'structure', nuclease_vesicle: 'structure',
+  membrane: 'structure', storage_vacuole: 'structure', biomass_vacuole: 'structure', lipid_vacuole: 'structure', toxin_vacuole: 'structure', atp_reservoir: 'structure',
   membrane_hardening: 'structure', lipid_repair_loom: 'structure', thorn_coat: 'structure',
   corrosive_pellicle: 'structure', crystal_ward: 'structure', volatile_vacuole: 'structure',
   barophilic_sheath: 'structure', multicell_chassis: 'structure',
@@ -442,23 +461,23 @@ export const ORGANELLES = Object.freeze({
   },
   storage_vacuole: {
     name: 'Storage Vacuole', tier: 2, action: null, stackable: true, max: 8,
-    desc: 'One general storage organ. Expands biomass, lipids, toxins, and ATP. Also increases body size and swimming cost. (Wild/NPC generalist tank — the player shop stocks the dedicated per-fluid vacuoles instead.)',
+    desc: 'General storage — raises every tank (biomass, lipids, toxins, ATP) a moderate amount. The accessible baseline; the dedicated per-fluid racks hold far more of one fluid. Also increases body size and swimming cost.',
     stats: { biomass: 22, lipids: 14, toxins: 10, energy: 24, bulk: 0.030 }
   },
   biomass_vacuole: {
     name: 'Biomass Vacuole', tier: 2, action: null, stackable: true, max: 12,
-    desc: 'A dedicated biomass sac — pure construction-slurry capacity, nothing else. The FAT build stacks these into a huge biomass reserve on nothing but biomass (no exotics). A bigger belly means a bigger, slower body that costs more to armor.',
-    stats: { biomass: 22, bulk: 0.032 }
+    desc: 'A dedicated biomass sac — pure construction-slurry capacity, nothing else, and far more of it than the general tank. The FAT build stacks these into a huge biomass reserve on nothing but biomass (no exotics). A bigger belly means a bigger, slower body that costs more to armor.',
+    stats: { biomass: 40, bulk: 0.036 }
   },
   lipid_vacuole: {
     name: 'Lipid Vacuole', tier: 2, action: null, stackable: true, max: 8,
-    desc: 'A dedicated fat sac — pure lipid capacity. Fat is your light, tradeable wealth; a deeper lipid reserve also lends lift.',
-    stats: { lipids: 16, bulk: 0.022 }
+    desc: 'A dedicated fat sac — deep lipid capacity, far more than the general tank. Fat is your light, tradeable wealth; a deeper reserve also lends lift.',
+    stats: { lipids: 30, bulk: 0.024 }
   },
   toxin_vacuole: {
     name: 'Toxin Vacuole', tier: 2, action: null, stackable: true, max: 8,
-    desc: 'A dedicated venom sac — pure toxin capacity. The venom build needs it to hold the escalating toxin cost of its weapons without capping out.',
-    stats: { toxins: 16, bulk: 0.022 }
+    desc: 'A dedicated venom sac — deep toxin capacity, far more than the general tank. The venom build needs it to hold the escalating toxin cost of its weapons without capping out.',
+    stats: { toxins: 30, bulk: 0.024 }
   },
   atp_reservoir: {
     name: 'ATP Reservoir', tier: 3, action: null, stackable: true, max: 4, category: 'metabolic',
@@ -815,9 +834,10 @@ export const OFFERINGS = Object.freeze([
   { id: 'anabolic_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anabolic Vesicle', desc: 'Banks surplus ATP as biomass when your energy tank runs high — the inverse of a processor.', cost: { biomass: 14, lipids: 8 }, organelle: 'anabolic_vesicle', requiresDiscovery: 'anabolic_vesicle', stackLimit: 5 },
   { id: 'lipolytic_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Lipolytic Vesicle', desc: 'Breaks stored fat back into biomass — a one-way lipids → biomass flow.', cost: { biomass: 12, lipids: 4 }, organelle: 'lipolytic_vesicle', requiresDiscovery: 'lipolytic_vesicle', stackLimit: 5 },
   { id: 'mineralizing_gland', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Mineralizing Gland', desc: 'Precipitates crystal from toxins and biomass — turn metabolic poison and bulk into exotic ammo (needs exotic storage).', cost: { biomass: 16, lipids: 6 }, organelle: 'mineralizing_gland', requiresDiscovery: 'mineralizing_gland', stackLimit: 4 },
-  { id: 'biomass_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Biomass Vacuole', desc: 'Dedicated biomass capacity — the FAT tank. Pure biomass, no exotics: stack these to hoard a huge reserve. A bigger belly is a bigger, slower body.', cost: { biomass: 12 }, organelle: 'biomass_vacuole', stackLimit: 12 },
-  { id: 'lipid_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Lipid Vacuole', desc: 'Dedicated fat capacity — your tradeable-wealth tank, and a little extra lift.', cost: { biomass: 6, lipids: 6 }, organelle: 'lipid_vacuole', stackLimit: 8 },
-  { id: 'toxin_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Toxin Vacuole', desc: 'Dedicated venom capacity — hold the escalating toxin cost of a committed venom build.', cost: { biomass: 8, lipids: 4 }, organelle: 'toxin_vacuole', stackLimit: 8 },
+  { id: 'storage_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Storage Vacuole', desc: 'General storage — raises every tank (biomass, lipids, toxins, ATP) a little. The accessible baseline; the dedicated per-fluid racks (DNA-locked) hold far more of one fluid.', cost: { biomass: 8, lipids: 4 }, organelle: 'storage_vacuole', stackLimit: 8 },
+  { id: 'biomass_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Biomass Vacuole', desc: 'Dedicated biomass capacity — the FAT tank. Pure biomass, no exotics: stack these to hoard a huge reserve. A bigger belly is a bigger, slower body. Sequenced from biomass-hoarding cells.', cost: { biomass: 12 }, organelle: 'biomass_vacuole', requiresDiscovery: 'biomass_vacuole', stackLimit: 12 },
+  { id: 'lipid_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Lipid Vacuole', desc: 'Dedicated fat capacity — your tradeable-wealth tank, and a little extra lift. Sequenced from fat-rich predators.', cost: { biomass: 6, lipids: 6 }, organelle: 'lipid_vacuole', requiresDiscovery: 'lipid_vacuole', stackLimit: 8 },
+  { id: 'toxin_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Toxin Vacuole', desc: 'Dedicated venom capacity — hold the escalating toxin cost of a committed venom build. Sequenced from deep venomous cells.', cost: { biomass: 8, lipids: 4 }, organelle: 'toxin_vacuole', requiresDiscovery: 'toxin_vacuole', stackLimit: 8 },
   { id: 'exotic_vacuole', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Exotic Vesicle Rack', desc: 'Each rack adds exactly one spore, one enzyme, and one crystal slot. No invisible exotic capacity exists.', cost: { biomass: 8, lipids: 4, spores: 1 }, organelle: 'exotic_vacuole', stackLimit: 13 },
   { id: 'dna_memory_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'DNA Memory Vesicle', desc: 'One additional protected DNA slot. It stores information; Tier 3 decides what the information means.', cost: { biomass: 10, crystals: 1 }, organelle: 'dna_memory_vesicle', stackLimit: 13 },
   { id: 'nuclease_vesicle', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Nuclease Vesicle', desc: 'Digests junk DNA — untagged strands and any genome no better than one you carry or know — into biomass on pickup, keeping your DNA store free for the good stuff.', cost: { biomass: 16, enzymes: 1 }, organelle: 'nuclease_vesicle', requiresDiscovery: 'nuclease_vesicle', stackLimit: 1 },
@@ -1043,12 +1063,14 @@ export function createWorld(options = {}) {
     hazards: [],
     events: [],
     stats: { fieldsMerged: 0, deaths: 0, dnaRead: 0, algaeFalls: 0, ruptures: 0, algaeBirths: 0,
-      immigrations: 0, emigrations: 0, fissions: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0 },
+      immigrations: 0, emigrations: 0, fissions: 0, spawnedCompanions: 0, eucharists: 0, toxicHits: 0,
+      algaeBoundarySamples: 0, algaeBoundaryHits: 0, algaeCycles: 0 },
     cellLibrary: [],
     discoveredSources: ecologyOnly ? new Map() : (options.fresh ? freshDiscoveries() : loadDiscoveries()),
     spawn: { algae: 0, npc: 0, exotic: 0, nursery: 0, seed: 0 },
     escalation: 0,     // ratchets up with the player's progress → the deep releases more, and more
     ecologyTuning: { ...DEFAULT_ECOLOGY_TUNING, ...(options.ecologyTuning || {}) },
+    ecologyRegime: { ...DEFAULT_ALGAE_REGIME, ...(options.ecologyRegime || {}) },
     playerId: null,
     ecologyOnly,
     _targetClaims: new Map()
@@ -1124,6 +1146,44 @@ function seedMatureHunterState(world, e) {
   e.reproHeat = rand(world, 0.02, 0.45); // a mature ecology includes cold and recently successful lineages
 }
 
+function sampleAlgaeTraits(world, regime) {
+  const spread = regime.traitSpread || 0.22;
+  return {
+    photo: clamp(gaussian(world.rng, 1, spread), 0.55, 1.48),
+    vent: clamp(gaussian(world.rng, 1, spread), 0.55, 1.52),
+    ferment: clamp(gaussian(world.rng, 1, spread), 0.55, 1.55),
+    density: clamp(gaussian(world.rng, 1, spread * 0.7), 0.64, 1.42),
+    cycle: clamp(gaussian(world.rng, 1, spread * 0.45), 0.72, 1.28)
+  };
+}
+
+function seedAnalyticAlgaeRegime(world) {
+  const r = world.ecologyRegime;
+  const count = clamp(Math.round(gaussian(world.rng, r.algaeMeanCount, r.algaeCountSpread)), 24, ALGAE_EMERGENCY_CAP - 8);
+  for (let i = 0; i < count; i++) {
+    const traits = sampleAlgaeTraits(world, r);
+    const seedPhase = world.rng() * Math.PI * 2;
+    const structural = clamp(gaussian(world.rng, r.structuralMean, r.structuralSpread), 58, 138);
+    const cargoBiomass = clamp(gaussian(world.rng, 92, 19), 42, 142);
+    const depthWave = (1 - Math.cos(seedPhase)) * 0.5;
+    const workDepth = WORLD.canopy + clamp(300 + structural * 13, r.depthMin, r.depthMax);
+    const y = clamp(WORLD.canopy + r.depthMin + (workDepth - WORLD.canopy - r.depthMin) * depthWave + gaussian(world.rng, 0, 70), WORLD.canopy + 45, WORLD.h - 100);
+    const period = clamp(gaussian(world.rng, 78, 17) / traits.cycle, r.cycleMinSeconds, r.cycleMaxSeconds);
+    const gasFill = clamp(0.56 + 0.22 * Math.cos(seedPhase) - 0.10 * (structural - r.structuralMean) / Math.max(1, r.structuralSpread), 0.12, 0.94);
+    const e = spawnAlgae(world, {
+      mature: true, biomass: cargoBiomass, y, x: rand(world, 0, WORLD.w),
+      algaeTraits: traits, algaeSeedPhase: seedPhase, algaeCyclePeriod: period
+    });
+    e.biomassMass = structural;
+    e.ballastGas = caps(e).ballastGas * gasFill;
+    // This is a sampled state on a continuous orbit, not a discrete rise/sink bucket.
+    e.vy = Math.sin(seedPhase) * (7 + 9 * (structural / Math.max(1, r.structuralMean))) + gaussian(world.rng, 0, 2.5);
+    e.algaePrevDirection = Math.sign(e.vy);
+    e.organelles.photosystem = clamp(2 + Math.floor(structural / 38), 2, ORGANELLES.photosystem.max);
+    e._capsEpoch = -1;
+  }
+}
+
 function seedMatureEcosystem(world) {
   // v1.1.1 starts in medias res: a mature algal-fall ecology is already
   // running, so the player enters rupture chaos instead of waiting for bloom.
@@ -1134,47 +1194,9 @@ function seedMatureEcosystem(world) {
     x: rand(world, 0, WORLD.w)
   });
 
-  // Seed the full crop across the JOINT lifecycle, not as a linear depth/biomass gradient. Gas,
-  // velocity, cargo, structural size, and fall direction must agree or the initial spread collapses
-  // into one synchronized wave. Stratified phases guarantee coverage; jitter keeps seeds distinct.
-  for (let i = 0; i < ALGAE_CAP; i++) {
-    const phase = clamp((i + world.rng()) / ALGAE_CAP, 0, 0.9999);
-    let u, bm, structural, y, gasFill, fallState, vy;
-    if (phase < 0.16) {                         // bask/grow: brief bright interval before the next fall
-      u = phase / 0.16;
-      bm = 105 + u * 17;
-      structural = 78 + u * 18;
-      y = WORLD.canopy + 70 + Math.pow(u, 1.5) * 440;
-      gasFill = 0.66 - u * 0.30;
-      fallState = u > 0.78 ? 'sinking' : null;
-      vy = u > 0.78 ? rand(world, 3, 12) : rand(world, -6, 4);
-    } else if (phase < 0.77) {                  // long weighted descent: the dominant mature phase
-      u = (phase - 0.16) / 0.61;
-      bm = 126 - u * 14;
-      structural = 94 + u * 20;
-      y = WORLD.canopy + 360 + Math.pow(u, 0.90) * 1900;
-      gasFill = 0.28 + u * 0.28;
-      fallState = 'sinking';
-      vy = rand(world, 10, 31);
-    } else {                                    // gas-rich ascent: same veteran bloom returning
-      u = (phase - 0.77) / 0.23;
-      bm = 116 - u * 12;
-      structural = 112 - u * 16;
-      y = WORLD.canopy + 2180 - Math.pow(u, 0.88) * 1980;
-      gasFill = 0.96 - u * 0.28;
-      fallState = 'rising';
-      vy = -rand(world, 10, 34);
-    }
-    y = clamp(y + rand(world, -150, 150), WORLD.canopy + 45, WORLD.h - 80);
-    const mature = structural > 54;
-    const e = spawnAlgae(world, { mature, biomass: bm, y, x: rand(world, 0, WORLD.w), fallState });
-    e.biomassMass = structural;
-    e.ballastGas = caps(e).ballastGas * gasFill;
-    e.vy = vy;
-    e.organelles.photosystem = clamp(2 + Math.floor(structural / 38), 2, ORGANELLES.photosystem.max);
-    e._capsEpoch = -1;
-    if (fallState) e._dove = true;
-  }
+  // Sample the normal ecology directly. No phase buckets or hidden fall-state script: aggregate
+  // invariants come from ecologyRegime while each body gets an independent continuous orbit.
+  seedAnalyticAlgaeRegime(world);
 
   // A mature hunter guild is a distribution, not a synchronized healthy platoon. Counts vary by
   // seed and reserves span post-fission recovery through charged prowlers, removing the guaranteed
@@ -1263,6 +1285,11 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // rolled at spawn; _wander = slow cruise heading offset; _preyScore = last scan's winning score.
     brainState: 'prowl', _targetRef: null, _think: rand(world, 0, 0.18), _commit: 0,
     aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity, _emigrate: 0,
+    // Algae only: independent continuous-cycle parameters. Declared for every body to preserve
+    // the monomorphic hot-loop shape; they are inert unless controller === 'algae'.
+    algaeTraits: opts.algaeTraits ? { ...opts.algaeTraits } : null, algaeSeedPhase: opts.algaeSeedPhase ?? 0,
+    algaeCyclePeriod: opts.algaeCyclePeriod ?? 0, algaePrevDirection: opts.algaePrevDirection ?? 0,
+    algaeCycleCount: 0, _algaeBoundary: false,
     _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
@@ -1389,7 +1416,25 @@ function biomassWeight(entity) {
 function algaeBallastWorkDepth(entity) {
   // Bigger veteran blooms must fall farther before pressure/deep fermentation can reinflate them.
   // This is the amplitude law: size changes the turning depth, while full gas still guarantees return.
-  return WORLD.canopy + clamp(300 + (entity.biomassMass || 0) * 13, 520, 2300);
+  return WORLD.canopy + clamp(220 + (entity.biomassMass || 0) * 10, 480, 2100);
+}
+
+function algaeTraits(entity) {
+  return entity.algaeTraits || { photo: 1, vent: 1, ferment: 1, density: 1, cycle: 1 };
+}
+
+function algaeCyclePhase(world, entity) {
+  const period = Math.max(1, entity.algaeCyclePeriod || 75);
+  return Math.PI * 2 * world.t / period + (entity.algaeSeedPhase || 0);
+}
+
+function algaeProducerMass(world) {
+  let mass = 0;
+  for (const e of world.entities) {
+    if (!e.alive || e.controller !== 'algae') continue;
+    mass += (e.biomassMass || 0) + (e.cargo.biomass || 0) + (e.cargo.lipids || 0) * 0.55;
+  }
+  return mass;
 }
 
 function buoyancy(entity) {
@@ -1573,6 +1618,14 @@ function finishWorldStep(world, player, dt) {
   removeDead(world);
   populationTick(world, dt); // hunters fission when gorged; scavengers emigrate when starved
   for (const e of world.entities) {
+    if (e.alive && e.controller === 'algae') {
+      const c = caps(e);
+      const nearEmergency = (e.cargo.biomass || 0) >= c.biomass * 0.98
+        || (e.ballastGas || 0) >= c.ballastGas * 0.98
+        || e.y <= WORLD.canopy + 2 || e.y >= WORLD.h - 30;
+      world.stats.algaeBoundarySamples++;
+      if (nearEmergency) world.stats.algaeBoundaryHits++;
+    }
     // A bloom that sinks all the way to the world floor uneaten dissolves into a rich
     // deep slurry — its mass rejoins the froth as food for the deep instead of piling
     // up as a static wall of algae at the bottom of the screen.
@@ -2007,6 +2060,7 @@ function updateNpcBrainThresholdLegacy(world, e, player, dt) {
   e.phase = Math.atan2(toward.y, toward.x);
   e.x = wrapX(e.x + e.vx * dt);
   e.y += e.vy * dt;
+
 }
 
 // Continuous hunter policy. Named states remain as a sampled, observable pose for rendering and
@@ -2290,40 +2344,39 @@ function updateAlgaeAI(world, e, dt) {
   // they sink; a sunk bloom in the dark ferments its biomass back into lift-gas and can rise
   // again. The froth breathes — and because each bloom's biomass/gas history differs, they cycle
   // out of phase instead of in one giant synchronized wave.
-  const weight = biomassWeight(e);
+  const traits = algaeTraits(e);
+  const phase = algaeCyclePhase(world, e);
+  const weight = biomassWeight(e) * traits.density;
   const lift = buoyancy(e); // ballast gas + base only — no flagella term
-  const fullness = (e.cargo.biomass || 0) / Math.max(1, caps(e).biomass);
   const sinkPressure = weight - lift; // >0 sinks, <0 floats
+  const workDepth = algaeBallastWorkDepth(e);
+  const depthError = clamp((e.y - workDepth) / Math.max(220, workDepth - WORLD.canopy), -1, 1);
+  const phaseBias = Math.sin(phase) * (9.2 + 2.4 * traits.cycle);
 
   // Fall event = a bloom the ballast can no longer hold. Wide dead-band so a marginal bloom
   // doesn't chatter its fall flag every frame. Only used for the terminal-plunge accelerant +
   // the algae_fall stat/event; the actual up/down is the buoyancy force below either way.
-  const tooFat = sinkPressure > 12 || (fullness > 0.95 && sinkPressure > 0);
-  if (tooFat && e.fallState !== 'sinking') {
-    e.fallState = 'sinking';
-    world.stats.algaeFalls += 1;
-    world.events.push({ type: 'algae_fall', entityId: e.id });
-  }
-  if (e.fallState === 'sinking' && sinkPressure < -3) e.fallState = 'rising';
-  if (e.fallState === 'rising' && e.y < WORLD.canopy + 240) e.fallState = null;
-
   // Horizontal graze drift, per-bloom phase so the crop doesn't slide in lockstep.
-  e.vx += Math.cos(world.t * 0.35 + e.phase) * speedOf(e) * 0.28 * dt;
+  e.vx += Math.cos(phase * 0.73 + e.id.length) * speedOf(e) * 0.22 * dt;
   // Vertical: buoyancy is the sole driver. sinkPressure<0 (buoyant) → up (vy negative);
   // sinkPressure>0 (heavy) → down. Gentle gain + clamp so it's a smooth drift, not a lurch.
-  e.vy += clamp(sinkPressure * 0.42, -14, 22) * dt;
-  e.vy += Math.sin(world.t * 0.5 + e.phase) * 3 * dt;          // slow bob
+  const topRepel = Math.max(0, WORLD.canopy + 95 - e.y) * 0.036;
+  const deepRepel = Math.max(0, e.y - (WORLD.h - 150)) * 0.022;
+  e.vy += (clamp(sinkPressure * 0.33, -15, 20) + phaseBias + depthError * 1.1 + topRepel - deepRepel) * dt;
   // A committed plunge picks up speed, but the deeper it goes the harder its ballast fights back
   // (deep fermentation, below), so the fall is a bob that bottoms out — not a one-way drop to the
   // floor. Softened from the old runaway accelerant that showered small blooms past the scavengers.
-  if (e.fallState === 'sinking') e.vy += (fullness * 5 + 2) * dt;
   // Soft ceiling: a buoyant bloom grazes the lit band instead of pinning to the very roof.
-  const ceil = WORLD.canopy + 70;
-  if (e.y < ceil) e.vy += (ceil - e.y) * 0.05 * dt;
 
   e.phase = Math.atan2(e.vy, e.vx || 0.001);
   e.x = wrapX(e.x + e.vx * dt);
   e.y += e.vy * dt;
+
+  // Derived presentation/debug label only. It is never read to choose algae behavior.
+  const direction = Math.sign(e.vy);
+  if (direction < 0 && e.algaePrevDirection >= 0) { e.algaeCycleCount++; world.stats.algaeCycles++; }
+  e.algaePrevDirection = direction || e.algaePrevDirection;
+  e.fallState = e.vy > 0.4 ? 'sinking' : (e.vy < -0.4 ? 'rising' : null);
 
   // Bloat with mass: a fat bloom swells visibly, so the biggest blooms are the deep divers and
   // the shallow crop reads small — size escalates with depth exactly as the descent sorts them.
@@ -2345,13 +2398,6 @@ function updateAlgaeAI(world, e, dt) {
   // weight. Blooms therefore GROW over successive bobs — young ones are small and hug the upper
   // reaches; only veterans that have cycled many times get heavy enough to sink into the scavengers'
   // nursery and, largest of all, to fall into the true deep. This stratifies the whole crop by size.
-  if (e.y > WORLD.canopy + 300) e._dove = true;
-  if (e._dove && light > 0.5 && orgCount(e, 'photosystem') < ORGANELLES.photosystem.max) {
-    e.organelles.photosystem = orgCount(e, 'photosystem') + 1;
-    e.biomassMass = (e.biomassMass || 0) + 6;
-    e._dove = false;
-    e._capsEpoch = -1;
-  }
 }
 
 function dissolvedToxinAt(world, x, y) {
@@ -2418,7 +2464,8 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // bloom loses lift quickly enough to resume its descent instead of camping at Yuki.
       const gasFill = (e.ballastGas || 0) / Math.max(0.001, caps(e).ballastGas);
       const overInflation = 0.25 + 2.75 * Math.pow(clamp(gasFill, 0, 1), 4);
-      const lightVent = e.controller === 'algae' ? light * world.ecologyTuning.algaeLightVent * overInflation * (e.ecologyRate || 1) : 0;
+      const algaeVent = e.controller === 'algae' ? algaeTraits(e).vent : 1;
+      const lightVent = e.controller === 'algae' ? light * world.ecologyTuning.algaeLightVent * overInflation * algaeVent : 0;
       e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * (porosity * GAS_LEAK_K + lightVent) * dt);
     }
 
@@ -2429,17 +2476,23 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lightResponse = light * light / (light * light + 0.04 * 0.04);
       // The broad light shelf feeds algae over a larger vertical span. Lower per-photon
       // throughput keeps the integrated growth budget stable without a biomass ratchet.
-      const photoScale = e.controller === 'algae' ? world.ecologyTuning.algaePhotoScale : 1;
-      const gain = lightResponse * photo * ORGANELLES.photosystem.stats.biomassGain * photoScale * clamp(porosity / 0.32, 0.2, 1.0) * dt;
+      const algaeTrait = e.controller === 'algae' ? algaeTraits(e) : null;
+      const photoScale = e.controller === 'algae' ? world.ecologyTuning.algaePhotoScale * algaeTrait.photo : 1;
+      // Logistic storage response makes a full reserve unattractive long before the hard cargo
+      // guardrail. clampCargo remains for bad saves / numerical corruption only.
+      const biomassFill = clamp((e.cargo.biomass || 0) / Math.max(1, caps(e).biomass), 0, 1);
+      const storageBrake = e.controller === 'algae' ? 1 / (1 + Math.exp(13 * (biomassFill - 0.72))) : 1;
+      const gain = lightResponse * photo * ORGANELLES.photosystem.stats.biomassGain * photoScale * storageBrake * clamp(porosity / 0.32, 0.2, 1.0) * dt;
       const room = caps(e).biomass - (e.cargo.biomass || 0);
       const actual = Math.min(room, gain);
       e.cargo.biomass += actual;
       e.biomassMass += actual * 0.18;
       if (e.controller === 'algae') {
-        e.biomassMass += lightResponse * photo * 0.09 * photoScale * dt;
-        // Veteran blooms grow larger over successive bobs, but structural tissue has a finite
-        // turnover ceiling. Cargo remains the reversible weight that drives each individual cycle.
-        e.biomassMass = Math.min(e.biomassMass, 70 + photo * 18);
+        const structuralTarget = world.ecologyRegime.structuralMean * algaeTrait.density;
+        const structuralFill = Math.max(0, (e.biomassMass || 0) / Math.max(1, structuralTarget));
+        const structuralGrowth = lightResponse * photo * 0.11 * photoScale * (1 - structuralFill) * dt;
+        const structuralTurnover = (0.00012 + 0.00024 * structuralFill * structuralFill) * (e.biomassMass || 0) * dt;
+        e.biomassMass = Math.max(16, (e.biomassMass || 0) + structuralGrowth - structuralTurnover);
       }
       // Photosynthetic O2 only matters for ALGAE (they generate it, then vent it to the water as
       // their surface-organism mechanic). For every other body — the PLAYER included — photosynthesis
@@ -2471,9 +2524,15 @@ function updateEnvironmentAndMetabolism(world, dt) {
         e.cargo.energy += lipidBurn * 3.2 + oxygenBurn * 70;
         e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - oxygenBurn * 5);
       }
-    } else if (((e.cargo.energy || 0) < caps(e).energy
-      || (e.controller === 'algae' && e.fallState === 'sinking' && e.y > algaeBallastWorkDepth(e) && (e.ballastGas || 0) < caps(e).ballastGas * 0.98))
-      && (e.cargo.biomass || 0) > 0.05) {
+    } else {
+      const algaeDeepness = e.controller === 'algae'
+        ? 1 / (1 + Math.exp(-(e.y - algaeBallastWorkDepth(e)) / 190)) : 0;
+      const algaeUnderBuoyancy = e.controller === 'algae'
+        ? 1 / (1 + Math.exp(-(biomassWeight(e) * algaeTraits(e).density - buoyancy(e)) / 2.4)) : 0;
+      const algaeBallastNeed = algaeDeepness * (0.22 + 0.78 * algaeUnderBuoyancy)
+        * Math.pow(Math.max(0, 1 - (e.ballastGas || 0) / Math.max(0.001, caps(e).ballastGas)), 0.7);
+      const needsEnergy = (e.cargo.energy || 0) < caps(e).energy;
+      if ((needsEnergy || algaeBallastNeed > 0.006) && (e.cargo.biomass || 0) > 0.05) {
       const biomassFill = clamp((e.cargo.biomass || 0) / Math.max(1, caps(e).biomass), 0, 1);
       // v1.3.3 flow curve: fuller biomass tanks process a larger volume faster,
       // but the conversion is less efficient. Bare reserves are slow but frugal.
@@ -2487,20 +2546,20 @@ function updateEnvironmentAndMetabolism(world, dt) {
         const algaeDepth = e.controller === 'algae'
           ? clamp((e.y - WORLD.ruptureTop) / Math.max(1, WORLD.deepTop - WORLD.ruptureTop), 0, 1)
           : 0;
-        const deepBoost = 1 + ALGAE_DEEP_FERMENT_K * algaeDepth;
+        const deepBoost = 1 + ALGAE_DEEP_FERMENT_K * algaeDepth * (e.controller === 'algae' ? algaeTraits(e).ferment : 1);
         // Catalytic processors run faster the more enzymes you carry, spending a trickle.
         const baseRate = (st.enzymeBoost ? st.rate * (1 + st.enzymeBoost * enzymeFill) : st.rate) * potency(world, e, procId);
-        const rate = baseRate * (e.controller === 'algae' ? (1 + algaeDepth * 0.65) * (e.ecologyRate || 1) : 1);
+        const rate = baseRate * (e.controller === 'algae' ? (1 + algaeDepth * 0.65) * algaeTraits(e).ferment : 1);
         const atpRoom = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
         // A descending bloom may keep fermenting solely to inflate ballast after ATP is full. The
         // excess ATP is dissipated as metabolic work; biomass and gas remain fully accounted.
-        const ballastWork = e.controller === 'algae' && e.fallState === 'sinking'
-          && e.y > algaeBallastWorkDepth(e) && st.gasPerBiomass;
-        const gasRoom = ballastWork ? Math.max(0, caps(e).ballastGas - (e.ballastGas || 0)) : 0;
+        const ballastWork = e.controller === 'algae' && algaeBallastNeed > 0.006 && st.gasPerBiomass;
+        const gasSoftTarget = caps(e).ballastGas * 0.94;
+        const gasRoom = ballastWork ? Math.max(0, gasSoftTarget - (e.ballastGas || 0)) : 0;
         const gasBioRoom = ballastWork ? gasRoom / Math.max(0.001, st.gasPerBiomass * deepBoost) : 0;
         const metabolicRoom = atpRoom + gasBioRoom * efficiency;
         if (metabolicRoom <= 0) break;
-        const desiredATP = Math.min(level * rate * volumeCurve * dt, metabolicRoom);
+        const desiredATP = Math.min(level * rate * volumeCurve * (1 + algaeBallastNeed * 2.4) * dt, metabolicRoom);
         const ferment = Math.min(e.cargo.biomass, desiredATP / Math.max(0.1, efficiency));
         if (ferment <= 0) continue;
         e.cargo.biomass -= ferment;
@@ -2518,11 +2577,15 @@ function updateEnvironmentAndMetabolism(world, dt) {
         // back toward the light — the engine of the algal bob, now driven by the same fermentation.
         if (st.gasPerBiomass) {
           const glandBoost = 1 + orgCount(e, 'gas_gland') * ORGANELLES.gas_gland.stats.fermentBonus; // capture more offgas per ferment
-          e.ballastGas = Math.min(caps(e).ballastGas, (e.ballastGas || 0) + ferment * st.gasPerBiomass * deepBoost * glandBoost);
+          const gasAdmission = e.controller === 'algae'
+            ? clamp((caps(e).ballastGas * 0.94 - (e.ballastGas || 0)) / Math.max(0.001, caps(e).ballastGas * 0.18), 0, 1)
+            : 1;
+          e.ballastGas = Math.min(caps(e).ballastGas, (e.ballastGas || 0) + ferment * st.gasPerBiomass * deepBoost * glandBoost * gasAdmission);
         }
         if (st.enzymeDrain && (e.cargo.enzymes || 0) > 0) {
           e.cargo.enzymes = Math.max(0, e.cargo.enzymes - st.enzymeDrain * level * dt);
         }
+      }
       }
     }
 
@@ -3675,7 +3738,8 @@ function bloomDeath(world, e) {
 // is a TINY immigration safety net: if a species crashes toward zero a lone cell occasionally
 // drifts in, so a wiped layer can recover instead of dying forever — "keep the quota, but small."
 const POP_CAP = 150;                // performance ceiling only — normal life sits well below it
-const ALGAE_CAP = 72;               // the canopy fungus mints algae up to here (the food base)
+const ALGAE_EMERGENCY_CAP = 120;    // performance/recovery guardrail, not the normal population target
+const ALGAE_CAP = ALGAE_EMERGENCY_CAP; // retained name for legacy diagnostics and emergency-only callers
 const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
 const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood: 1 }); // fission-guild safety net
 
@@ -3863,14 +3927,27 @@ function applyEscalation(e, esc) {
   e.hp = caps(e).hp;   // fill the enlarged HP pool
 }
 
+function algaeBirthHazard(world, algaeCount, producerMass) {
+  const regime = world.ecologyRegime;
+  // A continuous source term from the canopy. Both count and total producer matter apply
+  // smooth negative feedback well before the emergency ceiling; this is logistic turnover,
+  // not a countdown that refills a quota.
+  const countPressure = algaeCount / Math.max(1, regime.algaeMeanCount);
+  const massPressure = producerMass / Math.max(1, regime.producerMassTarget);
+  const crowding = Math.exp(-1.45 * countPressure * countPressure - 1.8 * massPressure * massPressure);
+  const vacancy = 1 / (1 + Math.exp(6 * (countPressure - 0.82)));
+  return 0.72 * crowding * vacancy;
+}
+
 function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt; world.spawn.nursery -= dt;
   // ALGAE — minted top-down by the canopy fungus, the primary producer renewed from the light up
   // to its carrying capacity. Young blooms drift down and live their ballast lifecycle as food.
   let algaeN = 0, scavN = 0;
   for (const e of world.entities) { if (!e.alive) continue; if (e.controller === 'algae') algaeN++; else if (e.controller === 'scavenger') scavN++; }
-  if (world.spawn.algae <= 0 && algaeN < ALGAE_CAP) {
-    world.spawn.algae = rand(world, 0.5, 1.1);
+  const producerMass = algaeProducerMass(world);
+  const algaeHazard = algaeBirthHazard(world, algaeN, producerMass);
+  if (algaeN < ALGAE_EMERGENCY_CAP && world.rng() < 1 - Math.exp(-algaeHazard * dt)) {
     spawnAlgae(world, { mature: false, y: WORLD.canopy + rand(world, 40, 170) });
     world.stats.algaeBirths += 1;
     world.events.push({ type: 'algae_birth', controller: 'algae' });
@@ -3970,6 +4047,10 @@ function applyStrain(world, e) {
 
 function spawnAlgae(world, opts = {}) {
   const mature = !!opts.mature;
+  const regime = world.ecologyRegime || DEFAULT_ALGAE_REGIME;
+  const traits = opts.algaeTraits || sampleAlgaeTraits(world, regime);
+  const cyclePeriod = opts.algaeCyclePeriod ?? clamp(gaussian(world.rng, 78, 18) / traits.cycle, regime.cycleMinSeconds, regime.cycleMaxSeconds);
+  const seedPhase = opts.algaeSeedPhase ?? world.rng() * Math.PI * 2;
   const r = opts.r || (mature ? rand(world, 38, 58) : rand(world, 16, 24));
   const biomass = opts.biomass || (mature ? rand(world, 80, 150) : rand(world, 12, 26)); // young start SMALL and grow
   const x = opts.x ?? rand(world, 0, WORLD.w);
@@ -3982,13 +4063,15 @@ function spawnAlgae(world, opts = {}) {
     organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 5 : 3, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
     cargo: { biomass, lipids: rand(world, 8, 26), energy: rand(world, 8, 24), toxins: 0 },
     oxygen: oxygenAt(y) * 0.55,
-    ruptureThreshold: mature ? 0.55 : 0.35, biomassMass: biomass, fallState: opts.fallState || null
+    ruptureThreshold: mature ? 0.55 : 0.35, biomassMass: biomass, fallState: null,
+    algaeTraits: traits, algaeSeedPhase: seedPhase, algaeCyclePeriod: cyclePeriod
   });
   // Seed a starting charge of ballast gas so a fresh bloom is mildly buoyant (mature more so).
   e.ballastGas = e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
   // Lineage-scale metabolic variation prevents a shared light/depth field from phase-locking the
   // whole crop into one global bob. It changes period, not the guarantee that full gas can return.
-  e.ecologyRate = opts.ecologyRate ?? rand(world, 0.62, 1.48);
+  e.ecologyRate = opts.ecologyRate ?? traits.cycle;
+  e.algaePrevDirection = Math.sign(e.vy);
   applyStrain(world, e);
   world.entities.push(e);
   return e;
