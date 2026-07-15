@@ -292,20 +292,25 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
 // thinning clouds instead of sitting as fixed dots. All read from the patch's own stock —
 // no ambient current. Tuning dials, set by sim_eval.
 const FIELD_SINK_K = 0.9;         // biomass sink speed = K * biomassFrac * sqrt(biomass)
-const FIELD_RISE_K = 1.1;         // lipid rise speed  = K * lipidFrac  * sqrt(lipids)
 const FIELD_DIFFUSE_K = 6.0;      // radius spread/sec at full (energy+toxins) fraction
+// Lipid rise is the INVERSE of the biomass square-cube law: a fresh droplet is nearly all surface area
+// and buoys up fast, while a big pooled slick has so much matter to lift that it crawls. So small
+// batches rise quickly, large batches rise slowest — opposite of a whale-fall biomass plummet.
+const LIPID_RISE_K = 10;          // px/s numerator: rise = K / cbrt(lipids), clamped
+const LIPID_RISE_MIN = 3;         // px/s floor — even a big fat pool still drifts upward
+const LIPID_RISE_MAX = 10;        // px/s ceiling — a fresh droplet's fastest rise (cut from the old flat 13)
 const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patches never teleport
 // ── Whale fall: the biomass carbon pump that feeds the deep ──────────────────────────────────
 // A dead body's biomass sinks nearly UNDECAYED (it is food, not smoke) all the way to the abyss,
 // feeding the anaerobic deep. By a square-cube law a bigger mass sinks FASTER (more volume per
 // drag area), so a giant "whale fall" plummets while flecks drift. It only remineralizes once it
 // piles on the floor, so the pump is bounded but the deep stays fed.
-const BIOMASS_SINK_K = 2.5;       // biomass sink speed = K * biomass^(2/3)  (square-cube: big = fast)
+const BIOMASS_SINK_K = 1.25;      // biomass sink speed = K * biomass^(2/3)  (square-cube: big = fast)
 const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 const BIOMASS_SINK_DECAY = 0.05;  // biomass barely remineralizes while sinking — it arrives intact
 const BIOMASS_FLOOR_DECAY = 0.45; // ...but piled on the abyss floor it dissolves back into the water
 const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still clears eventually
-const FAT_PLUME_RISE = 55;        // px/s: the return arm — buoyant fat climbs hard out of the abyss
+const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
 const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
@@ -514,7 +519,7 @@ export const ORGANELLES = Object.freeze({
     // prey-poor deep of any reproduction; lipids never burn, so a full-fat reserve is the safety net
     // that keeps a food-starved lineage alive. The split always drains ATP to zero and drops both
     // cells lean — so both immediately hunt hard to recharge (the eager-predator pulse).
-    stats: { biomassFrac: 0.08, lipidFrac: 0.90, atpFrac: 0.70, childReserve: 0.15 }
+    stats: { biomassFrac: 0.85, lipidFrac: 0.90, atpFrac: 0.85, childReserve: 0.15 }
   },
   lance_bristle: {
     name: 'Lance Bristle', tier: 2, action: null, stackable: true, max: 6,
@@ -751,7 +756,7 @@ export const ORGANELLES = Object.freeze({
   leech_lance: {
     name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
     desc: 'A feeding spine. Its jab barely wounds, but on contact it draws biomass, lipids, and a modest ATP trickle at range — parasitize prey without killing it.',
-    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 3.2 }
+    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 1.1 }
   },
 
   // ── Deep-predator strains (survivor-like exotic organelles) ────────────────
@@ -1443,6 +1448,7 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // rolled at spawn; _wander = slow cruise heading offset; _preyScore = last scan's winning score.
     brainState: 'prowl', _targetRef: null, _think: rand(world, 0, 0.18), _commit: 0,
     aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity, _emigrate: 0,
+    _nicheHome: null, // scavenger O2-niche depth, cached + refreshed on the think tick (uniform shape)
     // Algae only: independent continuous-cycle parameters. Declared for every body to preserve
     // the monomorphic hot-loop shape; they are inert unless controller === 'algae'.
     algaeTraits: opts.algaeTraits ? { ...opts.algaeTraits } : null, algaeSeedPhase: opts.algaeSeedPhase ?? 0,
@@ -2454,9 +2460,12 @@ function updateScavengerBrain(world, e, dt) {
   // depth whose ambient oxygen it can bear (from its own oxygenTolerance): the oxic caste rides up
   // into the oxygenated nursery, the O2-INTOLERANT abyssal clone is pinned down in the anaerobic
   // deep where the whale-fall piles. Same reasoning, opposite homes. (Acute overload flight below.)
-  const nicheCeiling = depthForOxygen(oxygenTolerance(e));
-  const nicheHome = clamp(nicheCeiling + 250, WORLD.canopy + 200, WORLD.h - 200);
-  e.depthHome += (nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
+  // The ceiling depends only on the (static) O2 field + this body's tolerance, so the 22-iter inverse
+  // is cached and refreshed on the throttled think tick, not recomputed every frame.
+  if (e._nicheHome == null || e._think <= 0) {
+    e._nicheHome = clamp(depthForOxygen(oxygenTolerance(e)) + 250, WORLD.canopy + 200, WORLD.h - 200);
+  }
+  e.depthHome += (e._nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
 
   // Panic: a combat hit (0.18; environmental stress only sets 0.05) → bolt from the attacker;
   // or the shallows are turning O2-toxic → dive back down.
@@ -3134,9 +3143,14 @@ function updateFields(world, dt) {
     // Per-type drift: each field follows its own material's physics — lipids rise, ATP spreads, toxins
     // seep. Biomass sinks by a square-cube law: a bigger fall plummets, a fleck drifts.
     if (total > 0) {
+      // An ordinary lipid slick rises by the INVERSE of the biomass law (small = fast, large = slow);
+      // the rare deep whale-fall "fat plume" geyser keeps its own fixed fast climb out of the abyss.
+      const isLipidSlick = f.resType === 'lipids' && f.sourceKind !== 'abyssal_fat_plume';
       const upCap = f.sourceKind === 'abyssal_fat_plume' ? FAT_PLUME_RISE : FIELD_TERMINAL_VY; // buoyant fat climbs faster than ordinary drift
       const targetVy = isBiomass
         ? clamp(BIOMASS_SINK_K * Math.pow(Math.max(0, f.stock.biomass || 0), 2 / 3), 0, WHALE_FALL_TERMINAL)
+        : isLipidSlick
+        ? -clamp(LIPID_RISE_K / Math.cbrt(Math.max(1, f.stock.lipids || 0)), LIPID_RISE_MIN, LIPID_RISE_MAX)
         : clamp(f.vyTarget || 0, -upCap, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
@@ -4108,12 +4122,13 @@ function fissionReady(entity) {
   if (!hasOrg(entity, 'cleavage_furrow')) return false;
   if ((entity.fissionCooldown || 0) > 0) return false;
   const cap = caps(entity), st = ORGANELLES.cleavage_furrow.stats;
-  // Must be healthy and carry a little matter to build the daughter from...
+  // Cleaving is GORGING: a cell only divides with a FULL ATP reservoir AND a FULL biomass belly. Fat
+  // (lipids) is the day-to-day fuel that keeps a hunter alive, but building a whole second body demands
+  // charge AND construction mass — so reproduction is a standing DEMAND to hunt, not just to graze.
   if (entity.hp < cap.hp * 0.6) return false;
-  if ((entity.cargo.biomass || 0) < cap.biomass * st.biomassFrac) return false;
+  const biomassReady = (entity.cargo.biomass || 0) >= cap.biomass * st.biomassFrac;
   const atpReady = (entity.cargo.energy || 0) >= cap.energy * st.atpFrac;
-  const lipidReady = (entity.cargo.lipids || 0) >= cap.lipids * st.lipidFrac;
-  return atpReady || lipidReady;
+  return biomassReady && atpReady;
 }
 
 // Wild reproduction is a continuous stochastic hazard rather than a reserve tripwire. Every fill
@@ -4129,7 +4144,11 @@ function wildFissionRate(entity) {
   const lipids = clamp((entity.cargo.lipids || 0) / Math.max(1, cap.lipids), 0, 1);
   const heat = clamp(entity.reproHeat || 0, 0, 1);
   const pulse = 0.15 + 5.5 * heat * heat;
-  return 0.35 * pulse * Math.pow(hp, 2.3) * Math.pow(biomass, 1.5) * Math.pow(energy, 3.2) * Math.pow(lipids, 1.8);
+  // Gorge gate: both a full ATP reservoir AND a full biomass belly are needed to cleave (both steep),
+  // so only a hunter fresh off successful kills divides. Lipids are day-to-day fuel and DON'T gate
+  // reproduction — hunting for meat + charge is what earns a division.
+  void lipids;
+  return 0.42 * pulse * Math.pow(hp, 2.3) * Math.pow(biomass, 3.0) * Math.pow(energy, 3.2);
 }
 
 // Binary fission: cleave one gorged cell into two. Drains ALL ATP (mitosis is expensive) and
@@ -4501,17 +4520,25 @@ function spawnPredator(world, opts = {}) {
   const depthT = clamp((y - WORLD.ruptureTop) / 1700, 0, 1);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 20, 30) + depthT * 16, color: '#ff7897', controller: 'predator', trophicRole: 'rupture_predator', depthHome: y,
-    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), basal_motility: 1, flagella: 1, rasping_lamella: 1, charge_cytostome: 1, storage_vacuole: 4, exotic_vacuole: 1, membrane_hardening: 1 + Math.round(depthT * 2), atp_reservoir: 1 + Math.round(depthT), cleavage_furrow: 1 }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
+    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), basal_motility: 1, flagella: 1, rasping_lamella: 1, charge_cytostome: 1, storage_vacuole: 4, exotic_vacuole: 1, oxygen_tolerance: 3, membrane_hardening: 1 + Math.round(depthT * 2), atp_reservoir: 1 + Math.round(depthT), cleavage_furrow: 1 }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.48
   });
   const roll = world.rng();
   if (roll < 0.42 + depthT * 0.3) e.organelles.lance_bristle = 1 + Math.round(depthT);
   if (roll > 0.62 - depthT * 0.2) { e.organelles.toxin_launcher = 1; e.cargo.toxins = Math.max(e.cargo.toxins || 0, rand(world, 8, 18)); }
-  e.photophobic = true; // tier-2 physiology values water below its ~34% tolerance
   applyEscalation(e, opts.escalation || 0);
   applyStrain(world, e);
   assignBody(e);
   initBrain(world, e, depthT); // deeper predators roll bolder + less cautious
+  // Two O2-tolerant mid-predator sub-tiers (light is the axis that splits them). TIER A "skirmisher":
+  // light-tolerant, raids up into the lit+oxic shallows — the early-game pressure that can chase the
+  // player into the light. TIER B "aerobic wall": light-INtolerant, holds the dark-but-oxygenated
+  // mid band — the main mid-game froth and the source of Tier-2 organ DNA.
+  if (world.rng() < 0.3) {
+    e.photophobic = false; e.lightTolerance = 1.0; e.trophicRole = 'skirmisher';
+  } else {
+    e.photophobic = true; e.lightTolerance = clamp(gaussian(world.rng, 0.30, 0.05), 0.18, 0.42); e.trophicRole = 'aerobic_wall';
+  }
   if (migrating) {
     // Immigration follows physiology rather than a stale named layer: arrive
     // comfortably below this individual's tolerance, then choose whether to raid.
@@ -4882,7 +4909,7 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
-      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false
     };
     world.fields.push(f);
     if (!ret) ret = f;
