@@ -374,16 +374,20 @@ function categoryMult(entity, offering) {
 // biomass then leaves the organ price list entirely (you refine biomass→lipids at Yuki's sell). Exotics
 // (spores/enzymes/crystals) and the venom currency (toxins) pass through untouched. The FAT Biomass
 // Vacuole is the one exception — it still pays in biomass, because paying in biomass IS the FAT build.
-const BIOMASS_TO_LIPID = 0.5;
+const BIOMASS_TO_LIPID = 0.4;
 function lipidize(cost, org) {
   if (!cost || org === 'biomass_vacuole') return cost;
   const c = {};
-  let lip = 0;
+  let lip = 0, hasExotic = false;
   for (const [k, v] of Object.entries(cost)) {
     if (k === 'biomass') lip += v * BIOMASS_TO_LIPID;
     else if (k === 'lipids') lip += v;
-    else c[k] = v;                            // exotics, toxins, energy pass through
+    else { c[k] = v; if (EXOTIC_KEYS.includes(k)) hasExotic = true; } // exotics/toxins/energy pass through
   }
+  // For an exotic-requiring organ the EXOTIC is the real cost; lipids are just a token fee. Cut the lipid
+  // portion 4× so an exotic + a few lipids buys a T1 organ (e.g. anaerobic processor ≈ 1 enzyme + 3 lipids),
+  // leaving pure-lipid buys (membranes, oxygen path) to carry the full lipid price.
+  if (hasExotic) lip *= 0.25;
   if (lip > 0) c.lipids = Math.max(1, Math.ceil(lip));
   return c;
 }

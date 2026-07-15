@@ -34,6 +34,12 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 /* Stage-guidance line inside the shop (reaches touch + desktop). */
 .shopGuide{flex:0 0 auto;padding:8px 16px;font-size:11px;line-height:1.38;color:#d3ecda;background:linear-gradient(180deg,rgba(134,210,255,.09),rgba(8,8,22,0));border-bottom:1px solid rgba(255,255,255,.10)}
 .shopGuide b{color:var(--good)}.shopGuide .stg{color:var(--gold);font-weight:950;text-transform:uppercase;letter-spacing:.05em;font-size:9px}
+.shopGuide{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mgrToggle{flex:0 0 auto;border:1px solid rgba(158,240,189,.42);border-radius:999px;background:rgba(8,10,22,.6);color:#cfe9d8;font-size:11px;font-weight:950;padding:5px 11px;cursor:pointer;pointer-events:auto}
+.mgrToggle.on{background:rgba(158,240,189,.24);border-color:rgba(158,240,189,.75);color:#eaffef}
+.mgrCats{display:flex;gap:5px;flex-wrap:wrap;flex:1 1 auto}
+.mgrCat{border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(255,255,255,.05);color:var(--muted);font-size:10px;font-weight:900;padding:4px 8px;cursor:pointer;pointer-events:auto}
+.mgrCat:hover{background:rgba(255,255,255,.12);color:#fff}
 /* "Your Body" IS the shop: a frozen header over the scrollable organelle store (#shopBody). */
 .bodyHead{flex:0 0 auto;padding:9px 16px 7px;font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--good)}
 .bodyHead small{color:var(--muted);font-weight:800;letter-spacing:0;text-transform:none}
@@ -406,7 +412,8 @@ function renderShop(){
   ui.shopExchange.style.display='none';
   const bhEl=document.getElementById('bodyHead'); if(bhEl) bhEl.style.display='none';
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
-  const rest=offers.filter(o=>!inBar(o));
+  let rest=offers.filter(o=>!inBar(o));
+  if(affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
   const buckets=SHOP_GROUPS.map(()=>[]);
   const groupOf=id=>{for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
   for(const o of rest) buckets[groupOf(o.id)].push(o);
@@ -475,7 +482,17 @@ function organCard(o){
   return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${catNote}${initiation}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
 }
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
-function renderGuide(){ if(ui.shopGuide&&hud) ui.shopGuide.innerHTML=`<span class="stg">Now</span> &nbsp; ${hud.objective||''}`; }
+// Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
+// plus quick-jump chips to each populated shop category.
+let affordableOnly=false;
+const CAT_SHORT=['Feed','Metab','Struct','Oxygen','Move','Weapons','Swarm','Euchar','Tier 3','Other'];
+function renderGuide(){
+  if(!ui.shopGuide) return;
+  const chips=SHOP_GROUPS.map((g,i)=>ui.shopBody.querySelector('#grp'+i)?`<button class="mgrCat" data-grp="${i}">${CAT_SHORT[i]||g[0].slice(0,6)}</button>`:'').join('');
+  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable only</button><div class="mgrCats">${chips}</div>`;
+  const af=ui.shopGuide.querySelector('#mgrAfford'); if(af) af.onpointerup=e=>{e.preventDefault();affordableOnly=!affordableOnly;renderShop();};
+  for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
+}
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';if(o.kind==='exchange'){const need=exchangeNeed(o);const urgent=need>0.55?' urgent':'';const rec=o._rec?' rec':'';return `<div class="offer exchange${out}${theme} ${state}${urgent}${rec}" style="--need:${need.toFixed(3)}" data-kind="exchange" data-id="${o.id}">${o._rec?'<span class="recTag">◉ recommended</span>':''}${exchangeCard(o)}</div>`}if(o.kind==='sequence'){return `<div class="offer sequence ${state}" data-kind="sequence" data-id="${o.id}">${sequenceCard(o)}</div>`}return `<div class="offer ${o.kind}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${graftCard(o)}</div>`}
 // Compact genome-sequencing chip for the exchange bar; greyed (locked) when there's no DNA.
