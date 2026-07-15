@@ -107,7 +107,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
   <div class="focusGate" id="focusGate"><h2>Click to play</h2><p>Click anywhere to sink in and take the controls</p></div>
 </div>
 <script type="module">
-import * as K from './src/graph_kernel.mjs?v=algae-health-regime-20260714f';
+import * as K from './src/graph_kernel.mjs?v=sunlight-predator-refugia-20260714g';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -551,20 +551,33 @@ function drawFields(){
   for(const f of projection.fields){
     if(!onScreen(f.x,f.y,f.radius+8)) continue;
     const s=f.stock;
-    const bio=Math.max(0,s.biomass||0), lip=Math.max(0,s.lipids||0), tox=s.toxins||0, en=s.energy||0;
-    const food=bio+lip, total=bio+lip+Math.max(0,tox)+Math.max(0,en); if(total<=0.01)continue;
-    // Base slurry = the FEEDABLE matter (biomass green ⇄ lipids amber): a soft blob so you can see at a
-    // glance where to eat. Toxins and ATP ride as their own decoupled overlays, never hidden in a blend.
-    if(food>0.01){
-      const fw=lip/Math.max(1e-6,food); const [br,bg,bb]=RES_COLORS.biomass,[lr,lg,lb]=RES_COLORS.lipids;
-      const base=`${Math.round(br+(lr-br)*fw)},${Math.round(bg+(lg-bg)*fw)},${Math.round(bb+(lb-bb)*fw)}`;
-      const alpha=clamp(food/90,.14,.46);
+    const bio=Math.max(0,s.biomass||0), lip=Math.max(0,s.lipids||0), tox=Math.max(0,s.toxins||0), en=Math.max(0,s.energy||0);
+    const total=bio+lip+tox+en; if(total<=0.01)continue;
+    // Every resource is its OWN decoupled channel, all legible at once: biomass = green food blob,
+    // lipids = amber fat globules, toxins = slow purple diffusion, ATP = fast blue diffusion. (Field
+    // merging is unchanged — this is only how a merged field draws.)
+    // BIOMASS — the green food blob: where you feed.
+    if(bio>0.01){
+      const base=RES_COLORS.biomass.join(',');
+      const alpha=clamp(bio/80,.14,.46);
       const rg=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.radius);
       rg.addColorStop(0,`rgba(${base},${alpha})`); rg.addColorStop(.7,`rgba(${base},${alpha*.34})`); rg.addColorStop(1,`rgba(${base},0)`);
       ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(f.x,f.y,f.radius,0,Math.PI*2); ctx.fill();
     }
-    // TOXINS — a poison-purple haze that DIFFUSES outward like ATP but slower, so a fouled field is
-    // unmistakable and never blends into the amber food. Even a small toxin share flags the field.
+    // LIPIDS — amber fat globules floating in the field (each with a light sheen), so fat is visible on
+    // its own instead of vanishing into the green. Count & size scale with how much lipid is here.
+    if(lip>0.02){
+      const lcol=RES_COLORS.lipids.join(','), n=Math.min(7,1+Math.floor(lip/5));
+      for(let k=0;k<n;k++){
+        const a=(k/n)*Math.PI*2 + f.x*0.011;
+        const rad=f.radius*(0.22+0.55*((k*0.37+f.y*0.003)%1));
+        const lx=f.x+Math.cos(a)*rad, ly=f.y+Math.sin(a)*rad+Math.sin(world.t*1.5+k+f.x*0.03)*3;
+        const sz=2.2+Math.min(3.2,lip/9);
+        ctx.fillStyle=`rgba(${lcol},.92)`; ctx.beginPath(); ctx.arc(lx,ly,sz,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,226,155,.65)'; ctx.beginPath(); ctx.arc(lx-sz*0.3,ly-sz*0.32,sz*0.4,0,Math.PI*2); ctx.fill();
+      }
+    }
+    // TOXINS — poison-purple haze diffusing outward SLOWLY; a fouled field, unmistakable vs the food.
     if(tox>total*0.08){
       const tf=clamp(tox/total,0,1), tcol='190,70,255';
       const tg=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.radius);
@@ -573,25 +586,13 @@ function drawFields(){
       ctx.lineWidth=1.8;
       for(let k=0;k<3;k++){const ph=(world.t*0.4+k/3)%1; const rr=f.radius*(0.28+ph*0.82); ctx.strokeStyle=`rgba(${tcol},${(0.32+0.42*tf)*(1-ph)})`; ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.stroke();}
     }
-    if(en>total*0.06){
-      // An ATP field must read as a FIELD, not the player's own glow. The player glow is a soft
-      // filled blob that moves; a charge field is a stationary bright cyan ring with radiating
-      // spokes pinned to a fixed footprint — a defined boundary the eye reads as "resource here".
-      const ecol=RES_COLORS.energy.join(',');
-      const ef=clamp(en/total,0,1); // how ATP-dominant this field is
-      const pulse=0.62+0.38*Math.sin(world.t*3+f.x*0.05);
-      const rr=f.radius*0.9;
-      ctx.save();
-      ctx.strokeStyle=`rgba(${ecol},${(0.34+0.5*ef)*pulse})`; ctx.lineWidth=2.4;
-      ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.stroke();
-      // radiating spokes on the rim — an unmistakable "energy" motif, and clearly non-organic
-      ctx.strokeStyle=`rgba(${ecol},${0.5*pulse})`; ctx.lineWidth=1.7;
-      const spokes=8;
-      for(let i=0;i<spokes;i++){const a=world.t*0.5+i*(Math.PI*2/spokes);const r1=rr+4+3*Math.sin(world.t*4+i);ctx.beginPath();ctx.moveTo(f.x+Math.cos(a)*rr,f.y+Math.sin(a)*rr);ctx.lineTo(f.x+Math.cos(a)*r1,f.y+Math.sin(a)*r1);ctx.stroke();}
-      // bright core sparks so even a minority-ATP (greenish) field shows its charge
-      ctx.fillStyle=`rgba(${ecol},${0.85*pulse})`;
-      for(let i=0;i<3;i++){const a=world.t*2+i*2.1;ctx.beginPath();ctx.arc(f.x+Math.cos(a)*f.radius*.34,f.y+Math.sin(a)*f.radius*.30,2.2,0,Math.PI*2);ctx.fill();}
-      ctx.restore();
+    // ATP — bright cyan energy diffusing outward FAST (10× the toxin rate) + darting core sparks.
+    if(en>total*0.05){
+      const ecol=RES_COLORS.energy.join(','), ef=clamp(en/total,0,1);
+      ctx.lineWidth=2;
+      for(let k=0;k<3;k++){const ph=(world.t*4+k/3)%1; const rr=f.radius*(0.18+ph*0.95); ctx.strokeStyle=`rgba(${ecol},${(0.4+0.45*ef)*(1-ph)})`; ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.stroke();}
+      ctx.fillStyle=`rgba(${ecol},.9)`;
+      for(let i=0;i<3;i++){const a=world.t*6+i*2.1; ctx.beginPath(); ctx.arc(f.x+Math.cos(a)*f.radius*.3,f.y+Math.sin(a)*f.radius*.26,2.2,0,Math.PI*2); ctx.fill();}
     }
   }
 }

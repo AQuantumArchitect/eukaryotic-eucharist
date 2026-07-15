@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_algae_health_regime_20260714f';
+export const VERSION = 'mobile_v1_3_3_sunlight_predator_refugia_20260714g';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -1884,10 +1884,11 @@ const BRAIN = Object.freeze({
 function initBrain(world, e, depthT = 0) {
   e.aggro = clamp(gaussian(world.rng, 0.45 + depthT * 0.30, 0.16), 0, 1);
   e.caution = clamp(gaussian(world.rng, 0.55 - depthT * 0.20, 0.16), 0, 1);
-  // Individual dark adaptation replaces the shared light contour that used to
-  // turn the whole guild around at once. Truly deep lineages remain more vampiric;
-  // shallower predators can tolerate a brighter, costly feeding raid.
-  e.lightTolerance = clamp(gaussian(world.rng, 0.38 - depthT * 0.10, 0.055), 0.22, 0.48);
+  // Tier-2 rupture predators center on 34%; deep protozoan/metazoan hunters
+  // center in the dangerous 1–4% tail. Individual variance prevents a shared wall.
+  e.lightTolerance = e.controller === 'predator'
+    ? clamp(gaussian(world.rng, 0.34, 0.038), 0.25, 0.43)
+    : clamp(gaussian(world.rng, 0.025, 0.007), 0.012, 0.045);
   if (e.strain) e.aggro = clamp(e.aggro * (0.85 + (e.strainPotency || 1) * 0.15), 0, 1);
   e.brainState = 'prowl';
   e._targetRef = null;
@@ -1918,6 +1919,17 @@ function fireOnPrey(world, e, prey, preyDist, dt) {
 
 function logistic(x) { return 1 / (1 + Math.exp(-clamp(x, -24, 24))); }
 
+// Exposure is normalized to each lineage's own light tolerance. A deep hunter's
+// 2.5% tolerance therefore has a narrow ~0.6% transition, while a tier-2
+// predator's 34% tolerance has a broader ~6% transition. This keeps darkness safe
+// but makes crossing the physiologically relevant contour rapidly expensive.
+function sunExposure(entity, y = entity.y) {
+  if (!entity.photophobic) return 0;
+  const tolerance = Math.max(0.001, entity.lightTolerance ?? LIGHT_BURN.threshold);
+  const width = Math.max(0.006, tolerance * 0.18);
+  return logistic((lightAt(y) - tolerance) / width);
+}
+
 function normalizeWeights(weights) {
   let total = 0;
   for (const value of Object.values(weights)) total += Math.max(0, value);
@@ -1943,8 +1955,7 @@ function hunterThreatPressure(e, myCapHp) {
   const hpFill = clamp(e.hp / Math.max(1, myCapHp), 0, 1);
   const oxygenExcess = oxygenAt(e.y) - oxygenTolerance(e);
   const oxygenRisk = logistic((oxygenExcess - 0.10) * 42);
-  const lightTolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
-  const lightExposure = e.photophobic ? logistic((lightAt(e.y) - lightTolerance) * 10) : 0;
+  const lightExposure = sunExposure(e);
   // Hunger makes a raid worth risking, but never removes the underlying burn.
   // This is a continuous risk/reward trade rather than a no-crossing contour.
   const desperation = clamp(huntDrive(e), 0, 1);
@@ -1964,7 +1975,8 @@ function hunterThreatPressure(e, myCapHp) {
   // that cost rises smoothly with the expected payoff.
   const raidResolve = clamp(desperation * 0.52 + (e.aggro || 0.5) * 0.20 + raidOpportunity * 0.55, 0, 1);
   const lightPressure = lightExposure * 0.28 + (e.sunStress || 0) * 0.72;
-  const lightRisk = lightPressure * (0.18 + 0.82 * (1 - raidResolve));
+  const riskFloor = e.controller === 'predator' ? 0.18 : 0.55;
+  const lightRisk = lightPressure * (riskFloor + (1 - riskFloor) * (1 - raidResolve));
   const risk = clamp(1 - (1 - oxygenRisk) * (1 - lightRisk) * (1 - injuryRisk)
     * (1 - combatRisk) * (1 - bodyRisk), 0, 1);
   const dive = oxygenRisk + lightRisk > injuryRisk + combatRisk + bodyRisk;
@@ -2194,8 +2206,7 @@ function updateNpcBrain(world, e, player, dt) {
   // instantaneous contour. Brief raids are affordable; prolonged exposure
   // builds a retreat drive that fades gradually after returning to darkness.
   if (e.photophobic) {
-    const tolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
-    const exposure = logistic((lightAt(e.y) - tolerance) * 10);
+    const exposure = sunExposure(e);
     e.sunStress = clamp((e.sunStress || 0) + exposure * 0.70 * dt - (1 - exposure) * 0.22 * dt, 0, 1);
   } else {
     e.sunStress = Math.max(0, (e.sunStress || 0) - 0.30 * dt);
@@ -2884,12 +2895,10 @@ function updateEnvironmentAndMetabolism(world, dt) {
 
     // Vampire burn: a dark-adapted deep body cooks in the light of the shallows.
     if (e.photophobic && e.grace <= 0) {
-      const l = lightAt(e.y);
       // A smooth, very steep exposure curve: the dim tail is survivable, the transition hurts,
       // and a real shallow incinerates a dark lineage. No light/no-light cliff is involved.
-      const tolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
-      const exposure = Math.pow(1 / (1 + Math.exp(-(l - tolerance) * LIGHT_BURN.slope * 0.68)), 2);
-      e.hp -= exposure * LIGHT_BURN.rate * dt;
+      const exposure = sunExposure(e);
+      e.hp -= exposure * exposure * LIGHT_BURN.rate * dt;
       e.hit = Math.max(e.hit, exposure * 0.12);
     }
 
@@ -4337,9 +4346,7 @@ function spawnPredator(world, opts = {}) {
   const roll = world.rng();
   if (roll < 0.42 + depthT * 0.3) e.organelles.lance_bristle = 1 + Math.round(depthT);
   if (roll > 0.62 - depthT * 0.2) { e.organelles.toxin_launcher = 1; e.cargo.toxins = Math.max(e.cargo.toxins || 0, rand(world, 8, 18)); }
-  // Dark adaptation collapses probabilistically from continuous spawn depth;
-  // there is no rupture-line caste switch or shared invisible wall.
-  e.photophobic = world.rng() < logistic((y - (WORLD.ruptureTop - 220)) / 260);
+  e.photophobic = true; // tier-2 physiology values water below its ~34% tolerance
   applyEscalation(e, opts.escalation || 0);
   applyStrain(world, e);
   assignBody(e);
@@ -4436,6 +4443,7 @@ function spawnSwarmAgent(world, brood) {
     cargo: { energy: rand(world, 14, 26), biomass: rand(world, 4, 9) }, oxygen: oxygenAt(brood.y), grace: 1.2
   });
   e.ownerId = brood.id; e.bodyPlan = 'blob'; e.photophobic = !!brood.photophobic;
+  e.lightTolerance = brood.lightTolerance;
   world.entities.push(e); return e;
 }
 
@@ -4457,6 +4465,7 @@ function spawnBrood(world, opts = {}) {
   e.maxHp = caps(e).hp; e.hp = e.maxHp;
   e.bodyPlan = 'brood';
   e.photophobic = true; // a deep conductor; sunlight unmakes it (and its brood)
+  e.lightTolerance = clamp(gaussian(world.rng, 0.025, 0.007), 0.012, 0.045);
   world.entities.push(e);
   for (let i = 0; i < 2; i++) spawnSwarmAgent(world, e);
   return e;
@@ -4534,6 +4543,15 @@ function bestBodyTarget(entity, world, player) {
       : 0;
     const otherHpFill = other.hp / Math.max(1, oCapHp);
     const weak = 1.3 * logistic((0.55 - otherHpFill) * 10);
+    // Price the light at the prey's location before committing. Tier-2 predators
+    // may discount that cost for a close weak kill; deep lineages retain a much
+    // larger irreducible penalty above their 1–4% refuge.
+    const targetSun = sunExposure(entity, other.y);
+    const weakOpportunity = (weak / 1.3) * Math.exp(-d / 220);
+    const sunDiscount = entity.controller === 'predator'
+      ? clamp(0.18 + drive * 0.30 + weakOpportunity * 0.28, 0, 0.68)
+      : clamp(0.05 + drive * 0.12 + weakOpportunity * 0.10, 0, 0.28);
+    const sunCost = targetSun * (entity.controller === 'predator' ? 10 : 20) * (1 - sunDiscount);
     // Live prey that strays close is aggravating — but a FELLOW HUNTER nearby does NOT trigger the
     // lock-on (that mutual proximity-aggro is what made clustered hunters dogpile each other). Only
     // non-guild bodies (the player, scavengers) provoke the reflex.
@@ -4556,7 +4574,8 @@ function bestBodyTarget(entity, world, player) {
     const claimsByOthers = Math.max(0, rawClaims - (entity._targetRef === other ? 1 : 0));
     const claimCapacity = Math.max(1, Math.ceil(other.r / 30));
     const crowdTax = Math.max(0, claimsByOthers - claimCapacity + 1) * 1.7;
-    const score = reward + algaeBonus + weak + proximityAggro + starving + marked - risk - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+    const score = reward + algaeBonus + weak + proximityAggro + starving + marked
+      - risk - sunCost - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   entity._preyScore = best ? bestScore : -Infinity;
