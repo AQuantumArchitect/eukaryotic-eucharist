@@ -221,6 +221,10 @@ const BASE_BIOMASS_CAP = 22;
 const BASE_LIPID_CAP = 14;
 const BASE_TOXIN_CAP = 10;
 const BASE_ENERGY_CAP = 24;
+// Bare membranes are permeable: small respiratory molecules continuously equilibrate;
+// dissolved toxins cross more slowly, but are still a meaningful environmental burden.
+// Complex food reserves (biomass and lipids) never passively cross the membrane.
+const PASSIVE_MEMBRANE = Object.freeze({ oxygenRate: 0.18, toxinRate: 0.085, minimumPorosity: 0.18 });
 const BASE_BUOYANCY = 2.0;        // flat lift every body has (replaces the old oxygen×1.5 term)
 const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before overload poisons you
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
@@ -2350,6 +2354,25 @@ function updateAlgaeAI(world, e, dt) {
   }
 }
 
+function dissolvedToxinAt(world, x, y) {
+  let concentration = 0;
+  for (const f of world.fields) {
+    const toxins = f.stock?.toxins || 0;
+    if (toxins <= 0) continue;
+    const d = distWrap(x, y, f.x, f.y);
+    if (d >= f.radius) continue;
+    const overlap = 1 - d / Math.max(1, f.radius);
+    // Field toxin stock is a total amount, so dilute it by the field's footprint.
+    concentration += toxins / Math.max(8, f.radius * 0.35) * overlap * overlap;
+  }
+  for (const h of world.hazards) {
+    if (!['toxic_splash', 'toxin_cloud', 'spore_cloud'].includes(h.kind)) continue;
+    const d = distWrap(x, y, h.x, h.y);
+    if (d < h.radius) concentration += (h.damage || 0) * (1 - d / Math.max(1, h.radius)) * 0.035;
+  }
+  return concentration;
+}
+
 function updateEnvironmentAndMetabolism(world, dt) {
   for (const e of world.entities) {
     if (!e.alive) continue;
@@ -2366,9 +2389,24 @@ function updateEnvironmentAndMetabolism(world, dt) {
     const light = lightAt(e.y);
     const extO2 = oxygenAt(e.y);
     const porosity = membranePorosity(e);
-    // No passive O2 diffusion any more: your stored O2 stays put unless you BREATHE (feed, which
+    // Small molecules cross every bacterial membrane continuously. Oxygen relaxes
+    // gently toward local saturation; porosity changes the rate but never seals a
+    // living membrane perfectly. Feeding and gills remain much faster paths.
+    const membraneFraction = PASSIVE_MEMBRANE.minimumPorosity + (1 - PASSIVE_MEMBRANE.minimumPorosity) * clamp(porosity / 0.32, 0, 1);
+    const passiveO2Target = extO2 * caps(e).oxygen;
+    e.oxygen = clamp((e.oxygen || 0) + (passiveO2Target - (e.oxygen || 0)) * PASSIVE_MEMBRANE.oxygenRate * membraneFraction * dt, 0, caps(e).oxygen);
+    // Toxins are also dissolved small molecules. Their slower passive ingress means
+    // poison fields matter even without feeding. Biomass and lipids have no passive
+    // path and still require feeding, killing, or metabolic conversion.
+    const toxinCap = caps(e).toxins;
+    if (toxinCap > 0) {
+      const dissolvedToxins = dissolvedToxinAt(world, e.x, e.y);
+      e.cargo.toxins = Math.min(toxinCap, (e.cargo.toxins || 0) + dissolvedToxins * PASSIVE_MEMBRANE.toxinRate * membraneFraction * dt);
+    }
+    /* Superseded by the passive-exchange model above:
     // equilibrates it toward the water's saturation — see feedFromFields) or RESPIRE (burn it for
     // ATP below). So you don't bleed oxygen just by sitting in the deep; you manage it by where you feed.
+    */
     // Countercurrent Gill: active O2 uptake far beyond bare diffusion, when the water is richer.
     const gill = orgCount(e, 'countercurrent_gill');
     if (gill > 0 && extO2 > e.oxygen) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + (extO2 - e.oxygen) * gill * ORGANELLES.countercurrent_gill.stats.uptake * dt);
