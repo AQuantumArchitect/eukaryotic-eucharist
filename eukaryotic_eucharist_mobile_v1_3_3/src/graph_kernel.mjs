@@ -305,6 +305,9 @@ const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 const BIOMASS_SINK_DECAY = 0.05;  // biomass barely remineralizes while sinking — it arrives intact
 const BIOMASS_FLOOR_DECAY = 0.45; // ...but piled on the abyss floor it dissolves back into the water
 const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still clears eventually
+const FAT_PLUME_RISE = 55;        // px/s: the return arm — buoyant fat climbs hard out of the abyss
+const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
+const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -934,7 +937,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'catalytic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Catalytic Processor', desc: 'Enzyme-accelerated flow: the more enzymes you carry, the faster it runs.', cost: { biomass: 18, enzymes: 2 }, organelle: 'catalytic_processor', requiresDiscovery: 'catalytic_processor', stackLimit: 6 },
   { id: 'velocity_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Velocity Lance', desc: 'A charge spine — near-harmless at a drift, brutal at dash speed.', cost: { biomass: 18, crystals: 1 }, organelle: 'velocity_lance', requiresDiscovery: 'velocity_lance', stackLimit: 6 },
   { id: 'saw_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Saw Lance', desc: 'A grinding blade: flat, reliable damage regardless of speed, biting from wider angles.', cost: { biomass: 20, crystals: 1 }, organelle: 'saw_lance', requiresDiscovery: 'saw_lance', stackLimit: 6 },
-  { id: 'siphon_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Siphon Rasp', desc: 'A parasitic shred: while rasping, drains the victim\'s biomass and lipids into your cargo.', cost: { biomass: 20, enzymes: 1 }, organelle: 'siphon_rasp', requiresDiscovery: 'siphon_rasp', stackLimit: 5 },
+  { id: 'siphon_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Siphon Rasp', desc: 'A parasitic shred: while rasping, drains the victim\'s biomass and lipids into your cargo.', cost: { biomass: 20, crystals: 1 }, organelle: 'siphon_rasp', requiresDiscovery: 'siphon_rasp', stackLimit: 5 },
   { id: 'spore_toxin_launcher', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Sporo-Toxic Launcher', desc: 'Combination gun: spends toxins and spores for a heavy glob, wide splash, and a lingering cloud.', cost: { biomass: 22, spores: 2, crystals: 1 }, organelle: 'spore_toxin_launcher', requiresDiscovery: 'spore_toxin_launcher', stackLimit: 3 },
   { id: 'combustion_vesicle', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Combustion Vesicle', desc: 'A flamethrower: a held cone of burning slurry that ignites your lipids with banked O2 and toxins. Runs hotter with more oxygen and drains all three tanks fast.', cost: { biomass: 22, lipids: 10, crystals: 1 }, organelle: 'combustion_vesicle', requiresDiscovery: 'combustion_vesicle', stackLimit: 4 },
   { id: 'leech_rasp', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Leech Lamella', desc: 'Parasite organ: near-zero damage, but rasping siphons biomass, lipids, and a small ATP trickle from your host.', cost: { biomass: 14, enzymes: 1 }, organelle: 'leech_rasp', requiresDiscovery: 'leech_rasp', stackLimit: 5 },
@@ -1006,7 +1009,7 @@ function makeImmigrantPlayer(world) {
   return makeSoftBody(world, 'player', arrival.x, arrival.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: arrival.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 2, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
     oxygen: oxygenAt(arrival.y), grace: 2.5
   });
 }
@@ -1440,6 +1443,7 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // rolled at spawn; _wander = slow cruise heading offset; _preyScore = last scan's winning score.
     brainState: 'prowl', _targetRef: null, _think: rand(world, 0, 0.18), _commit: 0,
     aggro: 0.5, caution: 0.5, _wander: rand(world, 0, Math.PI * 2), _preyScore: -Infinity, _emigrate: 0,
+    _nicheHome: null, // scavenger O2-niche depth, cached + refreshed on the think tick (uniform shape)
     // Algae only: independent continuous-cycle parameters. Declared for every body to preserve
     // the monomorphic hot-loop shape; they are inert unless controller === 'algae'.
     algaeTraits: opts.algaeTraits ? { ...opts.algaeTraits } : null, algaeSeedPhase: opts.algaeSeedPhase ?? 0,
@@ -2451,9 +2455,12 @@ function updateScavengerBrain(world, e, dt) {
   // depth whose ambient oxygen it can bear (from its own oxygenTolerance): the oxic caste rides up
   // into the oxygenated nursery, the O2-INTOLERANT abyssal clone is pinned down in the anaerobic
   // deep where the whale-fall piles. Same reasoning, opposite homes. (Acute overload flight below.)
-  const nicheCeiling = depthForOxygen(oxygenTolerance(e));
-  const nicheHome = clamp(nicheCeiling + 250, WORLD.canopy + 200, WORLD.h - 200);
-  e.depthHome += (nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
+  // The ceiling depends only on the (static) O2 field + this body's tolerance, so the 22-iter inverse
+  // is cached and refreshed on the throttled think tick, not recomputed every frame.
+  if (e._nicheHome == null || e._think <= 0) {
+    e._nicheHome = clamp(depthForOxygen(oxygenTolerance(e)) + 250, WORLD.canopy + 200, WORLD.h - 200);
+  }
+  e.depthHome += (e._nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
 
   // Panic: a combat hit (0.18; environmental stress only sets 0.05) → bolt from the attacker;
   // or the shallows are turning O2-toxic → dive back down.
@@ -3113,14 +3120,28 @@ function updateFields(world, dt) {
     const decayRate = isBiomass ? (atFloor ? BIOMASS_FLOOR_DECAY : BIOMASS_SINK_DECAY) : f.decayRate;
     const decay = decayRate * dt;
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
+    // Return arm of the carbon pump: DEEP whale-fall biomass slowly decomposes into buoyant FAT that
+    // rises out of the abyss for the O2-tolerant mid predators to intercept before it reaches the
+    // light. Accumulated per field so it releases as occasional plumes, not a spray of micro-fields.
+    if (isBiomass && f.y > WORLD.deepTop && (f.stock.biomass || 0) > 1) {
+      const vent = f.stock.biomass * FAT_VENT_RATE * dt;
+      f.stock.biomass -= vent;
+      f.fatBudget = (f.fatBudget || 0) + vent;
+      if (f.fatBudget >= FAT_PLUME_QUANTUM) {
+        const plume = spawnResourceField(world, f.x, f.y - 24, { lipids: f.fatBudget }, { radius: 34, sourceKind: 'abyssal_fat_plume', maxAge: 95, maxRadius: 120 });
+        if (plume) { plume.vyTarget = -FAT_PLUME_RISE; plume.decayRate = 0.05; }
+        f.fatBudget = 0;
+      }
+    }
     const total = totalMatter(f.stock);
     f._matter = total; // cache for this frame's AI field scans (bestFieldFor)
     // Per-type drift: each field follows its own material's physics — lipids rise, ATP spreads, toxins
     // seep. Biomass sinks by a square-cube law: a bigger fall plummets, a fleck drifts.
     if (total > 0) {
+      const upCap = f.sourceKind === 'abyssal_fat_plume' ? FAT_PLUME_RISE : FIELD_TERMINAL_VY; // buoyant fat climbs faster than ordinary drift
       const targetVy = isBiomass
         ? clamp(BIOMASS_SINK_K * Math.pow(Math.max(0, f.stock.biomass || 0), 2 / 3), 0, WHALE_FALL_TERMINAL)
-        : clamp(f.vyTarget || 0, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
+        : clamp(f.vyTarget || 0, -upCap, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
@@ -4865,7 +4886,7 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
-      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false
     };
     world.fields.push(f);
     if (!ret) ret = f;
@@ -4873,14 +4894,24 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
   return ret;
 }
 
+const FIELD_MERGE_WINDOW = 80; // merges only happen within this px — the windowed broad-phase key
 function mergeNearbyFields(world) {
-  for (let i = 0; i < world.fields.length; i++) {
-    const a = world.fields[i];
-    for (let j = world.fields.length - 1; j > i; j--) {
-      const b = world.fields[j];
-      if (a.resType !== b.resType) continue;                 // types stay decoupled — only like merges with like
+  const fields = world.fields;
+  if (fields.length < 2) return;
+  // Windowed by y (like the contact broad-phase): fields sit spread across an 11200px column, so a
+  // full O(n²) scan is wasteful once the persistent whale-fall inflates the count. Sort by y and
+  // break the inner loop as soon as the y-gap exceeds the merge window — near-linear in practice.
+  fields.sort((a, b) => a.y - b.y);
+  let merged = false;
+  for (let i = 0; i < fields.length; i++) {
+    const a = fields[i];
+    if (a._merged) continue;
+    for (let j = i + 1; j < fields.length; j++) {
+      const b = fields[j];
+      if (b.y - a.y > FIELD_MERGE_WINDOW) break;             // sorted: nothing further can be in range
+      if (b._merged || a.resType !== b.resType) continue;    // types stay decoupled — only like merges with like
       const d = distWrap(a.x, a.y, b.x, b.y);
-      if (d > Math.min(80, (a.radius + b.radius) * 0.35)) continue;
+      if (d > Math.min(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.35)) continue;
       const ta = totalMatter(a.stock), tb = totalMatter(b.stock), total = Math.max(1, ta + tb);
       a.x = wrapX(a.x + dxWrap(a.x, b.x) * (tb / total));
       a.y = (a.y * ta + b.y * tb) / total;
@@ -4888,10 +4919,12 @@ function mergeNearbyFields(world) {
       a.age = Math.min(a.age, b.age);
       a.maxAge = Math.max(a.maxAge, b.maxAge);
       a.maxRadius = Math.max(a.maxRadius, b.maxRadius);
-      world.fields.splice(j, 1);
+      b._merged = true;
       world.stats.fieldsMerged += 1;
+      merged = true;
     }
   }
+  if (merged) world.fields = fields.filter(f => !f._merged);
 }
 
 function spawnParticle(world, kind, x, y, value = 1) {

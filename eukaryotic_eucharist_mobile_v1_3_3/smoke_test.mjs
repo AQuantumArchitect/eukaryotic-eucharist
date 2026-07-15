@@ -13,7 +13,7 @@ assert(K.orgCount(player, 'dna_memory_vesicle') === 0, 'starter has ZERO DNA sto
 let hud = K.getHudProjection(world);
 let dna = hud.resources.find(r => r.id === 'dna');
 assert(dna.max === 0, 'starter DNA cap is zero (no vesicle)');
-assert(K.__test.feedRate(player) < 0.6, 'starter feeding rate is slower than v1.3.2');
+assert(K.__test.feedRate(player) < 0.9, 'starter feeding rate is slower than v1.3.2 (two intake pores)');
 
 // Full biomass should create ATP while idle.
 player.cargo.energy = 0;
@@ -417,15 +417,14 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   for (let i = 0; i < 60; i++) { p.cargo.energy = 0; p.cargo.biomass = Math.min(0.1, p.cargo.biomass); K.step(w, {}, 1 / 60); }
   assert(K.getPlayer(w).hp < hp0 - 3, 'a starving cell (no ATP, no biomass) autolyses instead of stalling'); }
 
-// Repair Communion is a VALUE-based exchange: pays a fair share of matter (biomass + fat) with no
-// fixed recipe, so there's never a biomass↔lipids shuffle to cross a threshold.
+// Yuki is a rest point, not a trader: healing while resting near her is FREE (no offering to buy, no
+// matter spent) — she just eases HP up while the shop is open.
 { const w = K.createWorld({ seed: 1 });
-  const repair = K.getYukiOfferings(w).find(o => o.id === 'repair');
-  assert(repair.value > 0 && !('enzymes' in (repair.cost || {})), 'repair communion is value-priced (fair matter draw)');
+  assert(!K.getYukiOfferings(w).some(o => o.id === 'repair'), 'repair is no longer a purchasable offering');
   const p = K.getPlayer(w); p.hp = 10; const b0 = p.cargo.biomass, l0 = p.cargo.lipids;
-  const res = K.buyOffering(w, 'repair');
-  assert(res.ok && p.hp > 10, 'repair communion heals');
-  assert(p.cargo.biomass < b0 && p.cargo.lipids < l0, 'repair draws a fair share of BOTH biomass and fat'); }
+  K.yukiRestore(w, 1 / 60, p.id);
+  assert(p.hp > 10, 'resting at Yuki heals for free');
+  assert(p.cargo.biomass === b0 && p.cargo.lipids === l0, 'free healing draws no matter'); }
 
 // ── Exotics as consumable verbs ─────────────────────────────────────────────
 
@@ -565,11 +564,16 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(K.__test.caps(p).dna > 0, 'buying DNA Memory Vesicle opens DNA carry capacity — discovery can proceed');
 }
 
-// Resource-field drift physics: a biomass-heavy patch sinks, a lipid-heavy patch rises.
+// Resource-field drift physics: fields are decoupled per resource type, each with its own physics —
+// a biomass field sinks, a lipid field rises. spawnResourceField() returns only the FIRST field it
+// creates (per FIELD_RES order), so look each type up in world.fields by resType instead of trusting
+// the return value for anything but the single-resource-stock case.
 { const w = K.createWorld({ seed: 4243 });
   w.fields.length = 0;
-  const bioField = K.__test.spawnResourceField(w, 400, K.WORLD.canopy + 600, { biomass: 120, lipids: 2 }, { sourceKind: 'test' });
-  const lipField = K.__test.spawnResourceField(w, 800, K.WORLD.canopy + 600, { biomass: 2, lipids: 120 }, { sourceKind: 'test' });
+  K.__test.spawnResourceField(w, 400, K.WORLD.canopy + 600, { biomass: 120 }, { sourceKind: 'test' });
+  K.__test.spawnResourceField(w, 800, K.WORLD.canopy + 600, { lipids: 120 }, { sourceKind: 'test' });
+  const bioField = w.fields.find(f => f.resType === 'biomass');
+  const lipField = w.fields.find(f => f.resType === 'lipids');
   const by0 = bioField.y, ly0 = lipField.y;
   for (let i = 0; i < 180; i++) K.step(w, {}, 1 / 60);
   assert(bioField.y > by0 + 5, 'a biomass-heavy field sinks over time');
@@ -710,14 +714,15 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(p.alive && p.hp > 0, 'the underhost survives the peel');
   assert(w.fields.some(f => f.sourceKind === 'shed_membrane'), 'shedding a layer spills a resource field (mostly lipids)'); }
 
-// Yuki Detox cuts toxins and oxygen by two-thirds (fractional, not a flat amount).
+// Yuki scrubs toxins and eases oxygen to a safe level for free while you rest — no purchase, no detox
+// offering (she's a rest point, not a trader; see yukiRestore).
 { const w = K.createWorld({ seed: 7004 }); const p = K.getPlayer(w);
-  p.organelles.storage_vacuole = 4; p.organelles.oxygen_store = 2; p._capsEpoch = -1; // O2 cap for the 0.9 test value
+  p.organelles.toxin_vacuole = 4; p.organelles.oxygen_store = 2; p._capsEpoch = -1;
   p.cargo.energy = 10; p.cargo.toxins = 30; p.oxygen = 0.9;
-  const r = K.buyOffering(w, 'detox');
-  assert(r.ok, 'detox is purchasable');
-  assert(Math.abs(p.cargo.toxins - 10) < 1e-6, 'detox cuts toxins by two-thirds (30 → 10)');
-  assert(Math.abs(p.oxygen - 0.3) < 1e-6, 'detox cuts oxygen by two-thirds (0.9 → 0.3)'); }
+  assert(!K.getYukiOfferings(w).some(o => o.id === 'detox'), 'detox is no longer a purchasable offering');
+  for (let i = 0; i < 300; i++) K.yukiRestore(w, 1 / 60, p.id);
+  assert(p.cargo.toxins < 30, 'resting at Yuki scrubs toxins for free');
+  assert(p.oxygen < 0.9, 'resting at Yuki eases oxygen toward a safe level'); }
 
 // The algal oxygen/buoyancy path costs NO exotics — it's the safe, exotic-free route.
 { const w = K.createWorld({ seed: 7103 });
@@ -745,7 +750,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   const c1 = K.getYukiOfferings(w).find(o => o.id === 'membrane').cost;
   p.organelles.membrane = 4; p._capsEpoch = -1;
   const c4 = K.getYukiOfferings(w).find(o => o.id === 'membrane').cost;
-  assert((c4.biomass || 0) > (c1.biomass || 0) * 2, 'the 4th membrane layer costs geometrically more than the 1st'); }
+  assert((c4.lipids || 0) > (c1.lipids || 0) * 2, 'the 4th membrane layer costs geometrically more than the 1st'); }
 
 // Scavengers are the reliable enzyme farm — killing them frequently drops enzymes.
 { const w = K.createWorld({ seed: 7301 });
@@ -936,9 +941,11 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(K.__test.flamePulse(w, p, 1, 0) === false, 'no oxidizer → the flamethrower cannot fire');
 }
 
-// Fibonacci category-cost escalation: the exotic portion of an organ's price climbs (1,1,2,3,5,8…)
-// with how many organs you own in the same functional category; only exotics scale; capacity racks
-// and companions are exempt; membrane keeps its own φ curve; rack caps are now 13.
+// Fibonacci category-cost escalation: an organ's price climbs (1,1,2,3,5,8…) with how many organs you
+// own in the same functional category. Per Part C (reversed from the earlier "only exotics scale"),
+// the WHOLE cost escalates now — lipids climb right alongside the signature exotic (and toxins, for a
+// double-cost venom organ) — not just the exotic portion. Capacity racks and companions stay exempt;
+// membrane keeps its own φ curve; rack caps are now 13.
 { const w = K.createWorld({ seed: 6001 }); const p = K.getPlayer(w);
   const EXO = ['spores', 'enzymes', 'crystals'];
   const cost = (id) => { const o = K.getYukiOfferings(w).find(x => x.id === id); return o ? o.cost : null; };
@@ -946,17 +953,21 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   const set = (orgs) => { p.organelles = { ...orgs }; p._capsEpoch = -1; };
   // double-1 Fibonacci start on the Weapons category (toxin_launcher base = 1 crystal)
   set({}); assert(cost('toxin_launcher').crystals === 1, 'weapon exotic base = 1 (own 0 in category)');
-  set({ lance_bristle: 1 }); assert(cost('toxin_launcher').crystals === 1, 'double-1: 2nd organ in a category still base');
+  set({ lance_bristle: 1 }); const t1 = cost('toxin_launcher'); assert(t1.crystals === 1, 'double-1: 2nd organ in a category still base');
   set({ lance_bristle: 2 }); assert(cost('toxin_launcher').crystals === 2, '3rd organ in category → ×2');
-  set({ lance_bristle: 5 }); assert(cost('toxin_launcher').crystals === 8, '6th organ in category → ×8 (fib)');
-  assert(cost('toxin_launcher').lipids === 7 && !('biomass' in cost('toxin_launcher')), 'matter cost (now lipids) stays flat under exotic escalation; biomass is off the price list (lipid currency)');
+  set({ lance_bristle: 5 }); const t8 = cost('toxin_launcher');
+  assert(t8.crystals === 8, '6th organ in category → ×8 (fib)');
+  assert(!('biomass' in t8), 'biomass is off the price list (lipid currency)');
+  assert(t8.lipids > t1.lipids, 'the lipid portion escalates too now, not just the signature exotic');
+  assert(t8.toxins === t1.toxins * 8, 'venom double-cost: the toxin surcharge escalates in lockstep with the exotic (fib)');
   // exotic-free organ never gains an exotic cost, but still counts toward its category tally
   set({ photosystem: 5 });
   const ps = cost('photosystem'); assert(!EXO.some(k => k in ps), 'exotic-free organ never gains an exotic cost');
   assert(cost('catalase_vesicle').enzymes === 8, 'exotic-free oxygen organs still inflate the oxygen category (×8)');
   // membrane keeps its own whole-cost φ scaling and has no exotic key
-  set({ membrane: 3 });
-  const mb = cost('membrane'); assert(mb.lipids === 37 && !('biomass' in mb), 'membrane still φ-scales, priced in lipids (armour = a lipid investment)');
+  set({ membrane: 1 }); const m1 = cost('membrane');
+  set({ membrane: 3 }); const mb = cost('membrane');
+  assert(mb.lipids > m1.lipids * 2 && !('biomass' in mb), 'membrane still φ-scales, priced in lipids (armour = a lipid investment)');
   assert(!EXO.some(k => k in mb), 'membrane carries no exotic cost');
   // capacity racks are exempt: flat price, and they do NOT inflate their category
   set({ exotic_vacuole: 5, dna_memory_vesicle: 5 });
