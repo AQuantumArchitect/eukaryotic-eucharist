@@ -203,7 +203,7 @@ canvas.addEventListener('mousedown',e=>{ if(e.button===2){e.preventDefault(); po
 addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
 addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
 addEventListener('blur',()=>{pointer.down=false;pointer.right=false});
-ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Return to the canopy to commune with Yuki.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
+ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Reach a Yuki tendril to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
 
 function setupJoy(){
   const joy=ui.joy, knob=ui.knob;
@@ -335,7 +335,7 @@ function updateActionButtons(actions){
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
-    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki)openShop();else toast('Yuki waits up at the canopy.'); return;} buttons[id]=true; b.classList.add('active');};
+    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki)openShop();else toast('Reach a Yuki tendril to commune.'); return;} buttons[id]=true; b.classList.add('active');};
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
@@ -571,7 +571,7 @@ function worldToScreenX(x){let sx=x-camera.x; if(sx<-innerWidth*.5)sx+=K.WORLD.w
 let curOffX=0;
 function onScreen(x,y,pad){const sx=x+curOffX-camera.x, sy=y-camera.y; return sx>=-pad && sx<=innerWidth+pad && sy>=-pad && sy<=innerHeight+pad;}
 function draw(){
-  ctx.clearRect(0,0,innerWidth,innerHeight); ctx.save(); ctx.translate(-camera.x,-camera.y); drawWorld(); for(const off of [-K.WORLD.w,0,K.WORLD.w]){curOffX=off; ctx.save();ctx.translate(off,0); drawFields(); drawHazards(); drawParticles(); drawEntities(); ctx.restore()} ctx.restore(); drawVignette();
+  ctx.clearRect(0,0,innerWidth,innerHeight); ctx.save(); ctx.translate(-camera.x,-camera.y); drawWorld(); for(const off of [-K.WORLD.w,0,K.WORLD.w]){curOffX=off; ctx.save();ctx.translate(off,0); drawYukiTendrils(); drawFields(); drawHazards(); drawParticles(); drawEntities(); ctx.restore()} ctx.restore(); drawVignette();
 }
 function drawWorld(){
   const g=ctx.createLinearGradient(0,0,0,K.WORLD.h);
@@ -592,6 +592,23 @@ function drawYukiCanopy(){
   ctx.save(); ctx.fillStyle='rgba(58,190,97,.28)'; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.canopy); ctx.strokeStyle='rgba(158,240,189,.35)'; ctx.lineWidth=8; ctx.beginPath(); for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=90){const y=K.WORLD.canopy-16+Math.sin(x*.011+world.t)*15; if(x===-K.WORLD.w)ctx.moveTo(x,y);else ctx.quadraticCurveTo(x+45,y+Math.sin(x*.02)*32,x+90,y)} ctx.stroke();
   for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=75){const len=42+24*Math.sin(x*.03+world.t*.7); ctx.strokeStyle='rgba(158,240,189,.22)'; ctx.lineWidth=2+Math.sin(x)*1; ctx.beginPath(); ctx.moveTo(x,K.WORLD.canopy-12); ctx.bezierCurveTo(x+12,K.WORLD.canopy+len*.3,x-18,K.WORLD.canopy+len*.65,x+8,K.WORLD.canopy+len); ctx.stroke(); ctx.fillStyle='rgba(158,240,189,.34)'; ctx.beginPath(); ctx.arc(x+8,K.WORLD.canopy+len,4+Math.sin(x)*1.5,0,Math.PI*2); ctx.fill(); }
   ctx.restore();
+}
+// Yuki's hanging lichen tendrils — drawn straight from the seeded equation (K.getYukiTendrils), so what
+// you see is exactly what nearYuki() computes. Strands you're within reach of glow warm (duck in with E).
+function drawYukiTendrils(){
+  const p=projection&&projection.entities?projection.entities.find(e=>e.kind==='player'):null;
+  for(const td of K.getYukiTendrils(world)){
+    if(!onScreen(td.rootX,(K.WORLD.canopy+td.tipY)/2,td.len*0.6+40)) continue;
+    let near=false;
+    if(p){const dy=p.y-K.WORLD.canopy; if(dy>-30&&dy<td.len+22){const k=Math.max(0,Math.min(td.pts.length-1,Math.round(dy/Math.max(1,td.len)*(td.pts.length-1))));const sp=td.pts[k];if(sp&&Math.abs(dxWrap(p.x,sp.x))<td.reach+2)near=true;}}
+    const trace=()=>{ctx.beginPath();for(let k=0;k<td.pts.length;k++){const q=td.pts[k];k?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y);}ctx.stroke();};
+    ctx.strokeStyle=near?'rgba(190,240,205,.30)':'rgba(120,200,150,.15)'; ctx.lineWidth=near?14:9; trace();
+    ctx.strokeStyle=near?'rgba(205,255,218,.9)':'rgba(150,220,165,.55)'; ctx.lineWidth=3.2; trace();
+    ctx.fillStyle='rgba(200,245,210,.5)';
+    for(let k=2;k<td.pts.length-1;k+=3){const q=td.pts[k];ctx.beginPath();ctx.arc(q.x,q.y,2.1,0,Math.PI*2);ctx.fill();}
+    const tip=td.pts[td.pts.length-1];
+    ctx.fillStyle=near?'rgba(214,162,255,.92)':'rgba(214,162,255,.6)'; ctx.beginPath(); ctx.arc(tip.x,tip.y,4.6,0,Math.PI*2); ctx.fill();
+  }
 }
 function drawFields(){
   for(const f of projection.fields){

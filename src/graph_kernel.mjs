@@ -1138,6 +1138,7 @@ export function createWorld(options = {}) {
   const world = {
     version: VERSION,
     t: 0,
+    seed: (options.seed || 1001) >>> 0,   // source of truth for the seeded Yuki tendril equation
     rng,
     entities: [],
     fields: [],
@@ -4843,7 +4844,50 @@ export function getAvailableActions(world, entityId = world.playerId) {
   return actions;
 }
 
-export function nearYuki(world, entity = getPlayer(world)) { return !!entity && entity.y < WORLD.canopy + 220; }
+// ── Yuki lichen: a hanging tendril curtain defined entirely by a SEEDED EQUATION (no stored object) ──
+// A dozen fungal strands root at the canopy and hang to varied depths given by a 3-octave sine of the
+// strand's position — an organic, self-similar "lichen curtain"; the deepest strand is a forward base
+// down in the nursery. Anywhere within reach of a strand you can duck in and commune with Yuki (shop).
+const YUKI_TEND = Object.freeze({ count: 12, minLen: 150, maxLen: 1320, reach: 48, matDepth: 140 });
+function hash01(a, b) { let h = (a >>> 0) ^ Math.imul((((b >>> 0) + 0x9e3779b9) | 0), 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+function yukiTendrilX(world, i) {
+  const slot = (i + 0.5) / YUKI_TEND.count * WORLD.w;
+  const jit = (hash01(world.seed, i * 3 + 7) - 0.5) * (WORLD.w / YUKI_TEND.count) * 0.62;
+  return wrapX(slot + jit);
+}
+function yukiTendrilLen(world, i) {
+  const s = world.seed, t = (i + 0.5) / YUKI_TEND.count * (Math.PI * 2);
+  const n = 0.5
+    + 0.34 * Math.sin(t * 1.0 + hash01(s, 11) * 6.283)
+    + 0.22 * Math.sin(t * 2.7 + hash01(s, 12) * 6.283)
+    + 0.12 * Math.sin(t * 5.3 + hash01(s, 13) * 6.283);
+  return YUKI_TEND.minLen + (YUKI_TEND.maxLen - YUKI_TEND.minLen) * clamp(n, 0, 1);
+}
+function yukiStrandX(world, i, y) {
+  const d = Math.max(0, y - WORLD.canopy);
+  const sway = 26 * Math.sin(d * 0.009 + i * 1.7 + world.t * 0.5) * clamp(d / 150, 0, 1);
+  return yukiTendrilX(world, i) + sway;
+}
+export function nearYuki(world, entity = getPlayer(world)) {
+  if (!entity) return false;
+  const d = entity.y - WORLD.canopy;
+  if (d < YUKI_TEND.matDepth) return d > -30;          // Yuki's mat blankets the canopy top
+  for (let i = 0; i < YUKI_TEND.count; i++) {
+    if (d > yukiTendrilLen(world, i) + 22) continue;    // below this strand's tip
+    if (Math.abs(dxWrap(entity.x, yukiStrandX(world, i, entity.y))) < YUKI_TEND.reach) return true;
+  }
+  return false;
+}
+// Projection for the renderer: the strand geometry, computed fresh from the seed (never stored state).
+export function getYukiTendrils(world) {
+  const out = [];
+  for (let i = 0; i < YUKI_TEND.count; i++) {
+    const len = yukiTendrilLen(world, i), steps = Math.max(4, Math.round(len / 38)), pts = [];
+    for (let k = 0; k <= steps; k++) { const y = WORLD.canopy + len * k / steps; pts.push({ x: yukiStrandX(world, i, y), y }); }
+    out.push({ i, rootX: yukiTendrilX(world, i), len, tipY: WORLD.canopy + len, reach: YUKI_TEND.reach, pts });
+  }
+  return out;
+}
 
 // ── Yuki exchange counter: LIPIDS are the currency ──────────────────────────
 // Every tradeable resource buys (lipids→R, ▲) and sells (R→lipids, ▼) in fixed chunks. Lipids itself is
