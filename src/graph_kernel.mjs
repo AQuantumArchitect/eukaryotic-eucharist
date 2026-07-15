@@ -220,14 +220,6 @@ const O2_BURN_DEPTH = 400;  // O2 poisoning is a SHALLOW hazard only: above this
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
-// Cytoplasm baseline: every body holds this much of each fluid with ZERO storage organs — equal to the
-// yield of the old all-in-one Storage Vacuole, so a starter body (which no longer carries one) is
-// unchanged. Per-fluid vacuoles (Biomass/Lipid/Toxin) and atp_reservoir stack capacity ON TOP. This
-// removes the old chicken-and-egg where you needed storage before you could hold anything.
-const BASE_BIOMASS_CAP = 22;
-const BASE_LIPID_CAP = 14;
-const BASE_TOXIN_CAP = 10;
-const BASE_ENERGY_CAP = 24;
 // Bare membranes are permeable: small respiratory molecules continuously equilibrate;
 // dissolved toxins cross more slowly, but are still a meaningful environmental burden.
 // Complex food reserves (biomass and lipids) never passively cross the membrane.
@@ -1546,19 +1538,16 @@ function capsCompute(entity) {
   const m = ORGANELLES.membrane.stats;
   const ov = ORGANELLES.oxygen_vacuole.stats;
   const os = ORGANELLES.oxygen_store.stats;
-  // The BASE_*_CAP constants exactly duplicate one storage_vacuole's own stats (22/14/10/24) — a
-  // leftover floor from before storage_vacuole was granted to every spawned body. For the PLAYER this
-  // silently doubled the very first storage organ, so caps stay purely organ-derived (matching HP,
-  // which already has no hidden floor) — no free capacity without a dedicated organ providing it. NPCs
-  // keep the floor: some wild bodies (e.g. swarm agents) carry no storage_vacuole at all and would be
-  // capped at zero without it, so this stays scoped to the player only.
-  const isPlayer = entity.kind === 'player';
+  // Caps are purely organ-derived for EVERY body, no exceptions and no hidden floor — matching HP,
+  // which never had one. The old BASE_*_CAP constants exactly duplicated one storage_vacuole's own
+  // stats (22/14/10/24), silently doubling the first storage organ; removed now that every spawned
+  // body (including swarm agents) is guaranteed at least one storage_vacuole of its own.
   return {
     hp: membrane * m.hp + hard * 8 + oc('multicell_chassis') * 70,
-    energy: (isPlayer ? 0 : BASE_ENERGY_CAP) + storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
-    biomass: (isPlayer ? 0 : BASE_BIOMASS_CAP) + storage * s.biomass + oc('biomass_vacuole') * ORGANELLES.biomass_vacuole.stats.biomass + oc('multicell_chassis') * 80,
-    lipids: (isPlayer ? 0 : BASE_LIPID_CAP) + storage * s.lipids + oc('lipid_vacuole') * ORGANELLES.lipid_vacuole.stats.lipids + mito * 30,
-    toxins: (isPlayer ? 0 : BASE_TOXIN_CAP) + storage * s.toxins + oc('toxin_vacuole') * ORGANELLES.toxin_vacuole.stats.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
+    energy: storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
+    biomass: storage * s.biomass + oc('biomass_vacuole') * ORGANELLES.biomass_vacuole.stats.biomass + oc('multicell_chassis') * 80,
+    lipids: storage * s.lipids + oc('lipid_vacuole') * ORGANELLES.lipid_vacuole.stats.lipids + mito * 30,
+    toxins: storage * s.toxins + oc('toxin_vacuole') * ORGANELLES.toxin_vacuole.stats.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
     spores: exotic * x.spores,
     enzymes: exotic * x.enzymes,
     crystals: exotic * x.crystals,
@@ -4781,7 +4770,7 @@ function spawnSwarmAgent(world, brood) {
   const ang = world.rng() * Math.PI * 2;
   const e = makeSoftBody(world, 'npc', brood.x + Math.cos(ang) * (brood.r + 14), brood.y + Math.sin(ang) * (brood.r + 14), {
     r: rand(world, 9, 12), color: brood.color || '#5fe0a0', controller: 'swarm_agent', trophicRole: 'swarm_agent', depthHome: brood.y,
-    organelles: { membrane: 2, basal_motility: 1, anaerobic_processor: 1, rasping_lamella: 1 },
+    organelles: { membrane: 2, basal_motility: 1, anaerobic_processor: 1, rasping_lamella: 1, storage_vacuole: 1 },
     cargo: { energy: rand(world, 14, 26), biomass: rand(world, 4, 9) }, oxygen: oxygenAt(brood.y), grace: 1.2
   });
   e.ownerId = brood.id; e.bodyPlan = 'blob'; e.photophobic = !!brood.photophobic;
