@@ -589,9 +589,26 @@ function drawWorld(){
   }
   ctx.fillStyle=g; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.h);
   drawYukiCanopy();
+  drawSandyFloor();
   // Small depth ticks retain navigation without drawing ecological borders.
   ctx.strokeStyle='rgba(255,255,255,.055)'; ctx.lineWidth=1; ctx.font='bold 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.17)';
   for(let y=K.WORLD.canopy+520;y<K.WORLD.h;y+=520){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(42,y);ctx.stroke();ctx.fillText('Z '+Math.round(y-K.WORLD.canopy),48,y+4)}
+}
+// The abyss floor: a sandy bed the sinking whale-fall biomass settles onto (the same band
+// updateFields() treats as "at floor" for slowed decay). Rippled dunes, no hard water/sand seam.
+function drawSandyFloor(){
+  const bandTop=K.WORLD.h-320;
+  const g=ctx.createLinearGradient(0,bandTop,0,K.WORLD.h);
+  g.addColorStop(0,'rgba(120,98,64,0)'); g.addColorStop(0.35,'rgba(126,104,66,.55)'); g.addColorStop(1,'rgba(150,124,78,.92)');
+  ctx.save(); ctx.fillStyle=g; ctx.fillRect(-K.WORLD.w,bandTop,K.WORLD.w*3,320);
+  ctx.strokeStyle='rgba(178,150,98,.30)'; ctx.lineWidth=2;
+  for(let row=0;row<3;row++){
+    const ry=K.WORLD.h-70+row*26;
+    ctx.beginPath();
+    for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=48){const y=ry+Math.sin(x*.018+row*1.7)*6; x===-K.WORLD.w?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 function drawYukiCanopy(){
   ctx.save(); ctx.fillStyle='rgba(58,190,97,.28)'; ctx.fillRect(-K.WORLD.w,0,K.WORLD.w*3,K.WORLD.canopy); ctx.strokeStyle='rgba(158,240,189,.35)'; ctx.lineWidth=8; ctx.beginPath(); for(let x=-K.WORLD.w;x<K.WORLD.w*2;x+=90){const y=K.WORLD.canopy-16+Math.sin(x*.011+world.t)*15; if(x===-K.WORLD.w)ctx.moveTo(x,y);else ctx.quadraticCurveTo(x+45,y+Math.sin(x*.02)*32,x+90,y)} ctx.stroke();

@@ -216,7 +216,6 @@ const BALLAST_FLOOD_W = 6.5;      // weight of a water-flooded (empty-gas) bladd
 // The dark lineages are true light-vampires: the tail is inhabitable, but the bright transition
 // burns them quickly enough that light forms a meaningful spatial refuge.
 const LIGHT_BURN = Object.freeze({ threshold: 0.30, rate: 90, slope: 22 });
-const O2_BURN_DEPTH = 400;  // O2 poisoning is a SHALLOW hazard only: above this depth the bright, oxygen-rich water overloads you; below it (the lower nursery and deeper) every body is safe from O2 damage no matter how much it banked.
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
@@ -246,7 +245,7 @@ const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a
 // than population targets or behavioral switches, so a tuning pass changes the flow field instead
 // of prescribing an outcome. createEcologyWorld({ ecologyTuning: { ... } }) overrides any subset.
 export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
-  algaePhotoScale: 0.018,
+  algaePhotoScale: 0.0225,
   playerPhotoScale: 0.18,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
   scavengerDetritusGain: 1.0,
@@ -656,7 +655,7 @@ export const ORGANELLES = Object.freeze({
   photosystem: {
     name: 'Photosystem Patch', tier: 2, action: null, stackable: true, max: 5,
     desc: 'The algae road: light grows biomass and exports oxygen stress. It makes abundance, weight, and eventual falling.',
-    stats: { biomassGain: 0.64, oxygenWaste: 0.050, oxygenVent: 0.17 }
+    stats: { biomassGain: 0.64, oxygenWaste: 0.050, oxygenVent: 0.02 }
   },
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 1, action: 'rasp', stackable: true, max: 5,
@@ -1063,10 +1062,10 @@ function id(prefix) { return `${prefix}_${nextId++}`; }
 export function lightAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
   // One sigmoid across the entire column. Its bright shoulder is near y=800 and
-  // its dark shoulder near y=3400, leaving a long twilight gradient rather than
-  // an ecological strip whose edges behave like invisible walls.
+  // its dark shoulder near y=3900 — a long nursery plus a broad twilight gradient for
+  // predators to stratify across, rather than an ecological strip with invisible walls.
   const shelfDepth = 800 - WORLD.canopy;
-  const darkDepth = 3400 - WORLD.canopy;
+  const darkDepth = 3900 - WORLD.canopy;
   const shelfLogit = Math.log(1 / 0.95 - 1);
   const darkLogit = Math.log(1 / 0.03 - 1);
   const scale = (darkDepth - shelfDepth) / (darkLogit - shelfLogit);
@@ -1088,25 +1087,23 @@ function yAtLight(targetLight) {
   return (bright + dark) * 0.5;
 }
 
-// The mitochondrial Eucharist's depth precondition (hostReadiness) is pinned to the 1% luminosity
-// mark rather than a raw pixel depth, so it stays correct if the light column's optics are ever
-// retuned. Expressed as maxDepth (relative to the canopy), matching how entity.maxDepth is tracked.
-const MITO_DEPTH_MARK = yAtLight(0.01) - WORLD.canopy;
+// The mitochondrial Eucharist's depth precondition (hostReadiness) is the ocean floor itself: reach
+// 95% of the way down the water column. Expressed as maxDepth (relative to the canopy), matching how
+// entity.maxDepth is tracked.
+const MITO_DEPTH_MARK = (WORLD.h - WORLD.canopy) * 0.95;
 
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
-  // Photosynthesis fills the upper 0..1500 water with a broad diffuse O2 cloud.
-  // Below it, mixing loses against respiration and produces a smooth cliff with
-  // a long tail: low-light water can still support aerobic metabolism, while the
-  // deepest water remains genuinely oxygen-poor. This is one continuous field,
-  // not a policy boundary.
-  // O2 now BLANKETS the entire lit column and a margin below it (the cliff sits BELOW the light's
-  // dark shoulder ~y3400), so "in the light" always means "in oxygen". Beneath the cliff lies a vast,
-  // genuinely anaerobic abyss — the realm of the ancient O2-intolerant deep creatures.
+  // The O2 cloud is a survival-strategy trap for the algae, not a uniform bath: it's bright and
+  // oxygen-SATURATED through the nursery band, then falls off a real cliff right at the nursery
+  // floor/rupture threshold — so the nursery is the poison zone and the twilight just below it is
+  // the refuge. An algal cell must fatten to sink OUT of the nursery, but sinking too far carries it
+  // into predator water instead: grow fast to escape the O2, but the growing itself is what gets you
+  // caught. Beneath the cliff lies a vast, genuinely anaerobic abyss — the ancient O2-intolerant deep.
   const floor = 0.04;
   const cloud = 0.70;
-  const cliffDepth = 4200 - WORLD.canopy;
-  const cliffWidth = 520;
+  const cliffDepth = (WORLD.nurseryTop + WORLD.nurseryBottom) / 2 - WORLD.canopy;
+  const cliffWidth = 130;
   return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
 }
 
@@ -1767,7 +1764,7 @@ function hostReadiness(entity, world) {
   const unlockCount = (world && world.discoveredSources) ? world.discoveredSources.size : (entity.cargo.dna || 0);
   const unlocked = clamp(unlockCount / 1, 0, 1);
   // Descent is now a real precondition: the Eucharist demands you carry the pressure
-  // of the deep in your body. Full credit only once you've reached the 1% luminosity mark.
+  // of the deep in your body. Full credit only once you've reached the ocean floor.
   const depth = clamp((entity.maxDepth || 0) / MITO_DEPTH_MARK, 0, 1);
   const score = 0.20 * lipid + 0.22 * membrane + 0.20 * exotics + 0.18 * unlocked + 0.20 * depth;
   const reasons = [];
@@ -1775,7 +1772,7 @@ function hostReadiness(entity, world) {
   if (membrane < 0.66) reasons.push('needs host organs');
   if (exotics < 0.72) reasons.push('needs exotic traces');
   if (unlocked < 1) reasons.push('must sequence a genome — no DNA unlocked yet');
-  if (depth < 0.85) reasons.push('must dive deeper into the rupture');
+  if (depth < 0.85) reasons.push('must reach the ocean floor');
   return { score, ready: score >= 0.70, reasons };
 }
 
@@ -2100,7 +2097,15 @@ function hunterPolicy(world, e, player, energyFill, myCapHp) {
   const preyDist = prey ? distWrap(e.x, e.y, prey.x, prey.y) : Infinity;
   const strikeBlend = prey ? logistic((e.r + prey.r + BRAIN.STRIKE_PAD - preyDist) * 0.045) : 0;
   const matter = field ? Math.max(0, field._matter || 0) : 0;
-  const fieldAppeal = field ? logistic((Math.log1p(matter) - 2.2) * 1.6) * clamp(e.hunger || 0, 0, 1) : 0;
+  // Day-to-day fuel is ATP + fat. A hunter running low on fuel should GRAZE a nearby (especially
+  // lipid-rich) plume rather than only ever hunting — the "eat, don't only hunt" fix. Appeal rises
+  // with the fuel deficit and the field's lipid richness, staying honest about how much matter exists.
+  const lipidFill = (e.cargo.lipids || 0) / Math.max(1, caps(e).lipids);
+  const fuelFill = clamp(energyFill * 0.7 + lipidFill * 0.3, 0, 1);
+  const lipidRich = field ? clamp((field.stock?.lipids || 0) / 20, 0, 1) : 0;
+  const fieldAppeal = field
+    ? logistic((Math.log1p(matter) - 2.2) * 1.6) * (0.25 + 0.75 * (1 - fuelFill)) * (0.55 + 0.9 * lipidRich)
+    : 0;
   const exhaustion = Math.pow(1 - clamp(energyFill, 0, 1), 7);
   const safety = 1 - threat.risk;
 
@@ -2108,10 +2113,15 @@ function hunterPolicy(world, e, player, energyFill, myCapHp) {
     prowl: 0.10 + 0.62 * (1 - preyAppeal) * (1 - fieldAppeal) + 0.18 * (1 - (e.hunger || 0)),
     stalk: 2.7 * preyAppeal * (1 - strikeBlend * 0.82) * safety,
     strike: 3.3 * preyAppeal * strikeBlend * safety,
-    feed: 1.45 * fieldAppeal * (1 - preyAppeal * 0.62) * safety,
+    feed: 2.4 * fieldAppeal * (1 - preyAppeal * 0.45) * safety,
     recover: 0.002 + 1.8 * exhaustion * (1 - preyAppeal * 0.72) * (0.45 + safety * 0.55),
     flee: 0.002 + 4.4 * Math.pow(threat.risk, 2.15)
   };
+  // Closing the kill: a near-dead target in strike range suppresses the flight reflex and sharpens the
+  // strike, so a committed hunter finishes rather than breaking off at the last instant (smooth, no lock).
+  const closingKill = prey ? strikeBlend * (1 - clamp(prey.hp / Math.max(1, caps(prey).hp), 0, 1)) : 0;
+  raw.flee *= 1 - 0.6 * closingKill;
+  raw.strike *= 1 + 0.9 * closingKill;
   // Memory is another continuous term: it makes behavior legible without making a state sticky
   // until a timer or threshold fires.
   if (raw[e.brainState] != null) {
@@ -3106,10 +3116,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
       if (e.kind === 'player') world.events.push({ type: 'surge', entityId: e.id });
     }
 
-    // Oxygen overload is tick damage — but ONLY in the bright shallows. Below O2_BURN_DEPTH (the lower
-    // nursery and deeper) the water is safe to hold a full breath in, so a diver isn't punished for it.
+    // Oxygen overload is tick damage. No separate depth gate — the ambient O2 cliff (see oxygenAt)
+    // already does that work: it's genuinely dangerous through the nursery and genuinely safe once
+    // you're past it, so the geography comes from the field itself, not a hardcoded distance rule.
     const tol = oxygenTolerance(e);
-    if (e.grace <= 0 && e.oxygen > tol && (e.y - WORLD.canopy) < O2_BURN_DEPTH) {
+    if (e.grace <= 0 && e.oxygen > tol) {
       const excess = e.oxygen - tol;
       e.hp -= excess * (hasMito(e) ? 3.4 : 7.4) * dt;
       e.hit = Math.max(e.hit, 0.05);
@@ -4606,7 +4617,9 @@ function spawnAlgae(world, opts = {}) {
     // No flagella: a bloom has no swimming organ — it rises and falls ONLY on ballast (gas in its
     // single Ballast Bladder) versus its own weight. One bladder for every bloom keeps the buoyancy
     // curve linear and legible: gas-full & lean ⇒ floats to the light; fat ⇒ outweighs the gas & sinks.
-    organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 5 : 3, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
+    // Algae are NOT O2-immune: a modest tolerance buys a little headroom, but lingering in the
+    // nursery's saturated water still poisons them — the whole point of the dive-to-escape strategy.
+    organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 2 : 1, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
     cargo: { biomass, lipids: rand(world, 8, 26), energy: rand(world, 8, 24), toxins: 0 },
     oxygen: oxygenAt(y) * 0.55,
     ruptureThreshold: mature ? 0.55 : 0.35, biomassMass: biomass, fallState: null,
@@ -4908,7 +4921,12 @@ function bestBodyTarget(entity, world, player) {
     const claimsByOthers = Math.max(0, rawClaims - (entity._targetRef === other ? 1 : 0));
     const claimCapacity = Math.max(1, Math.ceil(other.r / 30));
     const crowdTax = Math.max(0, claimsByOthers - claimCapacity + 1) * 1.7;
-    const score = reward + algaeBonus + weak + proximityAggro + starving + marked
+    // Finish-the-kill: a smooth commitment bonus to my CURRENT quarry that grows as it weakens and as
+    // I close, so a fresher body can't distract me off a near-dead target at the last moment. Healthy
+    // quarry gets only a whisker of stickiness; a dying one right in front of me gets a strong pull.
+    const commitBonus = (entity._targetRef === other)
+      ? (0.6 + 3.2 * (1 - otherHpFill)) * Math.exp(-d / 300) : 0;
+    const score = reward + algaeBonus + weak + proximityAggro + starving + marked + commitBonus
       - risk - sunCost - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
@@ -5520,7 +5538,7 @@ function objectiveText(world, e) {
   const lib = world.cellLibrary || [];
   if (!hasMito(e)) {
     if (lib.length > 0) return `Your second form. Shape a specialized body — your archived ${lib[lib.length - 1].label} waits at Yuki to be rejoined.`;
-    return 'Make yourself worthy to host mitochondria: mend your membrane, graft exotic organs, sequence one strand of DNA, and survive the deep. This gift cannot be bought.';
+    return 'Make yourself worthy to host mitochondria: mend your membrane, graft exotic organs, sequence one strand of DNA, and reach the ocean floor. This gift cannot be bought.';
   }
   if (lib.length === 0) {
     if ((e.cargo.dna || 0) < 3) return 'Mitochondria live in you now. Oxygen and lipids are power — and the deep ruptures shed DNA for the taking.';
