@@ -665,9 +665,9 @@ export const ORGANELLES = Object.freeze({
     stats: { biomassGain: 0.64, oxygenWaste: 0.050, oxygenVent: 0.17 }
   },
   rasping_lamella: {
-    name: 'Rasping Lamella', tier: 2, action: 'rasp', stackable: true, max: 5,
+    name: 'Rasping Lamella', tier: 1, action: 'rasp', stackable: true, max: 5,
     desc: 'One active overlap-shred membrane. Damage comes only while rasping and only through overlap.',
-    stats: { dps: 12.5, energyCost: 2.0, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
+    stats: { dps: 12.5, energyCost: 1.6, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
   },
   toxin_launcher: {
     name: 'Toxic Launcher', tier: 2, action: 'acid', stackable: true, max: 3,
@@ -920,7 +920,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'ballast_stone', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Ballast Stone', desc: 'Mineralized weight: sink faster and hold the deep without constantly venting gas — the committed diver\'s anchor.', cost: { biomass: 12, lipids: 4 }, organelle: 'ballast_stone', requiresDiscovery: 'ballast_stone', stackLimit: 4 },
   { id: 'lipid_bladder', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Lipid Bladder', desc: 'Stored fat is lighter than water: a full lipid reserve gives lift on its own — buoyancy for the fat-burning mitochondrial build without fermenting gas.', cost: { biomass: 12, lipids: 9 }, organelle: 'lipid_bladder', requiresDiscovery: 'lipid_bladder', stackLimit: 5 },
 
-  { id: 'rasping_lamella', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { biomass: 18, lipids: 5, crystals: 1, enzymes: 1 }, organelle: 'rasping_lamella', stackLimit: 5 },
+  { id: 'rasping_lamella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { lipids: 5 }, organelle: 'rasping_lamella', stackLimit: 5 },
   { id: 'lance_bristle', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Lance Bristle', desc: 'One forward spine. Buy one, grow one.', cost: { biomass: 16, lipids: 7, crystals: 1 }, organelle: 'lance_bristle', requiresDiscovery: 'lance_bristle', stackLimit: 6 },
   { id: 'toxin_launcher', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Toxic Launcher', desc: 'Late Tier 2 toxin weapon: fires one chemical glob that creates a damaging field.', cost: { biomass: 14, toxins: 8, crystals: 1 }, organelle: 'toxin_launcher', requiresDiscovery: 'toxin_launcher', stackLimit: 3 },
   { id: 'phagosome', section: 'Tier 2C - Predatory organs', theme: 'attack', kind: 'organelle', name: 'Phagosome Gland', desc: 'Engulf an overlapping smaller or wounded body on command, spending one enzyme to dissolve it whole into biomass.', cost: { biomass: 18, enzymes: 1, crystals: 1 }, organelle: 'phagosome', requiresDiscovery: 'phagosome', stackLimit: 1 },
@@ -1016,7 +1016,7 @@ function makeImmigrantPlayer(world) {
   return makeSoftBody(world, 'player', arrival.x, arrival.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: arrival.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 2, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 2, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1, storage_vacuole: 1 },
     oxygen: oxygenAt(arrival.y), grace: 2.5
   });
 }
@@ -4129,7 +4129,7 @@ const POP_CAP = 150;                // performance ceiling only — normal life 
 const ALGAE_EMERGENCY_CAP = 120;    // performance/recovery guardrail, not the normal population target
 const ALGAE_CAP = ALGAE_EMERGENCY_CAP; // retained name for legacy diagnostics and emergency-only callers
 const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
-const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood: 1 }); // fission-guild safety net
+const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 }); // fission-guild safety net; predator floor gives a standing mid-game "wall" of skirmishers + aerobic-wall hunters while leaving cap headroom for the deep bosses
 
 function scavengerTarget(world) {
   let detritus = 0, hunterPressure = 0;
