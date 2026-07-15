@@ -416,6 +416,7 @@ function renderShop(){
   let rest=offers.filter(o=>!inBar(o));
   if(affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
   if(ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
+  if(newOnly) rest=rest.filter(o=>orgCardCount(o)===0);           // only organs you've never bought
   const buckets=SHOP_GROUPS.map(()=>[]);
   const groupOf=id=>{for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
   for(const o of rest) buckets[groupOf(o.id)].push(o);
@@ -486,14 +487,15 @@ function organCard(o){
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 // Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
 // plus quick-jump chips to each populated shop category.
-let affordableOnly=true, ownedOnly=false;
+let affordableOnly=true, ownedOnly=false, newOnly=false;
 const CAT_SHORT=['Feed','Metab','Struct','Oxygen','Move','Weapons','Swarm','Euchar','Tier 3','Other'];
 function renderGuide(){
   if(!ui.shopGuide) return;
   const chips=SHOP_GROUPS.map((g,i)=>ui.shopBody.querySelector('#grp'+i)?`<button class="mgrCat" data-grp="${i}">${CAT_SHORT[i]||g[0].slice(0,6)}</button>`:'').join('');
-  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable</button><button class="mgrToggle${ownedOnly?' on':''}" id="mgrOwned">${ownedOnly?'✓':'○'} Owned</button><div class="mgrCats">${chips}</div>`;
+  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable</button><button class="mgrToggle${ownedOnly?' on':''}" id="mgrOwned">${ownedOnly?'✓':'○'} Owned</button><button class="mgrToggle${newOnly?' on':''}" id="mgrNew">${newOnly?'✓':'○'} New</button><div class="mgrCats">${chips}</div>`;
   const af=ui.shopGuide.querySelector('#mgrAfford'); if(af) af.onpointerup=e=>{e.preventDefault();affordableOnly=!affordableOnly;renderShop();};
   const ow=ui.shopGuide.querySelector('#mgrOwned'); if(ow) ow.onpointerup=e=>{e.preventDefault();ownedOnly=!ownedOnly;renderShop();};
+  const nw=ui.shopGuide.querySelector('#mgrNew'); if(nw) nw.onpointerup=e=>{e.preventDefault();newOnly=!newOnly;renderShop();};
   for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
