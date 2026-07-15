@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_predator_flow_eucharist_balance';
+export const VERSION = 'mobile_v1_3_3_immigrant_spawn_algae_cycle_20260714';
 
 export const WORLD = Object.freeze({
   w: 2340,
