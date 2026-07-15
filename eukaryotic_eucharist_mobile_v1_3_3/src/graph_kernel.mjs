@@ -1433,17 +1433,22 @@ function seedMatureEcosystem(world) {
   // running, so the player enters rupture chaos instead of waiting for bloom.
   // Seed a viable LIVING froth (just an initial condition now — the emergent lifecycles take it
   // from here): a scavenger forager pool, a hunter guild that will fission/select, a deep.
-  // Abyssal (O2-intolerant) scavengers are a standing caste in steady state (~12, grazing the
-  // whale-fall larder below the O2 cloud). Seeding zero of them made every session start with an
-  // empty deep that only filled by immigration over minutes — seed the caste already present,
-  // stratified through the anaerobic column.
-  for (let i = 0; i < 12; i++) spawnScavenger(world, {
-    abyssal: true,
-    y: rand(world, O2_ZONE_BOTTOM + 300, WORLD.h - 200),
-    x: rand(world, 0, WORLD.w)
-  });
-  for (let i = 0; i < SCAV_TARGET; i++) spawnScavenger(world, {
-    y: WORLD.nurseryTop + rand(world, 120, 850),
+  // Counts + depths are the DISCOVERED 10-min equilibrium (stamp.mjs, 3 seeds), not a guess — so a
+  // fresh world starts in medias res at its steady shape instead of lurching there over the opening
+  // minutes. Hunters are seeded at the comfort-equilibrium DEPTHS the stamp measured; the continuous
+  // comfort field then holds and fine-tunes each individual by its own light/O2 tolerance. Re-run
+  // `npm run stamp` after any dynamics change and re-sync these numbers.
+  const seedAt = (e, m, sd, lo, hi) => { e.y = clamp(gaussian(world.rng, m, sd), lo, hi); e.depthHome = e.y; e.oxygen = oxygenAt(e.y); return e; };
+
+  // Abyssal (O2-intolerant) floor scavengers: a small standing caste (~3) grazing the whale-fall floor.
+  const abyN = 2 + Math.floor(world.rng() * 3); // 2..4 (settles ~3)
+  for (let i = 0; i < abyN; i++) {
+    const e = spawnScavenger(world, { abyssal: true, y: WORLD.h - 400, x: rand(world, 0, WORLD.w) });
+    seedAt(e, 6686, 873, O2_ZONE_BOTTOM + 400, WORLD.h - 150);
+  }
+  // Oxic forager cloud in the oxygenated upper column (settles ~33; the comfort field + food spread it).
+  for (let i = 0; i < 32; i++) spawnScavenger(world, {
+    y: WORLD.nurseryTop + rand(world, 120, 1100),
     x: rand(world, 0, WORLD.w)
   });
 
@@ -1451,32 +1456,25 @@ function seedMatureEcosystem(world) {
   // invariants come from ecologyRegime while each body gets an independent continuous orbit.
   seedAnalyticAlgaeRegime(world);
 
-  // A mature hunter guild is a distribution, not a synchronized healthy platoon. Counts vary by
-  // seed and reserves span post-fission recovery through charged prowlers, removing the guaranteed
-  // t=0 predator explosion while preserving later food-driven pulses.
-  // Counts are the *discovered* no-player equilibrium (measured 6min×3seed), not a guess: the
-  // squeezed, lipid-fuelled world sustains a thick mid-predator wall and thins the protozoan
-  // layer, so seeding the old sparse guild just made every session spend its first ~4 minutes
-  // lurching from a fake start to the real shape. Seed the shape it settles into.
-  const predN = 13 + Math.floor(world.rng() * 5);  // 13..17 (settles ~16)
-  const protoN = 3 + Math.floor(world.rng() * 3); // 3..5 (settles ~4)
-  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3
-  const broodN = 1 + Math.floor(world.rng() * 2); // 1..2
+  const predN = 6 + Math.floor(world.rng() * 3);  // 6..8 (settles ~7)
+  const protoN = 4 + Math.floor(world.rng() * 3); // 4..6 (settles ~5)
+  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3 (settles ~2)
+  const broodN = 1 + Math.floor(world.rng() * 2); // 1..2 (settles ~1)
   for (let i = 0; i < predN; i++) {
-    const e = spawnPredator(world, { y: yAtLight(0.18), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.55, 0.68, 0.10, 1.20));
+    const y = clamp(gaussian(world.rng, 4200, 850), 2900, 5400);
+    seedMatureHunterState(world, seedAt(spawnPredator(world, { y, x: rand(world, 0, WORLD.w) }), 4200, 850, 2900, 5400));
   }
   for (let i = 0; i < protoN; i++) {
-    const e = spawnProtozoan(world, { y: yAtLight(0.01), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.42, 0.88, 0.05, 0.90));
+    const y = clamp(gaussian(world.rng, 6700, 730), 5200, 7500);
+    seedMatureHunterState(world, seedAt(spawnProtozoan(world, { y, x: rand(world, 0, WORLD.w) }), 6700, 730, 5200, 7500));
   }
   for (let i = 0; i < metaN; i++) {
-    const e = spawnMetazoan(world, { y: yAtLight(0.008), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.34, 0.92, 0.04, 0.86));
+    const y = clamp(gaussian(world.rng, 5500, 450), 4800, 6400);
+    seedMatureHunterState(world, seedAt(spawnMetazoan(world, { y, x: rand(world, 0, WORLD.w) }), 5500, 450, 4800, 6400));
   }
   for (let i = 0; i < broodN; i++) {
-    const e = spawnBrood(world, { y: yAtLight(0.006), x: rand(world, 0, WORLD.w) });
-    placeSeedHunterByLight(world, e, 0.30, 0.95, 0.035, 0.82);
+    const y = clamp(gaussian(world.rng, 6900, 400), 6000, 7500);
+    seedAt(spawnBrood(world, { y, x: rand(world, 0, WORLD.w) }), 6900, 400, 6000, 7500);
   }
 
   // Seed the field economy at its steady density (~5000 matter) and stratified across the
@@ -5766,4 +5764,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, escalation: world.escalation || 0, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation, verticalGradientMult, chargeThrustATP, ballastTrim, netWeightPressure };

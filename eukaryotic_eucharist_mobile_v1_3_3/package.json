@@ -3,7 +3,8 @@
     "start": "kill $(lsof -ti:8787) 2>/dev/null; true && python3 -m http.server 8787",
     "stop": "kill $(lsof -ti:8787) 2>/dev/null; true",
     "smoke": "node smoke_test.mjs",
-    "ecology": "node ecology_report.mjs"
+    "ecology": "node ecology_report.mjs",
+    "stamp": "node stamp.mjs 10 3 0.05"
   },
   "devDependencies": {}
 }
