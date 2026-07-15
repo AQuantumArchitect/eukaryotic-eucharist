@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_sigmoid_light_raids_20260714e';
+export const VERSION = 'mobile_v1_3_3_algae_health_regime_20260714f';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -245,7 +245,7 @@ const MASS_TAX_K = 0.015;         // ATP/s drained per unit of STORED BIOMASS: b
 // is a steep heal band (bask to mend); the deep is attrition (climb back to Yuki or dissolve).
 const ALGAE_DEEP_FERMENT_K = 1.6; // deep blooms ferment lift-gas up to (1+K)× faster → they bottom out & rise
 const ALGAE_LIGHT_GAS_VENT_K = 0.028; // bright-water gas vent / s: the broader shelf still heats/vents a bloated bloom into its next descent
-const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
+const ALGAE_HEAL = 4.0;           // maximum repair drive; actual healing tapers continuously as a wound closes
 const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
 const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep-diving bloom reads big
 // Narrow, continuous knobs for ecology experiments. These are deliberately rates and gains rather
@@ -277,6 +277,11 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
   structuralSpread: 22,
   structuralMedian: 48,
   structuralLogSpread: 0.72,
+  healthBaseFill: 0.99,
+  healthSpread: 0.06,
+  healthDepthLoad: 0.05,
+  healthAscentLoad: 0.035,
+  healthVeteranLoad: 0.025,
   traitSpread: 0.22
 });
 // Resource fields drift by what they're made of, so matter stratifies in the column:
@@ -1242,7 +1247,19 @@ function seedAnalyticAlgaeRegime(world) {
     e.fallState = e.vy > 0.4 ? 'sinking' : (e.vy < -0.4 ? 'rising' : null);
     e.organelles.photosystem = clamp(Math.round(1.8 + Math.sqrt(structural) * 0.28), 2, ORGANELLES.photosystem.max);
     e._capsEpoch = -1;
-    e.hp = caps(e).hp;
+    const hpCap = caps(e).hp;
+    // Health is part of the sampled ecology, not a post-seed reset. Deep exposure,
+    // an active ascent, and accumulated veteran history all raise expected wound
+    // burden continuously; individual noise represents recent predation/abrasion.
+    const depthLoad = clamp((y - WORLD.nurseryTop) / Math.max(1, WORLD.deepTop - WORLD.nurseryTop), 0, 1);
+    const ascentLoad = logistic(-e.vy / 12);
+    const veteranLoad = 1 - Math.exp(-cycleHistory / 10);
+    const healthFill = clamp((r.healthBaseFill ?? 0.97)
+      - depthLoad * (r.healthDepthLoad ?? 0.08)
+      - ascentLoad * (r.healthAscentLoad ?? 0.06)
+      - veteranLoad * (r.healthVeteranLoad ?? 0.04)
+      + gaussian(world.rng, 0, r.healthSpread ?? 0.08), 0.32, 0.995);
+    e.hp = hpCap * healthFill;
     e.r = targetRadius(e);
   }
 }
@@ -2556,7 +2573,9 @@ function updateAlgaeAI(world, e, dt) {
   // bloat-and-fall. The lightless deep is attrition — a bloom must ride its ballast back up to the
   // light to survive; one that can't recover starves and dissolves into deep slurry for the froth.
   const light = lightAt(e.y);
-  e.hp = Math.min(c.hp, e.hp + ALGAE_HEAL * light * dt); // bask: heal ∝ light, so a rising bloom mends on the way up
+  const woundFraction = clamp(1 - e.hp / Math.max(1, c.hp), 0, 1);
+  const repairDrive = ALGAE_HEAL * light * Math.pow(woundFraction, 0.65);
+  e.hp = Math.min(c.hp, e.hp + repairDrive * dt); // repair slows smoothly as the wound closes
   const depthFrac = clamp((e.y - WORLD.deepTop) / Math.max(1, WORLD.h - WORLD.deepTop), 0, 1);
   if (depthFrac > 0) {
     e.hp -= ALGAE_DEEP_ATTR * depthFrac * dt; // only the TRUE deep starves a bloom — ride back up or dissolve
