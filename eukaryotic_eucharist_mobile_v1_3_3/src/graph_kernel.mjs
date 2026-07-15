@@ -4,8 +4,8 @@
 export const VERSION = 'mobile_v1_3_3_light_oxygen_cloud_20260714h';
 
 export const WORLD = Object.freeze({
-  w: 3200,
-  h: 11200,
+  w: 2240,
+  h: 7840,
   canopy: 220,
   surfaceZone: 520,
   nurseryTop: 900,
@@ -1094,6 +1094,11 @@ function yAtLight(targetLight) {
   return (bright + dark) * 0.5;
 }
 
+// The mitochondrial Eucharist's depth precondition (hostReadiness) is pinned to the 1% luminosity
+// mark rather than a raw pixel depth, so it stays correct if the light column's optics are ever
+// retuned. Expressed as maxDepth (relative to the canopy), matching how entity.maxDepth is tracked.
+const MITO_DEPTH_MARK = yAtLight(0.01) - WORLD.canopy;
+
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
   // Photosynthesis fills the upper 0..1500 water with a broad diffuse O2 cloud.
@@ -1745,8 +1750,8 @@ function hostReadiness(entity, world) {
   const unlockCount = (world && world.discoveredSources) ? world.discoveredSources.size : (entity.cargo.dna || 0);
   const unlocked = clamp(unlockCount / 1, 0, 1);
   // Descent is now a real precondition: the Eucharist demands you carry the pressure
-  // of the deep in your body. Full credit only past the rupture layer, into the deep.
-  const depth = clamp((entity.maxDepth || 0) / 3000, 0, 1);
+  // of the deep in your body. Full credit only once you've reached the 1% luminosity mark.
+  const depth = clamp((entity.maxDepth || 0) / MITO_DEPTH_MARK, 0, 1);
   const score = 0.20 * lipid + 0.22 * membrane + 0.20 * exotics + 0.18 * unlocked + 0.20 * depth;
   const reasons = [];
   if (lipid < 0.8) reasons.push('needs lipid reserve');
@@ -4124,7 +4129,7 @@ const POP_CAP = 150;                // performance ceiling only — normal life 
 const ALGAE_EMERGENCY_CAP = 120;    // performance/recovery guardrail, not the normal population target
 const ALGAE_CAP = ALGAE_EMERGENCY_CAP; // retained name for legacy diagnostics and emergency-only callers
 const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
-const POP_FLOOR = Object.freeze({ predator: 3, protozoan: 2, metazoan: 1, brood: 1 }); // fission-guild safety net
+const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 }); // fission-guild safety net; predator floor gives a standing mid-game "wall" of skirmishers + aerobic-wall hunters while leaving cap headroom for the deep bosses
 
 function scavengerTarget(world) {
   let detritus = 0, hunterPressure = 0;
