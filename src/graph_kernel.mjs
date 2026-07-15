@@ -962,6 +962,19 @@ function rand(world, min, max) { return min + (max - min) * world.rng(); }
 function scavengerImmigrationLocation(world) {
   return { x: rand(world, 0, WORLD.w), y: WORLD.nurseryTop + rand(world, 0, 580) };
 }
+
+// Player arrivals and reformations use the exact same body plan and migration
+// sampler. Keeping this here makes initial spawn and K/self-lysis impossible to
+// drift apart again.
+function makeImmigrantPlayer(world) {
+  const arrival = scavengerImmigrationLocation(world);
+  return makeSoftBody(world, 'player', arrival.x, arrival.y, {
+    r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: arrival.y,
+    cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
+    oxygen: oxygenAt(arrival.y), grace: 2.5
+  });
+}
 function choice(world, arr) { return arr[Math.floor(world.rng() * arr.length)]; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 // Box-Muller normal sample. Genomes cluster near the mean with rare tails, so the
@@ -1105,12 +1118,7 @@ export function createWorld(options = {}) {
   };
   let player = null;
   if (!ecologyOnly) {
-    const playerArrival = scavengerImmigrationLocation(world);
-    player = makeSoftBody(world, 'player', playerArrival.x, playerArrival.y, {
-      r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: playerArrival.y,
-      cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(playerArrival.y), grace: 2.5
-    });
+    player = makeImmigrantPlayer(world);
     player.carriedStrains = new Map();
     world.playerId = player.id;
     world.entities.push(player);
@@ -3771,13 +3779,9 @@ function removeDead(world) {
     bloomDeath(world, e);
     if (e.kind === 'player') {
       playerReformed = true;
-      // The player always re-forms in Yuki's tendrils at the top of the canopy —
-      // the same place they began. Carried-but-unsequenced strain records survive
-      // the death, so the long swim home to Yuki is where you bank your discoveries.
-      const next = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
-        r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
-        cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 }, organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
-      });
+      // Death and K/self-lysis re-enter through the same shallow migration used
+      // by the initial player and wild scavenger arrivals.
+      const next = makeImmigrantPlayer(world);
       next.carriedStrains = new Map(e.carriedStrains || []);
       if (hasOrg(e, 'eucharist_archive')) {
         next.organelles.eucharist_archive = 1;
@@ -4660,33 +4664,42 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 // the money (no self-trade). HP can only be BOUGHT (repair — you can't sell your own flesh). Selling
 // toxins / O2 is the new "detox" (dump the excess for a little cash). Biomass trades near-symmetric (it's
 // the core refine loop); ATP/toxins/O2 carry a spread so trading isn't free arbitrage.
+// Each leg has a resource delta `d` (▲ up = +, ▼ down = −) and a lipid delta `lip` (+ = Yuki PAYS you,
+// − = you pay Yuki). Biomass/ATP are real value trades (buy costs, sell pays). Toxins are GARBAGE: Yuki
+// pays you a little to haul them off (up = +1 lip — the venom build gets paid to stock ammo) and it costs
+// a little to dump them back (down = −1). O2 is a cheap utility service, a small fee either way. HP is
+// buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
 const YUKI_TRADES = Object.freeze([
-  { res: 'hp', label: 'HP', buyLip: 8, buyAmt: 40 },                                   // repair only
-  { res: 'biomass', label: 'Biomass', buyLip: 6, buyAmt: 8, sellAmt: 8, sellLip: 6 },  // core loop — no spread
-  { res: 'energy', label: 'ATP', buyLip: 6, buyAmt: 10, sellAmt: 10, sellLip: 4 },
-  { res: 'toxins', label: 'Toxins', buyLip: 4, buyAmt: 8, sellAmt: 8, sellLip: 3 },
-  { res: 'oxygen', label: 'O2', buyLip: 5, buyAmt: 0.30, sellAmt: 0.30, sellLip: 4 },
+  { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
+  { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
+  { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -6 }, down: { d: -10,   lip: 4 } },
+  { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { d: -8,    lip: -1 } },
+  { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -2 }, down: { d: -0.30, lip: -1 } },
 ]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
 function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
+function tradeLegOk(e, res, leg, c) {
+  if (!leg) return false;
+  const cur = tradeCur(e, res), cap = tradeCap(e, res, c);
+  const lip = e.cargo.lipids || 0, lipCap = c.lipids ?? 0;
+  if (leg.d > 0 && cur >= cap - 1e-6) return false;           // resource full
+  if (leg.d < 0 && cur < -leg.d - 1e-6) return false;         // not enough resource
+  if (leg.lip < 0 && lip < -leg.lip - 1e-6) return false;     // can't afford the fee
+  if (leg.lip > 0 && lip >= lipCap - 1e-6) return false;      // lipid tank full (can't take payment)
+  return true;
+}
 
 export function getYukiTrades(world, entityId = world.playerId) {
   CAPS_EPOCH++;
   const e = world.entities.find(x => x.id === entityId);
   if (!e) return [];
   const c = caps(e);
-  const lip = e.cargo.lipids || 0, lipCap = c.lipids ?? 0;
-  return YUKI_TRADES.map(t => {
-    const cur = tradeCur(e, t.res), cap = tradeCap(e, t.res, c);
-    return {
-      res: t.res, label: t.label, cur, cap,
-      color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
-      buyLip: t.buyLip, buyAmt: t.buyAmt, sellLip: t.sellLip ?? null, sellAmt: t.sellAmt ?? null,
-      canBuy: t.buyLip != null && lip >= t.buyLip && cur < cap - 1e-6,
-      canSell: t.sellAmt != null && cur >= t.sellAmt && lip < lipCap - 1e-6,
-      sellable: t.sellAmt != null,
-    };
-  });
+  return YUKI_TRADES.map(t => ({
+    res: t.res, label: t.label, cur: tradeCur(e, t.res), cap: tradeCap(e, t.res, c),
+    color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
+    up: t.up ? { lip: t.up.lip, canDo: tradeLegOk(e, t.res, t.up, c) } : null,
+    down: t.down ? { lip: t.down.lip, canDo: tradeLegOk(e, t.res, t.down, c) } : null,
+  }));
 }
 
 export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
@@ -4694,24 +4707,15 @@ export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e) return { ok: false, reason: 'missing entity' };
   const t = YUKI_TRADES.find(x => x.res === res);
-  if (!t) return { ok: false, reason: 'not tradeable' };
+  const leg = t && t[dir];
+  if (!leg) return { ok: false, reason: 'not tradeable' };
   const c = caps(e);
-  const cur = tradeCur(e, res), cap = tradeCap(e, res, c);
-  const setRes = (v) => { if (res === 'hp') e.hp = v; else if (res === 'oxygen') e.oxygen = v; else e.cargo[res] = v; };
-  if (dir === 'buy') {
-    if (t.buyLip == null) return { ok: false, reason: 'not buyable' };
-    if ((e.cargo.lipids || 0) < t.buyLip) return { ok: false, reason: 'not enough lipids' };
-    if (cur >= cap - 1e-6) return { ok: false, reason: `${t.label} full` };
-    e.cargo.lipids -= t.buyLip;
-    setRes(Math.min(cap, cur + t.buyAmt));
-  } else {
-    if (t.sellAmt == null) return { ok: false, reason: `cannot sell ${t.label}` };
-    const lipCap = c.lipids ?? 0;
-    if (cur < t.sellAmt) return { ok: false, reason: `not enough ${t.label}` };
-    if ((e.cargo.lipids || 0) >= lipCap - 1e-6) return { ok: false, reason: 'lipid tank full' };
-    setRes(cur - t.sellAmt);
-    e.cargo.lipids = Math.min(lipCap, (e.cargo.lipids || 0) + t.sellLip);
-  }
+  if (!tradeLegOk(e, res, leg, c)) return { ok: false, reason: 'cannot trade now' };
+  const cur = tradeCur(e, res), cap = tradeCap(e, res, c), lipCap = c.lipids ?? 0;
+  if (res === 'hp') e.hp = clamp(cur + leg.d, 0, cap);
+  else if (res === 'oxygen') e.oxygen = clamp(cur + leg.d, 0, cap);
+  else e.cargo[res] = clamp(cur + leg.d, 0, cap);
+  e.cargo.lipids = clamp((e.cargo.lipids || 0) + leg.lip, 0, lipCap);
   clampCargo(e);
   world.events.push({ type: 'buy', entityId, offeringId: `trade_${dir}_${res}` });
   return { ok: true, res, dir };

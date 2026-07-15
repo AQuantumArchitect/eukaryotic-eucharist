@@ -67,8 +67,8 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .tTrack b{display:block;height:100%;border-radius:99px}
 .tArrow{flex:0 0 auto;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(255,255,255,.06);color:#eaffef;font-size:11px;font-weight:950;padding:3px 6px;min-width:46px;display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .tArrow b{font-size:10px;font-weight:900}
-.tArrow.up{border-color:rgba(158,240,189,.42);color:#c8ffdd}
-.tArrow.down{border-color:rgba(240,196,106,.42);color:#ffe0a0}
+.tArrow.gain{border-color:rgba(143,227,122,.5);color:#a6f0c0}
+.tArrow.cost{border-color:rgba(255,182,120,.34);color:#ffd8b0}
 .tArrow.live{cursor:pointer;pointer-events:auto}
 .tArrow.live:hover{background:rgba(255,255,255,.13)}
 .tArrow.dis{opacity:.28;cursor:not-allowed}
@@ -400,11 +400,16 @@ function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='
 function tradeRow(t){
   const pctCur=Math.round(100*t.cur/Math.max(1e-6,t.cap));
   const val=t.res==='oxygen'?Math.round(t.cur*100)+'%':fmt(t.cur);
-  const sell=t.sellable
-    ? `<button class="tArrow down ${t.canSell?'live':'dis'}" data-res="${t.res}" data-dir="sell" title="Sell ${t.sellAmt} ${t.label} → +${t.sellLip} lipids">▼<b>+${t.sellLip}</b></button>`
-    : `<span class="tArrow none"></span>`;
-  const buy=`<button class="tArrow up ${t.canBuy?'live':'dis'}" data-res="${t.res}" data-dir="buy" title="Buy ${t.buyAmt} ${t.label} for ${t.buyLip} lipids">▲<b>${t.buyLip}</b></button>`;
-  return `<div class="tRow"><span class="tName" style="color:${t.color}">${t.label}</span><span class="tVal">${val}</span><i class="tTrack"><b style="width:${pctCur}%;background:${t.color}"></b></i>${sell}${buy}</div>`;
+  // Each arrow shows its lipid delta: +N (green, Yuki pays you) or −N (amber, you pay). ▲ raises the
+  // resource, ▼ lowers it — independent of which way the lipids flow (toxins pay you to take them).
+  const arrow=(leg,dir,sym)=>{
+    if(!leg) return `<span class="tArrow none"></span>`;
+    const lbl=leg.lip>0?`+${leg.lip}`:`${leg.lip}`;
+    const cls=leg.lip>0?'gain':'cost';
+    const tip=`${dir==='up'?'Increase':'Reduce'} ${t.label} · ${leg.lip>0?'Yuki pays you '+leg.lip:'costs '+Math.abs(leg.lip)} lipids`;
+    return `<button class="tArrow ${dir} ${cls} ${leg.canDo?'live':'dis'}" data-res="${t.res}" data-dir="${dir}" title="${tip}">${sym}<b>${lbl}</b></button>`;
+  };
+  return `<div class="tRow"><span class="tName" style="color:${t.color}">${t.label}</span><span class="tVal">${val}</span><i class="tTrack"><b style="width:${pctCur}%;background:${t.color}"></b></i>${arrow(t.down,'down','▼')}${arrow(t.up,'up','▲')}</div>`;
 }
 function doTrade(res,dir){const r=K.tradeAtYuki(world,res,dir);if(r.ok){renderShop();}else toast(r.reason||'Cannot trade.');}
 // How many of this organ you already carry (drives the ×N badge + "Graft +1" wording).
