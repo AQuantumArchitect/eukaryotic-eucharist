@@ -350,21 +350,38 @@ function categoryMult(entity, offering) {
   return fib(categoryCount(entity, cat) + 1);
 }
 
+// Shop currency = LIPIDS ("gold"). An organ's construction-biomass is refined into lipids at this rate;
+// biomass then leaves the organ price list entirely (you refine biomass→lipids at Yuki's sell). Exotics
+// (spores/enzymes/crystals) and the venom currency (toxins) pass through untouched. The FAT Biomass
+// Vacuole is the one exception — it still pays in biomass, because paying in biomass IS the FAT build.
+const BIOMASS_TO_LIPID = 0.5;
+function lipidize(cost, org) {
+  if (!cost || org === 'biomass_vacuole') return cost;
+  const c = {};
+  let lip = 0;
+  for (const [k, v] of Object.entries(cost)) {
+    if (k === 'biomass') lip += v * BIOMASS_TO_LIPID;
+    else if (k === 'lipids') lip += v;
+    else c[k] = v;                            // exotics, toxins, energy pass through
+  }
+  if (lip > 0) c.lipids = Math.max(1, Math.ceil(lip));
+  return c;
+}
 function scaledCost(entity, offering) {
   const base = offering?.cost || {};
   const org = offering?.organelle;
-  if (!org) return base;                     // exchanges, sequencing, eucharist, companions — untouched
-  if (org === 'membrane') {                  // existing whole-cost φ scaling — UNCHANGED
+  if (!org) return base;                     // exchanges, sequencing, eucharist sacrament, companions — untouched
+  let out;
+  if (org === 'membrane') {                  // whole-cost φ scaling (membranes are armour — priced in lipids)
     const f = Math.pow(MEMBRANE_COST_RATIO, Math.max(0, orgCount(entity, 'membrane') - 1));
-    const c = {};
-    for (const [k, v] of Object.entries(base)) c[k] = Math.ceil(v * f);
-    return c;
+    out = {};
+    for (const [k, v] of Object.entries(base)) out[k] = Math.ceil(v * f);
+  } else {
+    const mult = categoryMult(entity, offering);  // exempt racks / uncategorised return 1
+    if (mult <= 1) out = { ...base };
+    else { out = {}; for (const [k, v] of Object.entries(base)) out[k] = EXOTIC_KEYS.includes(k) ? Math.ceil(v * mult) : v; }
   }
-  const mult = categoryMult(entity, offering);  // exempt racks / uncategorised return 1
-  if (mult <= 1) return base;
-  const c = {};
-  for (const [k, v] of Object.entries(base)) c[k] = EXOTIC_KEYS.includes(k) ? Math.ceil(v * mult) : v;
-  return c;                                  // only exotic keys escalate; biomass/lipids/toxins flat
+  return lipidize(out, org);                  // flip construction-matter → lipid currency (FAT tank exempt)
 }
 const COMPANIONS = Object.freeze({
   grazer: {
@@ -935,6 +952,12 @@ function mulberry32(seed) {
 }
 
 function rand(world, min, max) { return min + (max - min) * world.rng(); }
+
+// A new player arrives as part of the same shallow forager migration that supplies scavengers:
+// horizontally anywhere in the column, in the nursery band, rather than materializing at Yuki.
+function scavengerImmigrationLocation(world) {
+  return { x: rand(world, 0, WORLD.w), y: WORLD.nurseryTop + rand(world, 0, 580) };
+}
 function choice(world, arr) { return arr[Math.floor(world.rng() * arr.length)]; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 // Box-Muller normal sample. Genomes cluster near the mean with rare tails, so the
@@ -1077,10 +1100,11 @@ export function createWorld(options = {}) {
   };
   let player = null;
   if (!ecologyOnly) {
-    player = makeSoftBody(world, 'player', YUKI_SPAWN.x, YUKI_SPAWN.y, {
-      r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: YUKI_SPAWN.y,
+    const playerArrival = scavengerImmigrationLocation(world);
+    player = makeSoftBody(world, 'player', playerArrival.x, playerArrival.y, {
+      r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: playerArrival.y,
       cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(YUKI_SPAWN.y), grace: 2.5
+      organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 }, oxygen: oxygenAt(playerArrival.y), grace: 2.5
     });
     player.carriedStrains = new Map();
     world.playerId = player.id;
@@ -1095,7 +1119,7 @@ export function createWorld(options = {}) {
   // a fresh start. Default off, so the smoke tests keep their cold t=0 world.
   if (options.warmup > 0) {
     const p = player;
-    const start = p ? { cargo: { ...p.cargo }, oxygen: p.oxygen, ballastGas: p.ballastGas || 0, hp: p.hp, biomassMass: p.biomassMass, r: p.r } : null;
+    const start = p ? { cargo: { ...p.cargo }, oxygen: p.oxygen, ballastGas: p.ballastGas || 0, hp: p.hp, biomassMass: p.biomassMass, r: p.r, x: p.x, y: p.y } : null;
     // Coarse fixed step (the sim's max dt) so warmup is ~3x cheaper — a couple hundred ms of
     // load, not a multi-second freeze — since we only need to reach the steady state, not
     // render it. Gameplay then runs at the fine 1/60 step.
@@ -1106,13 +1130,13 @@ export function createWorld(options = {}) {
       else {
         step(world, {}, WARM_DT);
         p.alive = true; p.hp = caps(p).hp;                  // the observer never dies mid-warmup
-        p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.fallState = null;
+        p.x = start.x; p.y = start.y; p.vx = 0; p.vy = 0; p.fallState = null;
       }
     }
     if (p) {
       Object.assign(p, start);                              // fresh player, aged world
       p.cargo = start.cargo;
-      p.x = YUKI_SPAWN.x; p.y = YUKI_SPAWN.y; p.vx = 0; p.vy = 0; p.grace = 2.5;
+      p.x = start.x; p.y = start.y; p.vx = 0; p.vy = 0; p.grace = 2.5;
       p.maxDepth = 0; p.carriedStrains = new Map(); p.fallState = null; p._capsEpoch = -1;
     }
     // Warmup produces an aged ecology, not an aged session. Gameplay and evaluation begin at t=0
@@ -4078,8 +4102,9 @@ function spawnAlgae(world, opts = {}) {
 }
 
 function spawnScavenger(world, opts = {}) {
-  const y = opts.y ?? (WORLD.nurseryTop + rand(world, 0, 580));
-  const x = opts.x ?? rand(world, 0, WORLD.w);
+  const arrival = opts.x == null || opts.y == null ? scavengerImmigrationLocation(world) : null;
+  const y = opts.y ?? arrival.y;
+  const x = opts.x ?? arrival.x;
   const hp = rand(world, 28, 45);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 11, 18), color: '#8ef19e', controller: 'scavenger', trophicRole: 'anaerobic_scavenger', depthHome: y,
