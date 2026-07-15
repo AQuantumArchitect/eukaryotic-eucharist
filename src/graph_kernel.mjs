@@ -1845,7 +1845,7 @@ const ATP_HARVESTERS = new Set(['predator', 'protozoan', 'metazoan', 'companion'
 // scales max speed, homeBias is how hard the home-depth spring pulls (low = committed chase).
 // Top-level scalars are the global feel knobs the user can tune.
 const BRAIN = Object.freeze({
-  THINK_INTERVAL: 0.18,  // seconds between expensive re-scans; steering stays every-frame
+  THINK_INTERVAL: 0.32,  // probabilistic collapse cadence; steering and physiology stay continuous every frame
   ACCEPT_BASE: 1.6,      // target score a FED hunter needs to commit (high ⇒ it stands down)
   ACCEPT_SLOPE: 2.4,     // how far hunger lowers that bar: acceptBar = BASE − drive*SLOPE
   STRIKE_PAD: 42,        // px beyond r+r that counts as "in strike range" (rasp reach)
@@ -1931,21 +1931,27 @@ function hunterThreatPressure(e, myCapHp) {
   // Hunger makes a raid worth risking, but never removes the underlying burn.
   // This is a continuous risk/reward trade rather than a no-crossing contour.
   const desperation = clamp(huntDrive(e), 0, 1);
-  const lightRisk = lightExposure * (0.32 + 0.68 * (1 - desperation));
   const injuryRisk = Math.pow(1 - hpFill, 2.1) * (0.55 + (e.caution || 0.5));
   const combatRisk = clamp((e.combatHit || 0) / 0.18, 0, 1) * Math.pow(1 - hpFill * 0.65, 1.5);
-  let bodyRisk = 0;
+  let bodyRisk = 0, raidOpportunity = 0;
   if (target) {
     const sizeRatio = target.r / Math.max(4, e.r);
     const proximity = logistic((e.r + target.r + 190 - distWrap(e.x, e.y, target.x, target.y)) * 0.018);
     const targetWeakness = 1 - clamp(target.hp / Math.max(1, caps(target).hp), 0, 1);
+    raidOpportunity = proximity * (0.25 + targetWeakness * 0.75);
     bodyRisk = logistic((sizeRatio - (1.55 + (1 - (e.caution || 0.5)) * 0.55)) * 4.2)
       * proximity * (1 - targetWeakness * 0.72);
   }
+  // A hungry, aggressive hunter close to a vulnerable meal can press through
+  // sunlight. Actual burn damage is unchanged; only its willingness to accept
+  // that cost rises smoothly with the expected payoff.
+  const raidResolve = clamp(desperation * 0.52 + (e.aggro || 0.5) * 0.20 + raidOpportunity * 0.55, 0, 1);
+  const lightPressure = lightExposure * 0.28 + (e.sunStress || 0) * 0.72;
+  const lightRisk = lightPressure * (0.18 + 0.82 * (1 - raidResolve));
   const risk = clamp(1 - (1 - oxygenRisk) * (1 - lightRisk) * (1 - injuryRisk)
     * (1 - combatRisk) * (1 - bodyRisk), 0, 1);
   const dive = oxygenRisk + lightRisk > injuryRisk + combatRisk + bodyRisk;
-  return { risk, source: dive ? null : target, dive };
+  return { risk, source: dive ? null : target, dive, raidResolve };
 }
 
 function hunterPolicy(world, e, player, energyFill, myCapHp) {
@@ -1972,7 +1978,11 @@ function hunterPolicy(world, e, player, energyFill, myCapHp) {
   };
   // Memory is another continuous term: it makes behavior legible without making a state sticky
   // until a timer or threshold fires.
-  if (raw[e.brainState] != null) raw[e.brainState] *= 1.8;
+  if (raw[e.brainState] != null) {
+    const pursuing = (e.brainState === 'stalk' || e.brainState === 'strike') && prey && e._targetRef === prey;
+    const raidCommitment = pursuing ? preyAppeal * (0.35 + 0.65 * drive) * (0.45 + 0.55 * threat.raidResolve) : 0;
+    raw[e.brainState] *= 2.6 + 4.5 * raidCommitment;
+  }
   const probabilities = normalizeWeights(raw);
   return { probabilities, prey, field, threat, preyAppeal, strikeBlend };
 }
@@ -2162,6 +2172,17 @@ function updateNpcBrain(world, e, player, dt) {
   const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
   const cap = caps(e);
   const energyFill = (e.cargo.energy || 0) / Math.max(1, cap.energy);
+
+  // Integrate sunlight as physiological stress instead of reacting to an
+  // instantaneous contour. Brief raids are affordable; prolonged exposure
+  // builds a retreat drive that fades gradually after returning to darkness.
+  if (e.photophobic) {
+    const tolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
+    const exposure = logistic((lightAt(e.y) - tolerance) * 10);
+    e.sunStress = clamp((e.sunStress || 0) + exposure * 0.70 * dt - (1 - exposure) * 0.22 * dt, 0, 1);
+  } else {
+    e.sunStress = Math.max(0, (e.sunStress || 0) - 0.30 * dt);
+  }
 
   if (!e.ownerId) {
     e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
@@ -5021,13 +5042,12 @@ export function getHudProjection(world, entityId = world.playerId) {
 }
 
 function zoneName(y) {
-  const d = y - WORLD.canopy;
-  if (d < 420) return 'Oxygen canopy';
-  if (d < 900) return 'Oxic transition';
-  if (d < 1600) return 'Anaerobic nursery';
-  if (d < 2900) return 'Rupture layer';
-  if (d < 4100) return 'Deep predator dark';
-  return 'Ancestral black';
+  const light = lightAt(y), oxygen = oxygenAt(y);
+  if (light > 0.80) return 'Sunlit water';
+  if (light > 0.25) return oxygen < 0.50 ? 'Bright anaerobic water' : 'Fading light';
+  if (light > 0.03) return 'Twilight water';
+  if (light > 0.003) return 'Rupture dusk';
+  return oxygen > 0.18 ? 'Respiring dark' : 'Ancestral black';
 }
 
 function objectiveText(world, e) {
@@ -5052,7 +5072,7 @@ function objectiveText(world, e) {
 
 export function getRenderProjection(world) {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, ballastGas: e.ballastGas || 0, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, ballastGas: e.ballastGas || 0, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, biomassFill: (e.cargo.biomass || 0) / Math.max(1, caps(e).biomass), lipidFill: (e.cargo.lipids || 0) / Math.max(1, caps(e).lipids), energyFill: (e.cargo.energy || 0) / Math.max(1, caps(e).energy), fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;
