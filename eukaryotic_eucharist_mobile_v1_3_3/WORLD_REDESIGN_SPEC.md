@@ -55,11 +55,24 @@ the immigration floor). A 2× deeper world makes that worse unless §3 (whale-fa
 food in the deep. §3 is therefore load-bearing for §1 and §5 paying off. Measure every chunk with
 `npm run ecology`.
 
-## Sequencing
-1. World dims (extend deep + widen) + O2 relayer.
-2. Directional off-screen spawn model.
-3. Whale-fall field physics + beefier/more algae.
-4. Two scavenger castes + player starter O2 tolerance.
-5. Predator fat-chase AI + population thin.
-6. Scavenger spread.
-Determinism + NaN-clean + ecology-path sound after each; economy left to the other agent.
+## Sequencing & progress (branch `world-space-redesign`)
+1. ✅ **DONE** World dims (`w 2340→3200`, `h 5600→11200`, deep extended) + O2 relayer (`oxygenAt`
+   cliff 2300→4200 so light sits inside the O2 cloud; anaerobic abyss below ~6000) + escalation
+   depthTier rescaled to `WORLD.h`. Measured: predators went from floor-pinned to a stable ~3.7 with
+   real reproduction. Determinism identical, NaN-clean, ~4.2ms/step.
+2. ✅ **DONE** Directional off-screen spawn (`entrySpawn`): hunters rise from the bottom (mid
+   predators from the O2-zone floor ~4000, deep anaerobes from the abyss), scavengers from the
+   wrapping sides, all at the player's cylinder-antipode. Verified 0 hunters spawn above/on-screen of
+   a player pinned at y=2400. (Scavenger repro *buds* still appear near their parent — legit, not a
+   spawn-in.)
+3. ✅ **DONE (pump only)** Whale-fall: biomass fields barely decay while sinking, sink by a
+   square-cube law (`BIOMASS_SINK_K·mass^(2/3)`, cap `WHALE_FALL_TERMINAL`), live `BIOMASS_MAX_AGE`
+   to reach the abyss, remineralize on the floor. Measured: deep matter (y>6000) **0→~9000**; the food
+   economy no longer collapses. ⚠ **Loop still OPEN**: nothing eats the deep larder yet, so mid
+   hunters starve MORE (ATP 23%→13%) until steps 4–5 land.
+4. ⏳ **NEXT** Two scavenger castes (O2-tolerant shallow incl. player w/ starter O2 organ; O2-INTOLERANT
+   deep "ancient" anaerobes that eat the sinking whale-fall biomass). Closes the deep-consumer half.
+5. ⏳ Predator fat-chase AI (mid predators intercept the *rising* fat those deep anaerobes release,
+   before it hits the light) + thin predator population.
+6. ⏳ Scavenger vertical/lateral spread (kill the mid-column "line").
+Determinism + NaN-clean after each; economy left to the other agent. Commit per chunk.
