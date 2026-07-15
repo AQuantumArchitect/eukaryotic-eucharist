@@ -5,6 +5,7 @@
     "start": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm start --prefix \"$DIR\"",
     "stop": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm stop --prefix \"$DIR\"",
     "smoke": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm run smoke --prefix \"$DIR\"",
-    "test": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm test --prefix \"$DIR\""
+    "test": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm test --prefix \"$DIR\"",
+    "ecology": "DIR=$(ls -d eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1) && npm run ecology --prefix \"$DIR\""
   }
 }

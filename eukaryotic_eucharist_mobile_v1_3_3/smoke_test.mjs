@@ -74,12 +74,14 @@ pD.organelles.dna_memory_vesicle = 1; // grant DNA storage so samples can be ing
 assert(wD.discoveredSources instanceof Map, 'world.discoveredSources is a Map of orgId -> potency');
 assert(wD.discoveredSources.size === 0, 'no discoveries at world start (Node, no localStorage)');
 
-// The player starts in Yuki's tendrils at the top of the canopy, able to commune at once.
-assert(Math.abs(pD.y - K.__test.YUKI_SPAWN.y) < 1, 'player spawns at Yuki tendrils (top canopy)');
-assert(K.nearYuki(wD, pD), 'player begins within Yuki communion range');
+// A fresh player arrives through the same nursery band as an immigrating scavenger.
+assert(pD.x >= 0 && pD.x <= K.WORLD.w, 'player immigration x is inside the world');
+assert(pD.y >= K.WORLD.nurseryTop && pD.y <= K.WORLD.nurseryTop + 580,
+  'player immigrates through the scavenger nursery band');
+assert(!K.nearYuki(wD, pD), 'player must travel to Yuki after immigrating');
 
 // Feeding on strain DNA carries a SAMPLE tagged with that individual's rolled potency.
-pD.x = K.__test.YUKI_SPAWN.x; pD.cargo.dna = 0;
+pD.x = K.__test.YUKI_SPAWN.x; pD.y = K.__test.YUKI_SPAWN.y; pD.cargo.dna = 0;
 wD.particles.push({ id: 'tst_vlance', kind: 'dna', x: pD.x, y: pD.y, value: 1, vx: 0, vy: 0, age: 0, maxAge: 999, color: '#ff3d9a', source: 'velocity_lance', potency: 0.95 });
 K.step(wD, { feed: true }, 1 / 60);
 assert(pD.carriedStrains.has('velocity_lance'), 'feeding on strain DNA carries a pending sample');
@@ -217,7 +219,9 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(p.hp < hp0, 'thorn coat drives damage back into the attacker'); }
 
 // Phagocyte Maw engulfs a small, weakened body into biomass.
-{ const [w, p] = deepWorld(); p.organelles.phagocyte_maw = 1; p.r = 42; const e = foe(w, p); e.r = 9; e.hp = 1; e.maxHp = 120;
+// hp is set to 15% of cap: weakened (below the 0.2 engulf threshold) but able to survive one
+// metabolic tick — a 1-hp cell now dies to metabolism before the contact phase can engulf it.
+{ const [w, p] = deepWorld(); p.organelles.phagocyte_maw = 1; p.r = 42; const e = foe(w, p); e.r = 9; e.hp = K.__test.caps(e).hp * 0.15; e.maxHp = 120;
   const bio0 = p.cargo.biomass; K.step(w, {}, 1 / 60);
   assert(!e.alive && p.cargo.biomass > bio0, 'phagocyte maw swallows weak prey for biomass'); }
 
@@ -545,7 +549,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
     const o = offs.find(x => x.id === id);
     assert(o && !o.requiresDiscovery && !o.undiscovered, `lean-core organ ${id} is buyable at start (no discovery gate)`);
   }
-  const NEWLY_LOCKED = ['oxidase_vesicle', 'anabolic_vesicle', 'lipolytic_vesicle', 'mineralizing_gland', 'nuclease_vesicle', 'dash_vacuole', 'oxygen_store', 'oxygen_tolerance', 'gas_gland', 'pressure_bladder', 'ballast_siphon', 'ballast_stone', 'lipid_bladder', 'lance_bristle', 'toxin_launcher', 'phagosome'];
+  const NEWLY_LOCKED = ['oxidase_vesicle', 'anabolic_vesicle', 'lipolytic_vesicle', 'mineralizing_gland', 'nuclease_vesicle', 'dash_vacuole', 'oxygen_store', 'oxygen_tolerance', 'gas_gland', 'pressure_bladder', 'ballast_siphon', 'ballast_stone', 'lipid_bladder', 'lance_bristle', 'toxin_launcher', 'phagosome', 'biomass_vacuole', 'lipid_vacuole', 'toxin_vacuole'];
   for (const id of NEWLY_LOCKED) {
     const o = offs.find(x => x.id === id);
     assert(o && o.requiresDiscovery === id && o.undiscovered, `${id} is DNA-locked at start`);
@@ -594,7 +598,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(res.ok, 'membrane graft succeeds with stock');
   assert(p.hp < hpBefore, 'grafting damages HP (initiation trauma)');
   assert(hpBefore - p.hp >= K.__test.GRAFT_INITIATION.hpMin - 1e-6, 'HP hit is at least the trauma floor');
-  assert((p.cargo.toxins || 0) > toxBefore, 'grafting spikes toxins (inflammation)');
+  assert((p.cargo.toxins || 0) === toxBefore, 'grafting no longer adds toxins (Yuki is gentle) — only an HP tear');
   assert(w.events.some(e => e.type === 'graft_trauma'), 'a graft_trauma event fires on graft');
   assert(p.hp >= 1, 'graft trauma never kills outright (clamped to 1)');
 }
@@ -945,20 +949,20 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   set({ lance_bristle: 1 }); assert(cost('toxin_launcher').crystals === 1, 'double-1: 2nd organ in a category still base');
   set({ lance_bristle: 2 }); assert(cost('toxin_launcher').crystals === 2, '3rd organ in category → ×2');
   set({ lance_bristle: 5 }); assert(cost('toxin_launcher').crystals === 8, '6th organ in category → ×8 (fib)');
-  assert(cost('toxin_launcher').biomass === 14, 'biomass cost stays flat under category escalation');
+  assert(cost('toxin_launcher').lipids === 7 && !('biomass' in cost('toxin_launcher')), 'matter cost (now lipids) stays flat under exotic escalation; biomass is off the price list (lipid currency)');
   // exotic-free organ never gains an exotic cost, but still counts toward its category tally
   set({ photosystem: 5 });
   const ps = cost('photosystem'); assert(!EXO.some(k => k in ps), 'exotic-free organ never gains an exotic cost');
   assert(cost('catalase_vesicle').enzymes === 8, 'exotic-free oxygen organs still inflate the oxygen category (×8)');
   // membrane keeps its own whole-cost φ scaling and has no exotic key
   set({ membrane: 3 });
-  const mb = cost('membrane'); assert(mb.biomass === 32 && mb.lipids === 21, 'membrane still φ-scales its whole cost');
+  const mb = cost('membrane'); assert(mb.lipids === 37 && !('biomass' in mb), 'membrane still φ-scales, priced in lipids (armour = a lipid investment)');
   assert(!EXO.some(k => k in mb), 'membrane carries no exotic cost');
   // capacity racks are exempt: flat price, and they do NOT inflate their category
   set({ exotic_vacuole: 5, dna_memory_vesicle: 5 });
   assert(cost('exotic_vacuole').spores === 1, 'exotic rack cost stays flat (exempt)');
   assert(cost('dna_memory_vesicle').crystals === 1, 'DNA rack cost stays flat (exempt)');
-  assert(cost('storage_vacuole').crystals === 1, 'capacity racks do not inflate the Structure category');
+  assert(cost('atp_reservoir').crystals === 1, 'capacity racks do not inflate the Structure category');
   // companions (no .organelle) are untouched by escalation
   assert(cost('companion_hunter').spores === 5, 'companion cost is not category-escalated');
   // rack caps are now 13
@@ -1079,7 +1083,8 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
     const w = clearFroth(K.createWorld({ seed: 6202 }));
     const pred = T.spawnPredator(w, { x: 400, y: 1900 });
     pred.y = K.WORLD.canopy + 60; pred.depthHome = pred.y; pred.cargo.energy = 40; // lifted into the glare
-    assert(T.fleeThreat(w, pred, T.caps(pred).hp) === 'dive', 'O2-rich shallow water reads as a dive threat');
+    const pressure = T.hunterThreatPressure(pred, T.caps(pred).hp);
+    assert(pressure.dive && pressure.risk > 0.5, 'O2-rich shallow water creates strong continuous dive pressure');
     let dove = false;
     for (let i = 0; i < 20; i++) { T.updateNpcBrain(w, pred, null, 1 / 60); if (pred.brainState === 'flee' && pred.vy > 0) dove = true; }
     assert(dove, 'a predator in the O2 shallows dives back down (no surface suicide)');
