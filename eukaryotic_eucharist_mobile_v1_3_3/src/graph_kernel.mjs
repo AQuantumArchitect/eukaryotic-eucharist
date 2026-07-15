@@ -295,6 +295,7 @@ const BASE_OXYGEN_CAP = 0.62;
 const PASSIVE_MEMBRANE = Object.freeze({ oxygenRate: 0.18, toxinRate: 0.085, minimumPorosity: 0.18 });
 const BASE_BUOYANCY = 2.0;        // flat lift every body has (replaces the old oxygen×1.5 term)
 const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before overload poisons you
+const ALGAE_O2_VENT_CURVE = 1.5;  // how sharply algae's photosynthesis O2 vent throttles as ambient O2 approaches saturation
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
 const FEED_INHALE_RATE = 0.9;     // active O2 gulp multiplier while feeding in O2-rich water
 const GAS_LEAK_K = 0.20;          // ballast-gas leak per unit membrane porosity per second (a trimmed bladder holds)
@@ -318,6 +319,10 @@ export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
   algaePhotoScale: 0.0225,
   playerPhotoScale: 0.18,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
+  // Gradient-blindness fix: venting O2 waste into water that's already O2-saturated should be
+  // throttled, not free — the algae's own waste-disposal path fighting the ambient gradient it's
+  // supposed to be escaping. 0 = old flat-rate behavior, 1 = full coupling to ambient extO2.
+  algaeO2VentGradient: 1.0,
   scavengerDetritusGain: 1.0,
   scavengerHunterPressure: 1.0,
   nurserySlurryGain: 1.0,
@@ -378,6 +383,8 @@ const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomp
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat is calorie-dense day-to-day fuel
 const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
+const ABYSSAL_ARMOR_RATE = 2.2;   // biomass/s a floor scavenger converts into lipid armour off the biomass pile
+const ABYSSAL_ARMOR_YIELD = 0.85; // lipid gained per biomass converted (laying down armour costs a little)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -3052,7 +3059,12 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
       if (e.controller === 'algae') {
         e.oxygen += ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
-        const vent = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85 * dt;
+        // Venting is descending a gradient — cheap into empty water, but the vent itself fights
+        // back as ambient O2 approaches saturation (the nursery), same "against the gradient costs
+        // more" logic as everywhere else. ventEase≈1 in the anoxic deep (unchanged); throttles
+        // toward ~1/3 rate at full saturation — real consequence, not a hard block.
+        const ventEase = 1 - world.ecologyTuning.algaeO2VentGradient * Math.pow(clamp(extO2, 0, 1), ALGAE_O2_VENT_CURVE);
+        const vent = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85 * ventEase * dt;
         e.oxygen = Math.max(0, e.oxygen - vent);
       }
       // Photolytic Vacuole: split water in the light to bank extra O2 FUEL (for the mito path). Any body.
@@ -3091,6 +3103,19 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // but the conversion is less efficient. Bare reserves are slow but frugal.
       const volumeCurve = 0.10 + 1.60 * Math.pow(biomassFill, 1.35);
       const enzymeFill = clamp((e.cargo.enzymes || 0) / Math.max(1, caps(e).enzymes), 0, 1);
+      // FLOOR ARMOUR: an abyssal (O2-intolerant) scavenger grazing the biomass floor converts some of
+      // that biomass into buoyant LIPID armour. Predators score prey by BIOMASS, so shifting its belly
+      // into fat makes it a poorer meal than the raw biomass pile it feeds on — a survival strategy —
+      // and when it dies its lipid-rich corpse feeds the dark with FAT instead of just more biomass,
+      // diversifying the deep food web.
+      if (e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > 2) {
+        const lipRoom = Math.max(0, caps(e).lipids - (e.cargo.lipids || 0));
+        if (lipRoom > 0) {
+          const convert = Math.min(e.cargo.biomass - 2, lipRoom / ABYSSAL_ARMOR_YIELD, ABYSSAL_ARMOR_RATE * dt);
+          e.cargo.biomass -= convert;
+          e.cargo.lipids = (e.cargo.lipids || 0) + convert * ABYSSAL_ARMOR_YIELD;
+        }
+      }
       // Mid predators run day-to-day on FAT: lipids oxidize straight to ATP, sparing the biomass belly
       // for the gorge-gated cleave. Grazing rising fat keeps a hunter charged; hunting fills the meat it
       // can only reproduce with. Runs before the biomass processors so fat is the first fuel drawn.
