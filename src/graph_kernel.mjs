@@ -294,8 +294,8 @@ const BASE_OXYGEN_CAP = 0.62;
 // Complex food reserves (biomass and lipids) never passively cross the membrane.
 const PASSIVE_MEMBRANE = Object.freeze({ oxygenRate: 0.18, toxinRate: 0.085, minimumPorosity: 0.18 });
 const BASE_BUOYANCY = 2.0;        // flat lift every body has (replaces the old oxygen×1.5 term)
+const BOYLE_K = 1.8;               // pressure compresses ballast gas (Boyle's Law): lift per unit gas falls with depth, so the same tank buys progressively less lift the deeper you dive
 const BASE_O2_SAFE_FRAC = 0.55;   // fraction of the O2 tank that is safe before overload poisons you
-const ALGAE_O2_VENT_CURVE = 1.5;  // how sharply algae's photosynthesis O2 vent throttles as ambient O2 approaches saturation
 const O2_MITO_FRAC_BONUS = 0.15;  // each mitochondrion raises the safe fraction
 const FEED_INHALE_RATE = 0.9;     // active O2 gulp multiplier while feeding in O2-rich water
 const GAS_LEAK_K = 0.20;          // ballast-gas leak per unit membrane porosity per second (a trimmed bladder holds)
@@ -319,10 +319,6 @@ export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
   algaePhotoScale: 0.0225,
   playerPhotoScale: 0.18,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
-  // Gradient-blindness fix: venting O2 waste into water that's already O2-saturated should be
-  // throttled, not free — the algae's own waste-disposal path fighting the ambient gradient it's
-  // supposed to be escaping. 0 = old flat-rate behavior, 1 = full coupling to ambient extO2.
-  algaeO2VentGradient: 1.0,
   scavengerDetritusGain: 1.0,
   scavengerHunterPressure: 1.0,
   nurserySlurryGain: 1.0,
@@ -385,6 +381,8 @@ const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat 
 const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
 const ABYSSAL_ARMOR_RATE = 2.2;   // biomass/s a floor scavenger converts into lipid armour off the biomass pile
 const ABYSSAL_ARMOR_YIELD = 0.85; // lipid gained per biomass converted (laying down armour costs a little)
+const HUNTER_CHOMP_FRAC = 2.4;    // biomass a hunter tears off per point of rasp damage (fast chunk-feeding)
+const BLOOM_ACID_RECOIL = 0.014;  // HP/s per toxin unit that a deep toxic bloom burns back into its attacker
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -1178,19 +1176,25 @@ function yAtLight(targetLight) {
 // entity.maxDepth is tracked.
 const MITO_DEPTH_MARK = (WORLD.h - WORLD.canopy) * 0.95;
 
+// MACRO O2 CLOUD (world-space shape) — fit through two named anchors the same way lightAt() is, rather
+// than hand-picked cliff params: near-saturated at the canopy, still 80-90% by the nursery (d=1200,
+// plenty of relief across most of the early game), then a real, LONG decline that fully resolves into
+// a cliff across d=4000-4600 (not a narrow wall — a single logistic through these two anchors is
+// necessarily wide, which is exactly what "struggle across the O2 gradient for most of the game" needs).
+// Aerobes thrive high in the cloud; anaerobes are poisoned by it and driven below the cliff.
+const O2_SHELF = { depth: 1200, target: 0.85 };
+const O2_DARK = { depth: 4600, target: 0.05 };
+const O2_FLOOR = 0.03, O2_CLOUD = 0.97; // O2(d) = floor + cloud * sigmoidFraction(d) — so the two anchors
+// above are fit in SIGMOID-FRACTION space, not raw O2 units: frac = (target - floor) / cloud.
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
-  // MACRO O2 CLOUD (world-space shape). O2 is HIGH at the nursery and slopes GENTLY down through the
-  // twilight (a wide cliff centred at ~y4200) — so an algal cell can bob across a real O2 gradient
-  // (sink into lower-O2 water to shed the oxygen its photosynthesis makes, then rise back to light),
-  // and the cloud still reaches deep enough that a dark-but-oxic band survives (light dies ~y3900, O2
-  // still ~0.45 there) before a genuinely-anaerobic abyss (O2→floor by ~y6000) for the O2-intolerant
-  // deep. Aerobes thrive across the cloud; anaerobes are poisoned by it and driven below the cliff.
-  const floor = 0.04;
-  const cloud = 0.70;
-  const cliffDepth = 4200 - WORLD.canopy;
-  const cliffWidth = 850;
-  return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
+  const shelfFrac = (O2_SHELF.target - O2_FLOOR) / O2_CLOUD;
+  const darkFrac = (O2_DARK.target - O2_FLOOR) / O2_CLOUD;
+  const shelfLogit = Math.log(1 / shelfFrac - 1);
+  const darkLogit = Math.log(1 / darkFrac - 1);
+  const scale = (O2_DARK.depth - O2_SHELF.depth) / (darkLogit - shelfLogit);
+  const midpoint = O2_SHELF.depth - shelfLogit * scale;
+  return clamp(O2_FLOOR + O2_CLOUD / (1 + Math.exp((d - midpoint) / scale)), O2_FLOOR, 1);
 }
 
 // Inverse of oxygenAt: the SHALLOWEST depth whose ambient O2 has fallen to `o2`. Since O2 decreases
@@ -1433,17 +1437,22 @@ function seedMatureEcosystem(world) {
   // running, so the player enters rupture chaos instead of waiting for bloom.
   // Seed a viable LIVING froth (just an initial condition now — the emergent lifecycles take it
   // from here): a scavenger forager pool, a hunter guild that will fission/select, a deep.
-  // Abyssal (O2-intolerant) scavengers are a standing caste in steady state (~12, grazing the
-  // whale-fall larder below the O2 cloud). Seeding zero of them made every session start with an
-  // empty deep that only filled by immigration over minutes — seed the caste already present,
-  // stratified through the anaerobic column.
-  for (let i = 0; i < 12; i++) spawnScavenger(world, {
-    abyssal: true,
-    y: rand(world, O2_ZONE_BOTTOM + 300, WORLD.h - 200),
-    x: rand(world, 0, WORLD.w)
-  });
-  for (let i = 0; i < SCAV_TARGET; i++) spawnScavenger(world, {
-    y: WORLD.nurseryTop + rand(world, 120, 850),
+  // Counts + depths are the DISCOVERED 10-min equilibrium (stamp.mjs, 3 seeds), not a guess — so a
+  // fresh world starts in medias res at its steady shape instead of lurching there over the opening
+  // minutes. Hunters are seeded at the comfort-equilibrium DEPTHS the stamp measured; the continuous
+  // comfort field then holds and fine-tunes each individual by its own light/O2 tolerance. Re-run
+  // `npm run stamp` after any dynamics change and re-sync these numbers.
+  const seedAt = (e, m, sd, lo, hi) => { e.y = clamp(gaussian(world.rng, m, sd), lo, hi); e.depthHome = e.y; e.oxygen = oxygenAt(e.y); return e; };
+
+  // Abyssal (O2-intolerant) floor scavengers: a small standing caste (~3) grazing the whale-fall floor.
+  const abyN = 2 + Math.floor(world.rng() * 3); // 2..4 (settles ~3)
+  for (let i = 0; i < abyN; i++) {
+    const e = spawnScavenger(world, { abyssal: true, y: WORLD.h - 400, x: rand(world, 0, WORLD.w) });
+    seedAt(e, 6686, 873, O2_ZONE_BOTTOM + 400, WORLD.h - 150);
+  }
+  // Oxic forager cloud in the oxygenated upper column (settles ~33; the comfort field + food spread it).
+  for (let i = 0; i < 32; i++) spawnScavenger(world, {
+    y: WORLD.nurseryTop + rand(world, 120, 1100),
     x: rand(world, 0, WORLD.w)
   });
 
@@ -1451,32 +1460,33 @@ function seedMatureEcosystem(world) {
   // invariants come from ecologyRegime while each body gets an independent continuous orbit.
   seedAnalyticAlgaeRegime(world);
 
-  // A mature hunter guild is a distribution, not a synchronized healthy platoon. Counts vary by
-  // seed and reserves span post-fission recovery through charged prowlers, removing the guaranteed
-  // t=0 predator explosion while preserving later food-driven pulses.
-  // Counts are the *discovered* no-player equilibrium (measured 6min×3seed), not a guess: the
-  // squeezed, lipid-fuelled world sustains a thick mid-predator wall and thins the protozoan
-  // layer, so seeding the old sparse guild just made every session spend its first ~4 minutes
-  // lurching from a fake start to the real shape. Seed the shape it settles into.
-  const predN = 13 + Math.floor(world.rng() * 5);  // 13..17 (settles ~16)
-  const protoN = 3 + Math.floor(world.rng() * 3); // 3..5 (settles ~4)
-  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3
-  const broodN = 1 + Math.floor(world.rng() * 2); // 1..2
+  // DEEP TOXIC BLOOMS — a big standing population of huge, membrane-walled, toxic mats in the mid/deep
+  // (the predators' zone). They are the reachable PREY that lets mid predators brawl, fill their belly,
+  // and reproduce, and their torn membranes flood the deep with fat. Seeded thick; maintained in spawnTick.
+  const deepBloomN = 16 + Math.floor(world.rng() * 8); // 16..23
+  for (let i = 0; i < deepBloomN; i++) {
+    spawnAlgae(world, { deep: true, y: clamp(gaussian(world.rng, 4100, 380), WORLD.deepTop + 400, 4700) });
+  }
+
+  const predN = 6 + Math.floor(world.rng() * 3);  // 6..8 (settles ~7)
+  const protoN = 4 + Math.floor(world.rng() * 3); // 4..6 (settles ~5)
+  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3 (settles ~2)
+  const broodN = 1 + Math.floor(world.rng() * 2); // 1..2 (settles ~1)
   for (let i = 0; i < predN; i++) {
-    const e = spawnPredator(world, { y: yAtLight(0.18), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.55, 0.68, 0.10, 1.20));
+    const y = clamp(gaussian(world.rng, 4200, 850), 2900, 5400);
+    seedMatureHunterState(world, seedAt(spawnPredator(world, { y, x: rand(world, 0, WORLD.w) }), 4200, 850, 2900, 5400));
   }
   for (let i = 0; i < protoN; i++) {
-    const e = spawnProtozoan(world, { y: yAtLight(0.01), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.42, 0.88, 0.05, 0.90));
+    const y = clamp(gaussian(world.rng, 6700, 730), 5200, 7500);
+    seedMatureHunterState(world, seedAt(spawnProtozoan(world, { y, x: rand(world, 0, WORLD.w) }), 6700, 730, 5200, 7500));
   }
   for (let i = 0; i < metaN; i++) {
-    const e = spawnMetazoan(world, { y: yAtLight(0.008), x: rand(world, 0, WORLD.w) });
-    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.34, 0.92, 0.04, 0.86));
+    const y = clamp(gaussian(world.rng, 5500, 450), 4800, 6400);
+    seedMatureHunterState(world, seedAt(spawnMetazoan(world, { y, x: rand(world, 0, WORLD.w) }), 5500, 450, 4800, 6400));
   }
   for (let i = 0; i < broodN; i++) {
-    const e = spawnBrood(world, { y: yAtLight(0.006), x: rand(world, 0, WORLD.w) });
-    placeSeedHunterByLight(world, e, 0.30, 0.95, 0.035, 0.82);
+    const y = clamp(gaussian(world.rng, 6900, 400), 6000, 7500);
+    seedAt(spawnBrood(world, { y, x: rand(world, 0, WORLD.w) }), 6900, 400, 6000, 7500);
   }
 
   // Seed the field economy at its steady density (~5000 matter) and stratified across the
@@ -1504,6 +1514,15 @@ function seedMatureEcosystem(world) {
 
   for (let i = 0; i < 20; i++) {
     spawnParticle(world, choice(world, ['spores', 'spores', 'enzymes', 'crystals']), rand(world, 0, WORLD.w), WORLD.ruptureTop + rand(world, 120, 1650), 1);
+  }
+
+  // SNAP: a second pass randomizing EVERY body's HP, so the world never starts as a synchronized
+  // full-health platoon — a mature froth is a spread of freshly-wounded and veteran cells. Every body
+  // with an HP bar gets a fresh random fill (the player, if present, is left alone so a run starts whole).
+  for (const e of world.entities) {
+    if (!e.alive || e.kind === 'player') continue;
+    const hpCap = caps(e).hp;
+    if (hpCap > 0) { e.hp = hpCap * rand(world, 0.25, 1.0); e._capsEpoch = -1; }
   }
 
   world.spawn.algae = rand(world, 0.8, 1.4);
@@ -1719,6 +1738,9 @@ function buoyancy(entity) {
   // the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation.
   const bladders = orgCount(entity, 'oxygen_vacuole');
   const s = ORGANELLES.oxygen_vacuole.stats;
+  // Pressure compresses the gas (Boyle's Law): the same tank buys less lift the deeper you are —
+  // universal for every bladder-owning body, not gated behind any one armor organ.
+  const liftPerGas = s.liftPerGas / (1 + BOYLE_K * pressureAt(entity.y));
   // Aerocysts are rigid, always-full floats — a lift floor that never vents.
   const aero = orgCount(entity, 'aerocyst') * ORGANELLES.aerocyst.stats.fixedLift;
   // Lipid Bladder: stored fat is lighter than water — buoyancy scaled by how full your lipid tank is.
@@ -1734,12 +1756,14 @@ function buoyancy(entity) {
     // Most of a gas bladder only offsets part of a mature bloom's weight. Its
     // final compressed charge gives a smooth recovery margin, so a fully inflated
     // heavy bloom can return from depth without a merely high fill pinning it at Yuki.
+    // (weightScaledLift never references liftPerGas, so the return guarantee holds even
+    // when Boyle's Law has compressed the raw gas-capacity term below it.)
     const recoveryMargin = 0.75 + 0.55 * Math.pow(gasFill, 8);
     const weightScaledLift = biomassWeight(entity) * recoveryMargin;
-    const bladderLift = Math.max(gasCap * s.liftPerGas, weightScaledLift) * gasFill;
+    const bladderLift = Math.max(gasCap * liftPerGas, weightScaledLift) * gasFill;
     return BASE_BUOYANCY + aero + lipidLift + bladders * s.baseLift + bladderLift;
   }
-  return BASE_BUOYANCY + aero + lipidLift + bladders * (s.baseLift + (entity.ballastGas || 0) * s.liftPerGas);
+  return BASE_BUOYANCY + aero + lipidLift + bladders * (s.baseLift + (entity.ballastGas || 0) * liftPerGas);
 }
 
 // Adrenal Vesicle: a combat multiplier that ramps as HP falls below the threshold,
@@ -2879,7 +2903,25 @@ function updateNPCs(world, player, dt) {
   }
 }
 
+// A deep toxic bloom is a heavy, near-sessile mat held in the anaerobic deep — NOT the shallow ballast
+// bob. It drifts slowly, settles, and regrows its toxin defence; the mid predators must come down and
+// brawl it (stripping its membrane walls for fat) to eat. This is the reachable deep prey.
+function updateDeepBloom(world, e, dt) {
+  // Holds its ANCHOR depth in the mid/deep (the predators' brawl zone) — near-neutral, so it does NOT
+  // sink to the floor and drag the mid predators into the anoxic deep. Tiny horizontal drift; regrows
+  // its toxin defence. Predators come to it.
+  const anchor = e._anchorY || e.y;
+  e.vy += (anchor - e.y) * 0.04;
+  e.vx += Math.cos(world.t * 0.2 + e.phase) * 3 * dt;
+  e.vx *= Math.pow(0.85, dt * 60); e.vy *= Math.pow(0.80, dt * 60);
+  e.x = wrapX(e.x + e.vx * dt);
+  e.y = clamp(e.y + e.vy * dt, WORLD.deepTop, WORLD.h - 200);
+  const tcap = caps(e).toxins || 1;
+  if ((e.cargo.toxins || 0) < tcap) e.cargo.toxins = Math.min(tcap, (e.cargo.toxins || 0) + 1.6 * dt);
+}
+
 function updateAlgaeAI(world, e, dt) {
+  if (e.deepBloom) { updateDeepBloom(world, e, dt); return; }
   // Algae have NO flagella and no swim — vertical motion is PURE BALLAST. Net buoyancy (ballast
   // gas lift vs biomass weight) is the only thing that moves a bloom up or down. Lean gas-full
   // blooms float to the light and photosynthesize; as they fatten, weight overtakes the gas and
@@ -3059,12 +3101,14 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
       if (e.controller === 'algae') {
         e.oxygen += ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
-        // Venting is descending a gradient — cheap into empty water, but the vent itself fights
-        // back as ambient O2 approaches saturation (the nursery), same "against the gradient costs
-        // more" logic as everywhere else. ventEase≈1 in the anoxic deep (unchanged); throttles
-        // toward ~1/3 rate at full saturation — real consequence, not a hard block.
-        const ventEase = 1 - world.ecologyTuning.algaeO2VentGradient * Math.pow(clamp(extO2, 0, 1), ALGAE_O2_VENT_CURVE);
-        const vent = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85 * ventEase * dt;
+        // Venting is real outward diffusion, not a tuned throttle curve: the driving force is the
+        // actual gap between what you're holding and what the water already has. Sitting in
+        // already-saturated water (the nursery) leaves little gap to push against even at full
+        // photosynthesis, so venting throttles itself — same Fickian shape as passive exchange
+        // above, just biased outward and scaled by the organ's own vent rate.
+        const ventRate = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85;
+        const gap = clamp(e.oxygen - extO2 * caps(e).oxygen, 0, caps(e).oxygen);
+        const vent = ventRate * (gap / Math.max(1e-6, caps(e).oxygen)) * dt;
         e.oxygen = Math.max(0, e.oxygen - vent);
       }
       // Photolytic Vacuole: split water in the light to bank extra O2 FUEL (for the mito path). Any body.
@@ -3749,6 +3793,29 @@ function contactDamage(world, attacker, target, overlap, nx, ny, dt) {
     }
     if (attacker.kind === 'player') world.events.push({ type: 'siphon', entityId: attacker.id });
   }
+  // HUNTER CHOMP: a mid predator's rasp tears off and swallows CHUNKS of the prey's biomass then and
+  // there — before a kill would drop it as a sinking corpse — filling the belly the gorge-fission gate
+  // demands. Organelle-driven (it only fires while rasping) and scoped to the hunter guild; the
+  // player's rasp is unchanged. This is how a predator earns its cleave off the deep toxic blooms.
+  if (FREE_HUNTERS.has(attacker.controller) && dmg > 0 && (target.cargo.biomass || 0) > 0.01) {
+    const room = Math.max(0, (caps(attacker).biomass || 0) - (attacker.cargo.biomass || 0));
+    const chomp = Math.min(target.cargo.biomass, room, dmg * HUNTER_CHOMP_FRAC);
+    if (chomp > 0) {
+      target.cargo.biomass -= chomp; attacker.cargo.biomass += chomp;
+      attacker.hunger = Math.max(0, attacker.hunger - chomp * 0.01);
+      // Tearing and swallowing meat readies the cleave — reproHeat builds from a successful brawl, not
+      // only from a clean kill (a predator rarely FELLS a huge toxic mat, but it earns its split by
+      // gorging on one). Together with the full belly this lets a well-fed brawler reach the gorge gate.
+      attacker.reproHeat = clamp((attacker.reproHeat || 0) + chomp * 0.02, 0, 1);
+    }
+  }
+  // THORNY/ACID DEFENCE: a deep toxic bloom is no free meal — rasping its toxin-laden, hardened mat
+  // burns the attacker back (∝ its toxin load). Often a predator breaks off with a plate or two of
+  // reward and lets the mat finish its cycle; a committed (or desperate) one still fells it, then cleaves.
+  if (target.deepBloom && dmg > 0) {
+    const acid = (target.cargo.toxins || 0) * BLOOM_ACID_RECOIL * dt;
+    if (acid > 0) hurt(world, attacker, acid, target.id);
+  }
   if (leech > 0) drainLeech(world, attacker, target, leech * contactFraction * dt);
 }
 
@@ -4315,9 +4382,23 @@ function removeDead(world) {
 
 // A shed membrane layer spills mostly lipids (and a little biomass) into the water where
 // it tore — the underhost swims on. Shared by combat, engulf, and algae-peeling.
+// The lipid worth of the Nth membrane layer = its Yuki-shop install price refined to lipids: base
+// {biomass:12,lipids:8} → (12·0.4 + 8)·0.5 = 6.4 lipids for the 1st, climbing by φ per layer (the
+// same geometric armour curve the shop charges). Kept in sync with the membrane OFFERING cost.
+const MEMBRANE_LAYER_LIPID = (12 * BIOMASS_TO_LIPID + 8) * 0.5; // ≈ 6.4
+function membraneLayerLipidCost(layerIndex) { // layerIndex is 1-based (the nth plate)
+  return MEMBRANE_LAYER_LIPID * Math.pow(MEMBRANE_COST_RATIO, Math.max(0, layerIndex - 1));
+}
 function shedMembraneLayers(world, e, count) {
+  // Every membrane layer torn off by HP damage sheds LIPIDS equal to 50% of its install cost — which
+  // climbs geometrically (φ per layer), so stripping the outer plates off a heavily-armoured cell (a
+  // huge deep toxic alga, a veteran predator) floods the water with fat. `count` outer plates were just
+  // peeled; e.organelles.membrane already holds what REMAINS, so the shed layers are the ones above it.
+  const remaining = orgCount(e, 'membrane');
+  let lip = 0;
+  for (let k = 1; k <= count; k++) lip += 0.5 * membraneLayerLipidCost(remaining + k);
   const stock = emptyCargo();
-  stock.lipids = 3.5 * count + (e.cargo.lipids || 0) * 0.06 * count;
+  stock.lipids = lip + (e.cargo.lipids || 0) * 0.06 * count;
   stock.biomass = 2 * count;
   spawnResourceField(world, e.x, e.y, stock, { radius: clamp(e.r * 0.9, 18, 90), density: 1.1, sourceKind: 'shed_membrane', maxAge: 20, maxRadius: 120 });
 }
@@ -4395,7 +4476,11 @@ const POP_CAP = 150;                // performance ceiling only — normal life 
 const ALGAE_EMERGENCY_CAP = 120;    // performance/recovery guardrail, not the normal population target
 const ALGAE_CAP = ALGAE_EMERGENCY_CAP; // retained name for legacy diagnostics and emergency-only callers
 const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
-const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 }); // fission-guild safety net; predator floor gives a standing mid-game "wall" of skirmishers + aerobic-wall hunters while leaving cap headroom for the deep bosses
+// Predator floor is a STANDING supply for now: they cannot yet self-sustain via fission (the gorge
+// gate needs a full biomass belly, but fat-grazing keeps them charged without ever hunting enough to
+// fill it — diagnosed avgBiomassFill ~12%, 0 fissions). Closing this to fission+rescue needs a
+// food-web decision (ease the gate / make fat scarcer / let them raid the nursery for prey).
+const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 });
 
 function scavengerTarget(world) {
   let detritus = 0, hunterPressure = 0;
@@ -4632,10 +4717,10 @@ function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt; world.spawn.nursery -= dt;
   // ALGAE — minted top-down by the canopy fungus, the primary producer renewed from the light up
   // to its carrying capacity. Young blooms drift down and live their ballast lifecycle as food.
-  let algaeN = 0, scavN = 0, abyssalScavN = 0;
+  let algaeN = 0, deepBloomN = 0, scavN = 0, abyssalScavN = 0;
   for (const e of world.entities) {
     if (!e.alive) continue;
-    if (e.controller === 'algae') algaeN++;
+    if (e.controller === 'algae') { if (e.deepBloom) deepBloomN++; else algaeN++; }
     else if (e.controller === 'scavenger') { if (e.trophicRole === 'abyssal_scavenger') abyssalScavN++; else scavN++; }
   }
   const producerMass = algaeProducerMass(world);
@@ -4644,6 +4729,23 @@ function spawnTick(world, dt) {
     spawnAlgae(world, { mature: false, y: WORLD.canopy + rand(world, 40, 170) });
     world.stats.algaeBirths += 1;
     world.events.push({ type: 'algae_birth', controller: 'algae' });
+  }
+  // DEEP TOXIC BLOOMS congeal from the whale-fall larder: when a mat is grazed down and the deep still
+  // holds sinking biomass, a new bloom grows FROM that biomass (consumed — closed loop, no matter from
+  // nothing). This keeps the predators' brawl-prey stocked so the mid tier stays fed and breeding.
+  const DEEP_BLOOM_TARGET = 16;
+  if (deepBloomN < DEEP_BLOOM_TARGET && world.rng() < 1 - Math.exp(-0.5 * dt)) {
+    let best = null;
+    for (const f of world.fields) if (f.y > WORLD.deepTop + 600 && (f.stock.biomass || 0) > 60 && (!best || f.stock.biomass > best.stock.biomass)) best = f;
+    if (best) {
+      const take = Math.min(best.stock.biomass, rand(world, 120, 210));
+      best.stock.biomass -= take;
+      // The bloom congeals in the dark-OXIC brawl band (reachable by the aerobic mid predators), even
+      // though the biomass it grows from was pulled off the deeper floor pile — so it never anchors in
+      // the anoxic deep where predators would suffocate chasing it.
+      spawnAlgae(world, { deep: true, x: best.x, y: clamp(gaussian(world.rng, 4100, 380), WORLD.deepTop + 400, 4700), biomass: take });
+      world.events.push({ type: 'deep_bloom_birth', controller: 'algae' });
+    }
   }
   // SCAVENGERS immigrate toward a soft target (they emigrate when starved, see populationTick) —
   // a migratory forager pool that flows through. Below target the froth draws foragers in.
@@ -4701,21 +4803,23 @@ function spawnTick(world, dt) {
     const y = WORLD.ruptureTop - 220 + rand(world, 0, 2500);   // ~depth 1280 (upper rupture) .. 3560
     spawnParticle(world, choice(world, ['spores', 'enzymes', 'crystals']), rand(world, 0, WORLD.w), y, 1);
   }
-  // NURSERY SLURRY — a gentle, renewable food base for the O2-safe nursery band. The tuned algal
-  // ecology funnels nearly all dead matter to the deep floor, leaving the shallow-safe zone a food
-  // desert; a young scavenger (and the player's fragile opening) needs somewhere near the light to
-  // feed without braving the deep. This keeps a few modest drift-fields in the nursery so the OPENING
-  // of the run is survivable — the gentle foot of the difficulty curve. Capped by count so it never
-  // floods the ecosystem or replaces the rich (dangerous) deep as the real prize.
+  // NURSERY RESCUE (CLOSED LOOP). This was a standing from-nothing food supply for the nursery; in
+  // final form the nursery is fed by the ALGAE the scavengers graze (sun→algae→forager), so no matter
+  // enters from nowhere. This remains ONLY as a rare rescue: it fires when the nursery is genuinely
+  // starved of food AND the algal producer has crashed — a safety net against a dead opening, not a
+  // supply. Logged (world.stats.rescues) so `npm run stamp` can confirm it stays ~0 once tuned.
   let nurseryFields = 0;
   for (const f of world.fields) { const d = f.y - WORLD.canopy; if (d > 780 && d < 1300) nurseryFields++; }
-  if (world.spawn.nursery <= 0 && nurseryFields < 6) {
-    world.spawn.nursery = rand(world, 2.0, 3.8);
-    // Kept in the O2-SAFE, safely-edible band (deep enough that feeding doesn't inhale poisoning O2,
-    // shallow enough that the climb home to Yuki stays affordable) — the gentle foot of the curve.
+  const producerCrashed = algaeN < world.ecologyRegime.algaeMeanCount * 0.55;
+  if (world.spawn.nursery <= 0 && nurseryFields < 1 && producerCrashed) {
+    world.spawn.nursery = rand(world, 5.0, 9.0);   // slow — a rescue, not a feed
     spawnResourceField(world, rand(world, 0, WORLD.w), WORLD.canopy + rand(world, 800, 1180),
       { biomass: rand(world, 45, 90) * world.ecologyTuning.nurserySlurryGain, lipids: rand(world, 8, 22) * world.ecologyTuning.nurserySlurryGain, energy: rand(world, 3, 11) * world.ecologyTuning.nurserySlurryGain },
-      { radius: rand(world, 44, 68), sourceKind: 'nursery_slurry', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
+      { radius: rand(world, 44, 68), sourceKind: 'nursery_rescue', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
+    world.stats.rescues = (world.stats.rescues || 0) + 1;
+    world.events.push({ type: 'rescue', kind: 'nursery' });
+  } else if (world.spawn.nursery <= 0) {
+    world.spawn.nursery = rand(world, 2.0, 3.8);   // re-arm the check cadence without spawning
   }
 }
 
@@ -4754,25 +4858,35 @@ function spawnAlgae(world, opts = {}) {
   const traits = opts.algaeTraits || sampleAlgaeTraits(world, regime);
   const cyclePeriod = opts.algaeCyclePeriod ?? clamp(gaussian(world.rng, 78, 18) / traits.cycle, regime.cycleMinSeconds, regime.cycleMaxSeconds);
   const seedPhase = opts.algaeSeedPhase ?? world.rng() * Math.PI * 2;
-  const r = opts.r || (mature ? rand(world, 38, 58) : rand(world, 16, 24));
-  const biomass = opts.biomass || (mature ? rand(world, 80, 150) : rand(world, 12, 26)); // young start SMALL and grow
+  // DEEP TOXIC BLOOM: a huge, toxic, heavily membrane-walled mat anchored in the anaerobic deep — the
+  // living form of the whale-fall larder. It is the reachable PREY that gives the mid predators a brawl
+  // (and, on being torn open, floods the deep with fat via the membrane-shed lipids). Not photosynthetic.
+  const deep = !!opts.deep;
+  const r = opts.r || (deep ? rand(world, 48, 82) : mature ? rand(world, 38, 58) : rand(world, 16, 24));
+  const biomass = opts.biomass || (deep ? rand(world, 140, 260) : mature ? rand(world, 80, 150) : rand(world, 12, 26)); // young start SMALL and grow
   const x = opts.x ?? rand(world, 0, WORLD.w);
-  const y = opts.y ?? (WORLD.canopy + rand(world, 40, 260));
+  const y = opts.y ?? (deep ? clamp(WORLD.deepTop + rand(world, 400, 2600), WORLD.deepTop, WORLD.h - 120) : WORLD.canopy + rand(world, 40, 260));
   const e = makeSoftBody(world, 'npc', x, y, {
-    r, color: '#7ee96f', controller: 'algae', trophicRole: 'photosynthetic_bloom', depthHome: WORLD.canopy + 160,
+    r, color: deep ? '#b8365f' : '#7ee96f', controller: 'algae', trophicRole: deep ? 'deep_toxic_bloom' : 'photosynthetic_bloom', depthHome: deep ? y : WORLD.canopy + 160,
     // No flagella: a bloom has no swimming organ — it rises and falls ONLY on ballast (gas in its
     // single Ballast Bladder) versus its own weight. One bladder for every bloom keeps the buoyancy
     // curve linear and legible: gas-full & lean ⇒ floats to the light; fat ⇒ outweighs the gas & sinks.
     // Algae are NOT O2-immune: a modest tolerance buys a little headroom, but lingering in the
     // nursery's saturated water still poisons them — the whole point of the dive-to-escape strategy.
-    organelles: { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 2 : 1, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
-    cargo: { biomass, lipids: rand(world, 8, 26), energy: rand(world, 8, 24), toxins: 0 },
+    organelles: deep
+      ? { membrane: 4 + Math.floor(world.rng() * 3), anaerobic_processor: 2, photosystem: 1, oxygen_tolerance: 0, oxygen_vacuole: 1, membrane_hardening: 3 + Math.floor(world.rng() * 3), storage_vacuole: 8, exotic_vacuole: 1, toxin_launcher: 1 }
+      : { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 2 : 1, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
+    cargo: deep
+      ? { biomass, lipids: rand(world, 24, 55), energy: rand(world, 12, 34), toxins: rand(world, 26, 60) }
+      : { biomass, lipids: rand(world, 8, 26), energy: rand(world, 8, 24), toxins: 0 },
     oxygen: oxygenAt(y) * 0.55,
     ruptureThreshold: mature ? 0.55 : 0.35, biomassMass: biomass, fallState: null,
     algaeTraits: traits, algaeSeedPhase: seedPhase, algaeCyclePeriod: cyclePeriod
   });
   // Seed a starting charge of ballast gas so a fresh bloom is mildly buoyant (mature more so).
-  e.ballastGas = e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
+  e.deepBloom = deep;
+  if (deep) e._anchorY = e.y;   // hold this depth (the predators' brawl zone), don't sink to the floor
+  e.ballastGas = deep ? 0 : e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
   // Lineage-scale metabolic variation prevents a shared light/depth field from phase-locking the
   // whole crop into one global bob. It changes period, not the guarantee that full gas can return.
   e.ecologyRate = opts.ecologyRate ?? traits.cycle;
@@ -5638,6 +5752,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     hp: { value: e.hp, max: c.hp, label: 'HP', layers: orgCount(e, 'membrane') },
     oxygen: { value: e.oxygen, max: c.oxygen, external: env.oxygen, tolerance: oxygenTolerance(e), label: 'O2' },
     depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen, photosynthetic: orgCount(e, 'photosystem') > 0 },
+    pressure: { value: env.pressure, label: 'Pressure' },
     resources: RESOURCES.map(r => ({ id: r, label: r === 'energy' ? 'ATP' : r, value: e.cargo[r] || 0, max: c[r] ?? 99, color: COLORS[r] || '#fff' })),
     organelles: Object.entries(e.organelles).map(([id, count]) => ({ id, count, name: ORGANELLES[id]?.name || id, tier: ORGANELLES[id]?.tier || 1, action: ORGANELLES[id]?.action || null, desc: ORGANELLES[id]?.desc || '', category: ORGANELLES[id]?.category || null })),
     graphStats: { caps: c, hpSource: 'Cell Membrane count × membrane HP + graph armor/chassis', storageSource: 'Storage Vacuole / Exotic Vesicle Rack / DNA Memory Vesicle counts' },
