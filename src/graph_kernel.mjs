@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_linear_photosynthesis_raids_20260714d';
+export const VERSION = 'mobile_v1_3_3_sigmoid_light_raids_20260714e';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -620,7 +620,7 @@ export const ORGANELLES = Object.freeze({
   photosystem: {
     name: 'Photosystem Patch', tier: 2, action: null, stackable: true, max: 5,
     desc: 'The algae road: light grows biomass and exports oxygen stress. It makes abundance, weight, and eventual falling.',
-    stats: { biomassGain: 1.6, oxygenWaste: 0.050, oxygenVent: 0.17 }
+    stats: { biomassGain: 0.64, oxygenWaste: 0.050, oxygenVent: 0.17 }
   },
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 2, action: 'rasp', stackable: true, max: 5,
@@ -1026,17 +1026,16 @@ function id(prefix) { return `${prefix}_${nextId++}`; }
 
 export function lightAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
-  const upper = WORLD.nurseryTop - WORLD.canopy;
-  const transition = WORLD.ruptureTop - WORLD.canopy;
-  // Near-full shelf through the upper nursery, then a sharp, legible ramp. The
-  // rupture begins at exactly 3% and only tails downward from there; photosynthesis
-  // consumes this literal fraction, so the displayed meter is mechanically honest.
-  if (d <= upper) return clamp(0.94 + 0.06 / (1 + Math.exp((d - 390) / 125)), 0, 1);
-  if (d <= transition) {
-    const t = (d - upper) / Math.max(1, transition - upper);
-    return 0.945 + (0.03 - 0.945) * t;
-  }
-  return clamp(0.06 / (1 + Math.exp((d - transition) / 300)), 0, 0.03);
+  // One sigmoid across the entire column: no nursery join, rupture join, or
+  // derivative kink for bodies to reveal as an invisible boundary. Calibration
+  // landmarks only determine the curve: 95% at nurseryTop and 3% at ruptureTop.
+  const shelfDepth = WORLD.nurseryTop - WORLD.canopy;
+  const ruptureDepth = WORLD.ruptureTop - WORLD.canopy;
+  const shelfLogit = Math.log(1 / 0.95 - 1);
+  const ruptureLogit = Math.log(1 / 0.03 - 1);
+  const scale = (ruptureDepth - shelfDepth) / (ruptureLogit - shelfLogit);
+  const midpoint = shelfDepth - shelfLogit * scale;
+  return clamp(1 / (1 + Math.exp((d - midpoint) / scale)), 0, 1);
 }
 
 export function oxygenAt(y) {
@@ -4718,11 +4717,11 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 // a little to dump them back (down = −1). O2 is a cheap utility service, a small fee either way. HP is
 // buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
 const YUKI_TRADES = Object.freeze([
-  { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
   { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
   { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -6 }, down: { d: -10,   lip: 4 } },
   { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { d: -8,    lip: -1 } },
   { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -2 }, down: { d: -0.30, lip: -1 } },
+  { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
 ]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
 function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
@@ -4742,12 +4741,19 @@ export function getYukiTrades(world, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e) return [];
   const c = caps(e);
-  return YUKI_TRADES.map(t => ({
+  // Lipids leads the counter as a display-only column (the currency itself — you can't trade it for
+  // itself, so its arrows render greyed/disabled). Then the tradeable resources.
+  const rows = [{
+    res: 'lipids', label: 'Lipids', cur: e.cargo.lipids || 0, cap: c.lipids ?? 0,
+    color: COLORS.lipids || '#f0c46a', up: null, down: null,
+  }];
+  for (const t of YUKI_TRADES) rows.push({
     res: t.res, label: t.label, cur: tradeCur(e, t.res), cap: tradeCap(e, t.res, c),
     color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
     up: t.up ? { lip: t.up.lip, canDo: tradeLegOk(e, t.res, t.up, c) } : null,
     down: t.down ? { lip: t.down.lip, canDo: tradeLegOk(e, t.res, t.down, c) } : null,
-  }));
+  });
+  return rows;
 }
 
 export function tradeAtYuki(world, res, dir, entityId = world.playerId) {

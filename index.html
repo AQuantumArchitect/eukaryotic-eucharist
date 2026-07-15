@@ -60,8 +60,8 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .lipBank small{font-weight:800;color:var(--muted);text-transform:none;letter-spacing:0}
 .lipBank b{color:#ffe0a0;font-size:15px;margin-left:auto}
 .lipBank .lipCap{color:var(--muted);font-size:11px}
-.tCols{display:flex;flex-wrap:wrap;gap:9px;width:100%;align-items:flex-start}
-.tCol{display:flex;flex-direction:column;align-items:center;gap:3px;width:52px}
+.tCols{display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:flex-start;justify-content:space-between}
+.tCol{display:flex;flex-direction:column;align-items:center;gap:3px;width:50px;flex:0 0 auto}
 .tName{font-size:10px;font-weight:950}
 .tBar{position:relative;width:12px;height:50px;background:rgba(255,255,255,.09);border-radius:6px;overflow:hidden}
 .tBar b{position:absolute;left:0;right:0;bottom:0;border-radius:6px}
@@ -75,6 +75,8 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .tArrow.dis{opacity:.28;cursor:not-allowed}
 .tArrow.none{border:0;background:transparent;pointer-events:none;color:rgba(255,255,255,.18)}
 .close .ckey{display:inline-block;border:1px solid currentColor;border-radius:4px;padding:0 4px;margin-left:1px;font-weight:950;line-height:1.3}
+.exchSec{padding-bottom:11px;margin-bottom:3px;border-bottom:1px solid rgba(255,255,255,.13)}
+.bodyHeadInline{margin-top:2px}
 </style>
 </head>
 <body>
@@ -370,9 +372,13 @@ function renderShop(){
   const trades=K.getYukiTrades(world);
   const lipRes=(hud&&hud.resources)?hud.resources.find(r=>r.id==='lipids'):null;
   const seqOffers=offers.filter(o=>o.kind==='sequence' && o.available);
-  ui.shopExchange.innerHTML = `<div class="lipBank">🪙 Lipids <small>— the currency</small> <b>${lipRes?fmt(lipRes.value):0}</b><span class="lipCap">/ ${lipRes?fmt(lipRes.max):0}</span></div>`
+  const exchangeHTML = `<div class="lipBank">🪙 Lipids <small>— the currency</small> <b>${lipRes?fmt(lipRes.value):0}</b><span class="lipCap">/ ${lipRes?fmt(lipRes.max):0}</span></div>`
     + `<div class="tCols">${trades.map(tradeCol).join('')}</div>`
     + seqOffers.map(offerCard).join('');
+  // The exchange used to be a frozen top cross-bar; now that its prices are clean it scrolls with the
+  // body — hide the pinned bar + static "Your Body" head and render both inside the scroll region.
+  ui.shopExchange.style.display='none';
+  const bhEl=document.getElementById('bodyHead'); if(bhEl) bhEl.style.display='none';
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
   const rest=offers.filter(o=>!inBar(o));
   const buckets=SHOP_GROUPS.map(()=>[]);
@@ -386,14 +392,15 @@ function renderShop(){
   if(ui.bodyCount) ui.bodyCount.textContent=`— ${types} types · ${total} organelles · ⊕ to graft · tap for details`;
   let html=SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp${i}"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(organCard).join('')}</div></section>`}).join('');
   if(hud.colony&&hud.colony.length>0){html+=`<section class="section"><div class="sectionTitle"><span>Colony</span><small>attached cells</small></div><div class="grid">${hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="offer organelle maxed"><div class="oTop"><div class="oName">${s.label}</div></div><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:7px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('')}</div></section>`;}
-  ui.shopBody.innerHTML=html;
+  const bodyHeadHTML=`<div class="bodyHead bodyHeadInline"><span>Your Body <small>— ${types} types · ${total} organelles · ⊕ to graft · tap for details</small></span></div>`;
+  ui.shopBody.innerHTML=`<div class="exchSec">${exchangeHTML}</div>`+bodyHeadHTML+html;
   ui.shopBody.scrollTop=keepScroll;
   renderGuide();
   if(ui.shopWarn){const s=shopStress();if(s.stressed){ui.shopWarn.style.display='block';ui.shopWarn.innerHTML='⚠ '+s.msg+' before you leave';}else{ui.shopWarn.style.display='none';}}
   // Exchange bar: the whole card buys. Body organelle cards: the ⊕ button buys (1-click, no expand
   // needed); tapping the card body toggles the detail (description, category, DNA variant notes).
-  for(const b of ui.shopExchange.querySelectorAll('.tArrow.live')) b.onpointerup=e=>{e.preventDefault();doTrade(b.dataset.res,b.dataset.dir);};
-  for(const card of ui.shopExchange.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault();doBuy(card.dataset.id,card.dataset.kind);};
+  for(const b of ui.shopBody.querySelectorAll('.tArrow.live')) b.onpointerup=e=>{e.preventDefault();doTrade(b.dataset.res,b.dataset.dir);};
+  for(const card of ui.shopBody.querySelectorAll('.offer.sequence')) card.onpointerup=e=>{e.preventDefault();doBuy(card.dataset.id,card.dataset.kind);};
   for(const btn of ui.shopBody.querySelectorAll('.oBuy[data-id]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doBuy(btn.dataset.id,btn.closest('.offer').dataset.kind);};
   for(const card of ui.shopBody.querySelectorAll('.offer.organelle,.offer.sacrament,.offer.colony')) card.onclick=e=>{if(e.target.closest('.oBuy'))return;card.classList.toggle('open');};
 }
@@ -406,7 +413,7 @@ function tradeCol(t){
   const pctCur=Math.round(100*t.cur/Math.max(1e-6,t.cap));
   const val=t.res==='oxygen'?Math.round(t.cur*100)+'%':fmt(t.cur);
   const arrow=(leg,dir,sym)=>{
-    if(!leg) return `<span class="tArrow none">${sym}</span>`;
+    if(!leg) return `<button class="tArrow dis" disabled>${sym}</button>`;
     const lbl=leg.lip>0?`+${leg.lip}`:`${leg.lip}`;
     const cls=leg.lip>0?'gain':'cost';
     const tip=`${dir==='up'?'Increase':'Reduce'} ${t.label} · ${leg.lip>0?'Yuki pays you '+leg.lip:'costs '+Math.abs(leg.lip)} lipids`;
