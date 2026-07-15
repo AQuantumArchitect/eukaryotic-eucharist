@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_centered_algae_fuzz_20260714b';
+export const VERSION = 'mobile_v1_3_3_linear_photosynthesis_raids_20260714d';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -253,6 +253,7 @@ const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a
 // of prescribing an outcome. createEcologyWorld({ ecologyTuning: { ... } }) overrides any subset.
 export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
   algaePhotoScale: 0.018,
+  playerPhotoScale: 0.18,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
   scavengerDetritusGain: 1.0,
   scavengerHunterPressure: 1.0,
@@ -1027,12 +1028,15 @@ export function lightAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
   const upper = WORLD.nurseryTop - WORLD.canopy;
   const transition = WORLD.ruptureTop - WORLD.canopy;
-  // Sigmoid beach at Yuki -> nearly linear usable-light ramp through the nursery/transition ->
-  // sigmoid tail into the true dark. The joins stay close in value to avoid numerical shocks.
-  if (d <= upper) return clamp(0.78 + 0.22 / (1 + Math.exp((d - 390) / 125)), 0, 1);
-  if (d <= transition) return clamp(0.78 - 0.56 * (d - upper) / Math.max(1, transition - upper), 0, 1);
-  return clamp(0.44 / (1 + Math.exp((d - transition) / 250)), 0, 1);
-  return clamp(Math.exp(-d / 300), 0, 1); // steeper falloff — light is a shallow, canopy-hugging resource
+  // Near-full shelf through the upper nursery, then a sharp, legible ramp. The
+  // rupture begins at exactly 3% and only tails downward from there; photosynthesis
+  // consumes this literal fraction, so the displayed meter is mechanically honest.
+  if (d <= upper) return clamp(0.94 + 0.06 / (1 + Math.exp((d - 390) / 125)), 0, 1);
+  if (d <= transition) {
+    const t = (d - upper) / Math.max(1, transition - upper);
+    return 0.945 + (0.03 - 0.945) * t;
+  }
+  return clamp(0.06 / (1 + Math.exp((d - transition) / 300)), 0, 0.03);
 }
 
 export function oxygenAt(y) {
@@ -1266,7 +1270,11 @@ function seedMatureEcosystem(world) {
   const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3
   const broodN = 1 + Math.floor(world.rng() * 2); // 1..2
   for (let i = 0; i < predN; i++) seedMatureHunterState(world, spawnPredator(world, {
-    y: WORLD.ruptureTop - 120 + rand(world, 0, 1900), x: rand(world, 0, WORLD.w)
+    // A mature snapshot includes the upper tail of active feeding incursions.
+    // The broad continuous draw leaves most predators deep while sometimes
+    // placing a lineage well into the transition at t=0.
+    y: clamp(gaussian(world.rng, WORLD.ruptureTop + 280, 720), WORLD.nurseryTop + 120, WORLD.deepTop + 900),
+    x: rand(world, 0, WORLD.w)
   }));
   for (let i = 0; i < protoN; i++) seedMatureHunterState(world, spawnProtozoan(world, {
     y: WORLD.deepTop + rand(world, 80, 1900), x: rand(world, 0, WORLD.w)
@@ -1860,6 +1868,10 @@ const BRAIN = Object.freeze({
 function initBrain(world, e, depthT = 0) {
   e.aggro = clamp(gaussian(world.rng, 0.45 + depthT * 0.30, 0.16), 0, 1);
   e.caution = clamp(gaussian(world.rng, 0.55 - depthT * 0.20, 0.16), 0, 1);
+  // Individual dark adaptation replaces the shared light contour that used to
+  // turn the whole guild around at once. Truly deep lineages remain more vampiric;
+  // shallower predators can tolerate a brighter, costly feeding raid.
+  e.lightTolerance = clamp(gaussian(world.rng, 0.38 - depthT * 0.10, 0.055), 0.22, 0.48);
   if (e.strain) e.aggro = clamp(e.aggro * (0.85 + (e.strainPotency || 1) * 0.15), 0, 1);
   e.brainState = 'prowl';
   e._targetRef = null;
@@ -1915,7 +1927,12 @@ function hunterThreatPressure(e, myCapHp) {
   const hpFill = clamp(e.hp / Math.max(1, myCapHp), 0, 1);
   const oxygenExcess = oxygenAt(e.y) - oxygenTolerance(e);
   const oxygenRisk = logistic((oxygenExcess - 0.10) * 42);
-  const lightRisk = e.photophobic ? logistic((lightAt(e.y) - (LIGHT_BURN.threshold - 0.05)) * 24) : 0;
+  const lightTolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
+  const lightExposure = e.photophobic ? logistic((lightAt(e.y) - lightTolerance) * 10) : 0;
+  // Hunger makes a raid worth risking, but never removes the underlying burn.
+  // This is a continuous risk/reward trade rather than a no-crossing contour.
+  const desperation = clamp(huntDrive(e), 0, 1);
+  const lightRisk = lightExposure * (0.32 + 0.68 * (1 - desperation));
   const injuryRisk = Math.pow(1 - hpFill, 2.1) * (0.55 + (e.caution || 0.5));
   const combatRisk = clamp((e.combatHit || 0) / 0.18, 0, 1) * Math.pow(1 - hpFill * 0.65, 1.5);
   let bodyRisk = 0;
@@ -1972,7 +1989,7 @@ function updateNpcBrainThresholdLegacy(world, e, player, dt) {
   // layer follows the algal fall down instead of pinning to the seam where it spawned.
   if (!e.ownerId) {
     e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
-    e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+    e.depthHome = clamp(e.depthHome, WORLD.canopy + 180, WORLD.h - 220);
   }
 
   // An exhausted hunter must stop spending and let its processors rebuild charge. Without this node,
@@ -2149,7 +2166,7 @@ function updateNpcBrain(world, e, player, dt) {
 
   if (!e.ownerId) {
     e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
-    e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+    e.depthHome = clamp(e.depthHome, WORLD.canopy + 180, WORLD.h - 220);
   }
 
   // A completed hunt pays meat/fat once. ATP itself was transferred at the killing blow in hurt().
@@ -2183,7 +2200,8 @@ function updateNpcBrain(world, e, player, dt) {
       e._targetRef = policy.field;
     } else if (e.brainState === 'flee') {
       e._targetRef = policy.threat.source;
-      if (!policy.threat.source) e._wander = policy.threat.dive ? Math.PI / 2 : e.phase + Math.PI;
+      if (!policy.threat.source) e._wander = policy.threat.dive
+        ? Math.PI / 2 + gaussian(world.rng, 0, 0.42) : e.phase + Math.PI;
     } else if (e.brainState === 'recover') {
       e._targetRef = policy.prey && policy.prey.controller === 'algae' && world.rng() < policy.preyAppeal * 0.45
         ? policy.prey : null;
@@ -2441,7 +2459,7 @@ function updateNPCs(world, player, dt) {
     // through the whole column instead of pinning to the seam where it spawned.
     if ((e.controller === 'predator' || e.controller === 'protozoan') && !e.ownerId) {
       e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
-      e.depthHome = clamp(e.depthHome, WORLD.ruptureTop - 260, WORLD.h - 220);
+      e.depthHome = clamp(e.depthHome, WORLD.canopy + 180, WORLD.h - 220);
     }
 
     const oxygenDanger = oxygenAt(e.y) - oxygenTolerance(e);
@@ -2607,11 +2625,13 @@ function updateEnvironmentAndMetabolism(world, dt) {
     const photo = orgCount(e, 'photosystem');
     if (photo > 0) {
       // Growth scales with porosity — a porous membrane grows fast (and leaks gas fast); hardening slows both.
-      const lightResponse = light * light / (light * light + 0.04 * 0.04);
+      const lightResponse = light;
       // The broad light shelf feeds algae over a larger vertical span. Lower per-photon
       // throughput keeps the integrated growth budget stable without a biomass ratchet.
       const algaeTrait = e.controller === 'algae' ? algaeTraits(e) : null;
-      const photoScale = e.controller === 'algae' ? world.ecologyTuning.algaePhotoScale * algaeTrait.photo : 1;
+      const photoScale = e.controller === 'algae'
+        ? world.ecologyTuning.algaePhotoScale * algaeTrait.photo
+        : world.ecologyTuning.playerPhotoScale;
       // Logistic storage response makes a full reserve unattractive long before the hard cargo
       // guardrail. clampCargo remains for bad saves / numerical corruption only.
       const biomassFill = clamp((e.cargo.biomass || 0) / Math.max(1, caps(e).biomass), 0, 1);
@@ -2828,7 +2848,8 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const l = lightAt(e.y);
       // A smooth, very steep exposure curve: the dim tail is survivable, the transition hurts,
       // and a real shallow incinerates a dark lineage. No light/no-light cliff is involved.
-      const exposure = Math.pow(1 / (1 + Math.exp(-(l - LIGHT_BURN.threshold) * LIGHT_BURN.slope)), 2);
+      const tolerance = e.lightTolerance ?? LIGHT_BURN.threshold;
+      const exposure = Math.pow(1 / (1 + Math.exp(-(l - tolerance) * LIGHT_BURN.slope * 0.68)), 2);
       e.hp -= exposure * LIGHT_BURN.rate * dt;
       e.hit = Math.max(e.hit, exposure * 0.12);
     }
@@ -4277,7 +4298,9 @@ function spawnPredator(world, opts = {}) {
   const roll = world.rng();
   if (roll < 0.42 + depthT * 0.3) e.organelles.lance_bristle = 1 + Math.round(depthT);
   if (roll > 0.62 - depthT * 0.2) { e.organelles.toxin_launcher = 1; e.cargo.toxins = Math.max(e.cargo.toxins || 0, rand(world, 8, 18)); }
-  e.photophobic = y >= WORLD.ruptureTop; // rupture/deep predators are light-vampires, not surface pursuers
+  // Dark adaptation collapses probabilistically from continuous spawn depth;
+  // there is no rupture-line caste switch or shared invisible wall.
+  e.photophobic = world.rng() < logistic((y - (WORLD.ruptureTop - 220)) / 260);
   applyEscalation(e, opts.escalation || 0);
   applyStrain(world, e);
   assignBody(e);
