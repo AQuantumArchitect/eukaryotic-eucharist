@@ -239,6 +239,18 @@ const ALGAE_LIGHT_GAS_VENT_K = 0.040; // bright-water gas vent / s: the broader 
 const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
 const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
 const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep-diving bloom reads big
+// Narrow, continuous knobs for ecology experiments. These are deliberately rates and gains rather
+// than population targets or behavioral switches, so a tuning pass changes the flow field instead
+// of prescribing an outcome. createEcologyWorld({ ecologyTuning: { ... } }) overrides any subset.
+export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
+  algaePhotoScale: 0.08,
+  algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
+  scavengerDetritusGain: 1.0,
+  scavengerHunterPressure: 1.0,
+  nurserySlurryGain: 1.0,
+  predatorHeatGain: 1.0,
+  predatorHeatDecay: 1.0
+});
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
 // buoyant lipids float up toward the canopy, and volatile ATP/toxins diffuse outward into
@@ -1032,7 +1044,7 @@ export function createWorld(options = {}) {
     discoveredSources: ecologyOnly ? new Map() : (options.fresh ? freshDiscoveries() : loadDiscoveries()),
     spawn: { algae: 0, npc: 0, exotic: 0, nursery: 0, seed: 0 },
     escalation: 0,     // ratchets up with the player's progress → the deep releases more, and more
-                       // monstrous, predators (the rising danger + the falling-action end game)
+    ecologyTuning: { ...DEFAULT_ECOLOGY_TUNING, ...(options.ecologyTuning || {}) },
     playerId: null,
     ecologyOnly,
     _targetClaims: new Map()
@@ -2343,7 +2355,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
     if (!e.alive) continue;
     // Successful hunters retain a fading reproductive heat: it makes a local run of kills capable
     // of producing a pulse, but the opportunity cools away when the food web goes quiet.
-    e.reproHeat = Math.max(0, (e.reproHeat || 0) * Math.exp(-0.012 * dt));
+    e.reproHeat = Math.max(0, (e.reproHeat || 0) * Math.exp(-0.012 * world.ecologyTuning.predatorHeatDecay * dt));
     // Mass tax: stored biomass carries a flat basal ATP upkeep (MASS_TAX_K). It self-regulates — the
     // drain opens ATP headroom, the fermentation engine burns biomass to refill it, so biomass FLOWS
     // and can never be hoarded even at idle. Lean bodies barely notice; a fat body pays constant rent.
@@ -2363,7 +2375,12 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // Ballast gas leaks out through the membrane ∝ porosity — a soft cell deflates fast (bobs),
     // a hardened cell holds its dive. This is the passive sink that lets a fat bloom fall.
     if ((e.ballastGas || 0) > 0) {
-      const lightVent = e.controller === 'algae' ? light * ALGAE_LIGHT_GAS_VENT_K * (e.ecologyRate || 1) : 0;
+      // A bloated bloom heats and vents disproportionately in bright water. This is a smooth
+      // pressure response: a lightly filled bladder holds trim, while an overinflated canopy
+      // bloom loses lift quickly enough to resume its descent instead of camping at Yuki.
+      const gasFill = (e.ballastGas || 0) / Math.max(0.001, caps(e).ballastGas);
+      const overInflation = 0.25 + 2.75 * Math.pow(clamp(gasFill, 0, 1), 4);
+      const lightVent = e.controller === 'algae' ? light * world.ecologyTuning.algaeLightVent * overInflation * (e.ecologyRate || 1) : 0;
       e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * (porosity * GAS_LEAK_K + lightVent) * dt);
     }
 
@@ -2374,7 +2391,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lightResponse = light * light / (light * light + 0.04 * 0.04);
       // The broad light shelf feeds algae over a larger vertical span. Lower per-photon
       // throughput keeps the integrated growth budget stable without a biomass ratchet.
-      const photoScale = e.controller === 'algae' ? 0.08 : 1;
+      const photoScale = e.controller === 'algae' ? world.ecologyTuning.algaePhotoScale : 1;
       const gain = lightResponse * photo * ORGANELLES.photosystem.stats.biomassGain * photoScale * clamp(porosity / 0.32, 0.2, 1.0) * dt;
       const room = caps(e).biomass - (e.cargo.biomass || 0);
       const actual = Math.min(room, gain);
@@ -3492,7 +3509,7 @@ function hurt(world, entity, amount, sourceId = null) {
       }
       if (HUNTER_GUILD.has(killer.controller) && !killer.friendly) {
         const feast = clamp(entity.r / 72 + (entity.cargo.biomass || 0) / 150, 0.10, 1);
-        killer.reproHeat = clamp((killer.reproHeat || 0) + 0.10 + 0.28 * feast, 0, 1);
+        killer.reproHeat = clamp((killer.reproHeat || 0) + (0.10 + 0.28 * feast) * world.ecologyTuning.predatorHeatGain, 0, 1);
       }
       if (hasOrg(killer, 'necrosis_gland')) {
         const st = ORGANELLES.necrosis_gland.stats;
@@ -3630,7 +3647,8 @@ function scavengerTarget(world) {
   for (const e of world.entities) if (e.alive && HUNTER_GUILD.has(e.controller)) hunterPressure++;
   // Open-boundary carrying signal: corpse pulses draw scavengers in; barren or predator-heavy water
   // lets them flow back out. The response is deliberately broad and capped for performance.
-  return Math.round(clamp(8 + detritus / 220 - hunterPressure * 0.14, 8, 42));
+  const tuning = world.ecologyTuning;
+  return Math.round(clamp(8 + detritus / 220 * tuning.scavengerDetritusGain - hunterPressure * 0.14 * tuning.scavengerHunterPressure, 8, 42));
 }
 
 // A hunter is ready to divide when it is GORGED (the user's spec): ATP brimming AND biomass and
@@ -3878,7 +3896,7 @@ function spawnTick(world, dt) {
     // Kept in the O2-SAFE, safely-edible band (deep enough that feeding doesn't inhale poisoning O2,
     // shallow enough that the climb home to Yuki stays affordable) — the gentle foot of the curve.
     spawnResourceField(world, rand(world, 0, WORLD.w), WORLD.canopy + rand(world, 800, 1180),
-      { biomass: rand(world, 45, 90), lipids: rand(world, 8, 22), energy: rand(world, 3, 11) },
+      { biomass: rand(world, 45, 90) * world.ecologyTuning.nurserySlurryGain, lipids: rand(world, 8, 22) * world.ecologyTuning.nurserySlurryGain, energy: rand(world, 3, 11) * world.ecologyTuning.nurserySlurryGain },
       { radius: rand(world, 44, 68), sourceKind: 'nursery_slurry', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
   }
 }
