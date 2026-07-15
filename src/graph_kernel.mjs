@@ -305,6 +305,9 @@ const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 const BIOMASS_SINK_DECAY = 0.05;  // biomass barely remineralizes while sinking — it arrives intact
 const BIOMASS_FLOOR_DECAY = 0.45; // ...but piled on the abyss floor it dissolves back into the water
 const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still clears eventually
+const FAT_PLUME_RISE = 55;        // px/s: the return arm — buoyant fat climbs hard out of the abyss
+const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
+const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -1006,7 +1009,7 @@ function makeImmigrantPlayer(world) {
   return makeSoftBody(world, 'player', arrival.x, arrival.y, {
     r: 22, color: '#86d2ff', controller: 'human', trophicRole: 'anaerobic_scavenger', depthHome: arrival.y,
     cargo: { biomass: 5, lipids: 4, energy: 18, toxins: 3, spores: 0, enzymes: 0, crystals: 0, dna: 0 },
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 2, anaerobic_processor: 1, exotic_vacuole: 1, rasping_lamella: 1 },
     oxygen: oxygenAt(arrival.y), grace: 2.5
   });
 }
@@ -3113,14 +3116,28 @@ function updateFields(world, dt) {
     const decayRate = isBiomass ? (atFloor ? BIOMASS_FLOOR_DECAY : BIOMASS_SINK_DECAY) : f.decayRate;
     const decay = decayRate * dt;
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
+    // Return arm of the carbon pump: DEEP whale-fall biomass slowly decomposes into buoyant FAT that
+    // rises out of the abyss for the O2-tolerant mid predators to intercept before it reaches the
+    // light. Accumulated per field so it releases as occasional plumes, not a spray of micro-fields.
+    if (isBiomass && f.y > WORLD.deepTop && (f.stock.biomass || 0) > 1) {
+      const vent = f.stock.biomass * FAT_VENT_RATE * dt;
+      f.stock.biomass -= vent;
+      f.fatBudget = (f.fatBudget || 0) + vent;
+      if (f.fatBudget >= FAT_PLUME_QUANTUM) {
+        const plume = spawnResourceField(world, f.x, f.y - 24, { lipids: f.fatBudget }, { radius: 34, sourceKind: 'abyssal_fat_plume', maxAge: 95, maxRadius: 120 });
+        if (plume) { plume.vyTarget = -FAT_PLUME_RISE; plume.decayRate = 0.05; }
+        f.fatBudget = 0;
+      }
+    }
     const total = totalMatter(f.stock);
     f._matter = total; // cache for this frame's AI field scans (bestFieldFor)
     // Per-type drift: each field follows its own material's physics — lipids rise, ATP spreads, toxins
     // seep. Biomass sinks by a square-cube law: a bigger fall plummets, a fleck drifts.
     if (total > 0) {
+      const upCap = f.sourceKind === 'abyssal_fat_plume' ? FAT_PLUME_RISE : FIELD_TERMINAL_VY; // buoyant fat climbs faster than ordinary drift
       const targetVy = isBiomass
         ? clamp(BIOMASS_SINK_K * Math.pow(Math.max(0, f.stock.biomass || 0), 2 / 3), 0, WHALE_FALL_TERMINAL)
-        : clamp(f.vyTarget || 0, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
+        : clamp(f.vyTarget || 0, -upCap, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
@@ -4873,14 +4890,24 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
   return ret;
 }
 
+const FIELD_MERGE_WINDOW = 80; // merges only happen within this px — the windowed broad-phase key
 function mergeNearbyFields(world) {
-  for (let i = 0; i < world.fields.length; i++) {
-    const a = world.fields[i];
-    for (let j = world.fields.length - 1; j > i; j--) {
-      const b = world.fields[j];
-      if (a.resType !== b.resType) continue;                 // types stay decoupled — only like merges with like
+  const fields = world.fields;
+  if (fields.length < 2) return;
+  // Windowed by y (like the contact broad-phase): fields sit spread across an 11200px column, so a
+  // full O(n²) scan is wasteful once the persistent whale-fall inflates the count. Sort by y and
+  // break the inner loop as soon as the y-gap exceeds the merge window — near-linear in practice.
+  fields.sort((a, b) => a.y - b.y);
+  let merged = false;
+  for (let i = 0; i < fields.length; i++) {
+    const a = fields[i];
+    if (a._merged) continue;
+    for (let j = i + 1; j < fields.length; j++) {
+      const b = fields[j];
+      if (b.y - a.y > FIELD_MERGE_WINDOW) break;             // sorted: nothing further can be in range
+      if (b._merged || a.resType !== b.resType) continue;    // types stay decoupled — only like merges with like
       const d = distWrap(a.x, a.y, b.x, b.y);
-      if (d > Math.min(80, (a.radius + b.radius) * 0.35)) continue;
+      if (d > Math.min(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.35)) continue;
       const ta = totalMatter(a.stock), tb = totalMatter(b.stock), total = Math.max(1, ta + tb);
       a.x = wrapX(a.x + dxWrap(a.x, b.x) * (tb / total));
       a.y = (a.y * ta + b.y * tb) / total;
@@ -4888,10 +4915,12 @@ function mergeNearbyFields(world) {
       a.age = Math.min(a.age, b.age);
       a.maxAge = Math.max(a.maxAge, b.maxAge);
       a.maxRadius = Math.max(a.maxRadius, b.maxRadius);
-      world.fields.splice(j, 1);
+      b._merged = true;
       world.stats.fieldsMerged += 1;
+      merged = true;
     }
   }
+  if (merged) world.fields = fields.filter(f => !f._merged);
 }
 
 function spawnParticle(world, kind, x, y, value = 1) {
