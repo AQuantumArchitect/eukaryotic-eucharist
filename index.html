@@ -108,7 +108,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
   <div class="focusGate" id="focusGate"><h2>Click to play</h2><p>Click anywhere to sink in and take the controls</p></div>
 </div>
 <script type="module">
-import * as K from './src/graph_kernel.mjs?v=sunlight-predator-refugia-20260714g';
+import * as K from './src/graph_kernel.mjs?v=light-oxygen-cloud-20260714h';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -206,7 +206,10 @@ function command(){
   const wx=wrapX(camera.x+pointer.x), wy=camera.y+pointer.y;
   let ax=player?dxWrap(player.x,wx):n.x, ay=player?wy-player.y:n.y;
   const an=norm(ax,ay);
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:keys.has('r')||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:pointer.down||keys.has('x')||buttons.acid,sporeshot:keys.has('c')||buttons.sporeshot,harpoon:keys.has('z')||buttons.harpoon,cloud:keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,aimX:an.x,aimY:an.y};
+  // Left click = FIRE ALL WEAPONS at once (rasp + every launcher/gland you carry). Dedicated keys still
+  // fire each weapon on its own; R is the toxic launcher's own key (freed up now that rasp is on click).
+  const fire=pointer.down;
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:fire||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:fire||keys.has('r')||keys.has('x')||buttons.acid,sporeshot:fire||keys.has('c')||buttons.sporeshot,harpoon:fire||keys.has('z')||buttons.harpoon,cloud:fire||keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:fire||keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,aimX:an.x,aimY:an.y};
 }
 
 function loop(now){
@@ -308,7 +311,7 @@ function updateUI(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','R','Rasp'],['dash','D','Dash'],['acid','X/Click','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['divide','M','Divide'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','LMB','Rasp'],['dash','D','Dash'],['acid','R','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['divide','M','Divide'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -316,7 +319,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold S floods ballast (dive), W releases (rise)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['R',rasp?rasp.label+' overlap':'Rasp overlap',!!rasp],['Mouse','Lance faces attention',hasLance],['X / click',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Jettison biomass (rise / escape)',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold S floods ballast (dive), W releases (rise)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Jettison biomass (rise / escape)',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.

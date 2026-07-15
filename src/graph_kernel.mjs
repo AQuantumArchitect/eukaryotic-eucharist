@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_sunlight_predator_refugia_20260714g';
+export const VERSION = 'mobile_v1_3_3_light_oxygen_cloud_20260714h';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -1041,29 +1041,44 @@ function id(prefix) { return `${prefix}_${nextId++}`; }
 
 export function lightAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
-  // One sigmoid across the entire column: no nursery join, rupture join, or
-  // derivative kink for bodies to reveal as an invisible boundary. Calibration
-  // landmarks only determine the curve: 95% at nurseryTop and 3% at ruptureTop.
-  const shelfDepth = WORLD.nurseryTop - WORLD.canopy;
-  const ruptureDepth = WORLD.ruptureTop - WORLD.canopy;
+  // One sigmoid across the entire column. Its bright shoulder is near y=800 and
+  // its dark shoulder near y=3400, leaving a long twilight gradient rather than
+  // an ecological strip whose edges behave like invisible walls.
+  const shelfDepth = 800 - WORLD.canopy;
+  const darkDepth = 3400 - WORLD.canopy;
   const shelfLogit = Math.log(1 / 0.95 - 1);
-  const ruptureLogit = Math.log(1 / 0.03 - 1);
-  const scale = (ruptureDepth - shelfDepth) / (ruptureLogit - shelfLogit);
+  const darkLogit = Math.log(1 / 0.03 - 1);
+  const scale = (darkDepth - shelfDepth) / (darkLogit - shelfLogit);
   const midpoint = shelfDepth - shelfLogit * scale;
   return clamp(1 / (1 + Math.exp((d - midpoint) / scale)), 0, 1);
 }
 
+// Invert the monotone light field for analytic ecology seeding. Initial hunter
+// depth is sampled in physiological light-space, so changing the water optics
+// does not make every new world begin with a scripted mass retreat.
+function yAtLight(targetLight) {
+  const target = clamp(targetLight, lightAt(WORLD.h), lightAt(WORLD.canopy));
+  let bright = WORLD.canopy, dark = WORLD.h;
+  for (let i = 0; i < 24; i++) {
+    const mid = (bright + dark) * 0.5;
+    if (lightAt(mid) > target) bright = mid;
+    else dark = mid;
+  }
+  return (bright + dark) * 0.5;
+}
+
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
-  const upper = WORLD.nurseryTop - WORLD.canopy;
-  const transition = WORLD.ruptureTop - WORLD.canopy;
-  // O2 falls more linearly than light: the lower nursery remains bright but oxygen-poor, while the
-  // lower transition still carries respiratory O2 after light has entered its dark tail.
-  if (d <= upper) return clamp(0.98 - 0.40 * d / Math.max(1, upper), 0.04, 1);
-  if (d <= transition) return clamp(0.58 - 0.16 * (d - upper) / Math.max(1, transition - upper), 0.04, 1);
-  return clamp(0.04 + 0.76 / (1 + Math.exp((d - transition) / 600)), 0.04, 1);
-  // High at surface, sharply lower in nursery, almost gone by deep layer.
-  return clamp(0.08 + 0.90 * Math.exp(-d / 610), 0.035, 1);
+  // Photosynthesis fills the upper 0..1500 water with a broad diffuse O2 cloud.
+  // Below it, mixing loses against respiration and produces a smooth cliff with
+  // a long tail: low-light water can still support aerobic metabolism, while the
+  // deepest water remains genuinely oxygen-poor. This is one continuous field,
+  // not a policy boundary.
+  const floor = 0.06;
+  const cloud = 0.66;
+  const cliffDepth = 2300 - WORLD.canopy;
+  const cliffWidth = 350;
+  return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
 }
 
 export function pressureAt(y) {
@@ -1203,6 +1218,17 @@ function seedMatureHunterState(world, e) {
   e.reproHeat = rand(world, 0.02, 0.45); // a mature ecology includes cold and recently successful lineages
 }
 
+function placeSeedHunterByLight(world, e, medianToleranceRatio, logSpread, minRatio, maxRatio) {
+  // Sampling a ratio in log-space spreads dark-adapted bodies across orders of
+  // magnitude of dim light instead of bunching them around one absolute depth.
+  const ratio = clamp(Math.exp(gaussian(world.rng, Math.log(medianToleranceRatio), logSpread)), minRatio, maxRatio);
+  const targetLight = clamp((e.lightTolerance ?? LIGHT_BURN.threshold) * ratio, lightAt(WORLD.h), lightAt(WORLD.canopy));
+  e.y = yAtLight(targetLight);
+  e.depthHome = e.y;
+  e.oxygen = oxygenAt(e.y);
+  return e;
+}
+
 function sampleAlgaeTraits(world, regime) {
   const spread = regime.traitSpread || 0.22;
   return {
@@ -1295,23 +1321,22 @@ function seedMatureEcosystem(world) {
   const protoN = 9 + Math.floor(world.rng() * 5); // 9..13
   const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3
   const broodN = 1 + Math.floor(world.rng() * 2); // 1..2
-  for (let i = 0; i < predN; i++) seedMatureHunterState(world, spawnPredator(world, {
-    // A mature snapshot includes the upper tail of active feeding incursions.
-    // The broad continuous draw leaves most predators deep while sometimes
-    // placing a lineage well into the transition at t=0.
-    y: clamp(gaussian(world.rng, WORLD.ruptureTop + 280, 720), WORLD.nurseryTop + 120, WORLD.deepTop + 900),
-    x: rand(world, 0, WORLD.w)
-  }));
-  for (let i = 0; i < protoN; i++) seedMatureHunterState(world, spawnProtozoan(world, {
-    y: WORLD.deepTop + rand(world, 80, 1900), x: rand(world, 0, WORLD.w)
-  }));
-  for (let i = 0; i < metaN; i++) seedMatureHunterState(world, spawnMetazoan(world, {
-    y: WORLD.deepTop + rand(world, 700, 2200), x: rand(world, 0, WORLD.w)
-  }));
-  for (let i = 0; i < broodN; i++) spawnBrood(world, {
-    y: WORLD.deepTop + rand(world, 500, 2000),
-    x: rand(world, 0, WORLD.w)
-  });
+  for (let i = 0; i < predN; i++) {
+    const e = spawnPredator(world, { y: yAtLight(0.18), x: rand(world, 0, WORLD.w) });
+    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.55, 0.68, 0.10, 1.20));
+  }
+  for (let i = 0; i < protoN; i++) {
+    const e = spawnProtozoan(world, { y: yAtLight(0.01), x: rand(world, 0, WORLD.w) });
+    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.42, 0.88, 0.05, 0.90));
+  }
+  for (let i = 0; i < metaN; i++) {
+    const e = spawnMetazoan(world, { y: yAtLight(0.008), x: rand(world, 0, WORLD.w) });
+    seedMatureHunterState(world, placeSeedHunterByLight(world, e, 0.34, 0.92, 0.04, 0.86));
+  }
+  for (let i = 0; i < broodN; i++) {
+    const e = spawnBrood(world, { y: yAtLight(0.006), x: rand(world, 0, WORLD.w) });
+    placeSeedHunterByLight(world, e, 0.30, 0.95, 0.035, 0.82);
+  }
 
   // Seed the field economy at its steady density (~5000 matter) and stratified across the
   // whole column, so the player spawns among resource patches everywhere — not a sparse few
