@@ -1688,7 +1688,7 @@ function finishWorldStep(world, player, dt) {
     // Horizontal water drag is stronger on the starter player, preventing zero-upgrade lateral
     // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
     // not the 5-10 minutes produced by the old generic NPC damping.
-    const dampX = e.kind === 'player' ? 0.976 : 0.965;
+    const dampX = e.kind === 'player' ? 0.974 : 0.965;
     const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.986 : 0.965;
     e.vx *= Math.pow(dampX, dt * 60); e.vy *= Math.pow(dampY, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
@@ -1734,7 +1734,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (player.cargo.energy >= moveCost) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
-      player.vx += move.x * sp * 2.5 * dt;
+      player.vx += move.x * sp * 2.1 * dt;
       player.vy += move.y * sp * 1.5 * dt;   // vertical is mostly BALLAST-driven — direct swim is a weak correction, not a jetpack
       if (!(Number.isFinite(commands.aimX) && Number.isFinite(commands.aimY))) player.phase = Math.atan2(move.y, move.x);
     }
