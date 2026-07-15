@@ -4778,7 +4778,7 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 const YUKI_TRADES = Object.freeze([
   { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
   { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -6 }, down: { d: -10,   lip: 4 } },
-  { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { d: -8,    lip: -1 } },
+  { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { flush: true, lip: -1 } },
   { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -2 }, down: { d: -0.30, lip: -1 } },
   { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
 ]);
@@ -4788,8 +4788,11 @@ function tradeLegOk(e, res, leg, c) {
   if (!leg) return false;
   const cur = tradeCur(e, res), cap = tradeCap(e, res, c);
   const lip = e.cargo.lipids || 0, lipCap = c.lipids ?? 0;
-  if (leg.d > 0 && cur >= cap - 1e-6) return false;           // resource full
-  if (leg.d < 0 && cur < -leg.d - 1e-6) return false;         // not enough resource
+  if (leg.flush) { if (cur <= 1e-6) return false; }            // flush: need something to empty
+  else {
+    if (leg.d > 0 && cur >= cap - 1e-6) return false;         // resource full
+    if (leg.d < 0 && cur < -leg.d - 1e-6) return false;       // not enough resource
+  }
   if (leg.lip < 0 && lip < -leg.lip - 1e-6) return false;     // can't afford the fee
   if (leg.lip > 0 && lip >= lipCap - 1e-6) return false;      // lipid tank full (can't take payment)
   return true;
@@ -4809,8 +4812,8 @@ export function getYukiTrades(world, entityId = world.playerId) {
   for (const t of YUKI_TRADES) rows.push({
     res: t.res, label: t.label, cur: tradeCur(e, t.res), cap: tradeCap(e, t.res, c),
     color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
-    up: t.up ? { lip: t.up.lip, canDo: tradeLegOk(e, t.res, t.up, c) } : null,
-    down: t.down ? { lip: t.down.lip, canDo: tradeLegOk(e, t.res, t.down, c) } : null,
+    up: t.up ? { lip: t.up.lip, flush: !!t.up.flush, canDo: tradeLegOk(e, t.res, t.up, c) } : null,
+    down: t.down ? { lip: t.down.lip, flush: !!t.down.flush, canDo: tradeLegOk(e, t.res, t.down, c) } : null,
   });
   return rows;
 }
@@ -4825,9 +4828,10 @@ export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
   const c = caps(e);
   if (!tradeLegOk(e, res, leg, c)) return { ok: false, reason: 'cannot trade now' };
   const cur = tradeCur(e, res), cap = tradeCap(e, res, c), lipCap = c.lipids ?? 0;
-  if (res === 'hp') e.hp = clamp(cur + leg.d, 0, cap);
-  else if (res === 'oxygen') e.oxygen = clamp(cur + leg.d, 0, cap);
-  else e.cargo[res] = clamp(cur + leg.d, 0, cap);
+  const nv = leg.flush ? 0 : clamp(cur + leg.d, 0, cap);       // flush empties the whole tank
+  if (res === 'hp') e.hp = nv;
+  else if (res === 'oxygen') e.oxygen = nv;
+  else e.cargo[res] = nv;
   e.cargo.lipids = clamp((e.cargo.lipids || 0) + leg.lip, 0, lipCap);
   clampCargo(e);
   world.events.push({ type: 'buy', entityId, offeringId: `trade_${dir}_${res}` });
