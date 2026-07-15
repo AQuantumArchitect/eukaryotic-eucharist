@@ -1,7 +1,7 @@
 // Eukaryotic Eucharist v1.3.3 graph kernel
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
-export const VERSION = 'mobile_v1_3_3_immigrant_spawn_algae_cycle_20260714';
+export const VERSION = 'mobile_v1_3_3_centered_algae_fuzz_20260714b';
 
 export const WORLD = Object.freeze({
   w: 2340,
@@ -15,7 +15,7 @@ export const WORLD = Object.freeze({
   deepTop: 3000
 });
 
-// The player begins and respawns in Yuki's tendrils at the top of the canopy.
+// Yuki's fixed location is used for exchange/reforging proximity, not player spawn.
 const YUKI_SPAWN = Object.freeze({ x: WORLD.w / 2, y: WORLD.canopy + 60 });
 
 export const RESOURCES = Object.freeze(['biomass', 'lipids', 'toxins', 'energy', 'spores', 'enzymes', 'crystals', 'dna']);
@@ -244,7 +244,7 @@ const MASS_TAX_K = 0.015;         // ATP/s drained per unit of STORED BIOMASS: b
 // back up — a vertical bob whose depth/amplitude escalate with the bloom's size. The bright top
 // is a steep heal band (bask to mend); the deep is attrition (climb back to Yuki or dissolve).
 const ALGAE_DEEP_FERMENT_K = 1.6; // deep blooms ferment lift-gas up to (1+K)× faster → they bottom out & rise
-const ALGAE_LIGHT_GAS_VENT_K = 0.040; // bright-water gas vent / s: the broader shelf still heats/vents a bloated bloom into its next descent
+const ALGAE_LIGHT_GAS_VENT_K = 0.028; // bright-water gas vent / s: the broader shelf still heats/vents a bloated bloom into its next descent
 const ALGAE_HEAL = 16;            // HP/s regained per unit light — strong at the canopy, ~0 in the dark
 const ALGAE_DEEP_ATTR = 1.4;      // HP/s lost in the true deep (below the rupture), × depth fraction
 const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a fat, deep-diving bloom reads big
@@ -265,7 +265,7 @@ export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
 // metabolic traits from this same aggregate ecology.
 export const DEFAULT_ALGAE_REGIME = Object.freeze({
   algaeMeanCount: 82,
-  algaeCountSpread: 4.5,
+  algaeCountSpread: 2.5,
   producerMassTarget: 10500,
   producerMassSpread: 1800,
   cycleMinSeconds: 45,
@@ -1208,7 +1208,7 @@ function seedAnalyticAlgaeRegime(world) {
     const structural = clamp(Math.exp(gaussian(world.rng,
       Math.log(r.structuralMedian || 48), r.structuralLogSpread || 0.72)), 20, 420);
     const cycleHistory = Math.max(0, Math.floor(Math.log(Math.max(1, structural / 26)) * 5 + gaussian(world.rng, 0, 1.8)));
-    const cargoBiomass = clamp(structural * rand(world, 0.22, 0.42) + gaussian(world.rng, 0, 4), 5, 112);
+    const cargoBiomass = clamp(structural * rand(world, 0.16, 0.30) + gaussian(world.rng, 0, 3), 4, 96);
     const depthWave = (1 - Math.cos(seedPhase)) * 0.5;
     const surfaceDepth = clamp(58 + structural * 0.72, 70, 260);
     const workDepth = WORLD.canopy + clamp(220 + structural * 10, r.depthMin, Math.min(r.depthMax + 900, 3200));
@@ -1227,6 +1227,7 @@ function seedAnalyticAlgaeRegime(world) {
     e.biomassMass = structural;
     e.algaeCycleCount = cycleHistory;
     e.organelles.storage_vacuole = clamp(Math.round(2.5 + Math.sqrt(structural) * 0.48), 4, 8);
+    e.organelles.membrane = clamp(Math.round(0.8 + structural / 180), 1, 3);
     e.organelles.membrane_hardening = clamp(Math.round(0.6 + structural / 105), 1, 4);
     e.organelles.oxygen_tolerance = clamp(Math.round(2.2 + structural / 90), 3, 6);
     e.ballastGas = caps(e).ballastGas * gasFill;
@@ -1238,6 +1239,7 @@ function seedAnalyticAlgaeRegime(world) {
     e.fallState = e.vy > 0.4 ? 'sinking' : (e.vy < -0.4 ? 'rising' : null);
     e.organelles.photosystem = clamp(Math.round(1.8 + Math.sqrt(structural) * 0.28), 2, ORGANELLES.photosystem.max);
     e._capsEpoch = -1;
+    e.hp = caps(e).hp;
     e.r = targetRadius(e);
   }
 }
@@ -2502,7 +2504,7 @@ function updateAlgaeAI(world, e, dt) {
     world.stats.algaeCycles++;
     // A completed descent-and-return deposits durable tissue. The gain tapers smoothly with
     // existing mass, so only organisms that keep completing real bobs become true giants.
-    const matureTissue = (4 + 0.04 * (e.biomassMass || 0)) * Math.exp(-(e.biomassMass || 0) / 430);
+    const matureTissue = (1.2 + 0.012 * (e.biomassMass || 0)) * Math.exp(-(e.biomassMass || 0) / 430);
     e.biomassMass += matureTissue;
   }
   e.algaePrevDirection = direction || e.algaePrevDirection;
@@ -2597,7 +2599,8 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const overInflation = 0.25 + 2.75 * Math.pow(clamp(gasFill, 0, 1), 4);
       const algaeVent = e.controller === 'algae' ? algaeTraits(e).vent : 1;
       const lightVent = e.controller === 'algae' ? light * world.ecologyTuning.algaeLightVent * overInflation * algaeVent : 0;
-      e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * (porosity * GAS_LEAK_K + lightVent) * dt);
+      const bladderLeak = porosity * GAS_LEAK_K * (e.controller === 'algae' ? 0.35 : 1);
+      e.ballastGas = Math.max(0, e.ballastGas - e.ballastGas * (bladderLeak + lightVent) * dt);
     }
 
     // Photosynthesis: surface light turns into biomass but creates oxygen stress/waste and weight.
@@ -4102,7 +4105,7 @@ function algaeBirthHazard(world, algaeCount, producerMass) {
   const massPressure = producerMass / Math.max(1, regime.producerMassTarget);
   const crowding = Math.exp(-1.45 * countPressure * countPressure - 1.8 * massPressure * massPressure);
   const vacancy = 1 / (1 + Math.exp(6 * (countPressure - 0.82)));
-  return 0.72 * crowding * vacancy;
+  return 1.5 * crowding * vacancy;
 }
 
 function spawnTick(world, dt) {
