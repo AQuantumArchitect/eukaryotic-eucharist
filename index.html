@@ -66,6 +66,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .tBar{position:relative;width:12px;height:50px;background:rgba(255,255,255,.09);border-radius:6px;overflow:hidden}
 .tBar b{position:absolute;left:0;right:0;bottom:0;border-radius:6px}
 .tVal{font-size:10px;font-weight:900;color:#cfd6e8}
+.tStep{font-size:9px;font-weight:900;color:var(--muted);opacity:.9;line-height:1;margin-top:1px}
 .tArrow{border:1px solid rgba(255,255,255,.16);border-radius:7px;background:rgba(255,255,255,.06);color:#eaffef;font-size:11px;font-weight:950;padding:2px 5px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:2px;line-height:1}
 .tArrow b{font-size:9px;font-weight:900}
 .tArrow.gain{border-color:rgba(143,227,122,.5);color:#a6f0c0}
@@ -420,7 +421,8 @@ function tradeCol(t){
     const tip=leg.flush?`Empty ALL ${t.label} · costs ${Math.abs(leg.lip)} lipid`:`${dir==='up'?'Increase':'Reduce'} ${t.label} · ${leg.lip>0?'Yuki pays you '+leg.lip:'costs '+Math.abs(leg.lip)} lipids`;
     return `<button class="tArrow ${dir} ${cls} ${leg.canDo?'live':'dis'}" data-res="${t.res}" data-dir="${dir}" title="${tip}">${g}<b>${lbl}</b></button>`;
   };
-  return `<div class="tCol"><span class="tName" style="color:${t.color}">${t.label}</span>${arrow(t.up,'up','▲')}<div class="tBar"><b style="height:${pctCur}%;background:${t.color}"></b></div><span class="tVal">${val}</span>${arrow(t.down,'down','▼')}</div>`;
+  const stepTxt=t.step==null?'':(t.res==='oxygen'?`±${Math.round(t.step*100)}%`:t.res==='hp'?`+${t.step}`:`±${t.step}`);
+  return `<div class="tCol"><span class="tName" style="color:${t.color}">${t.label}</span>${arrow(t.up,'up','▲')}<div class="tBar"><b style="height:${pctCur}%;background:${t.color}"></b></div><span class="tStep">${stepTxt}</span><span class="tVal">${val}</span>${arrow(t.down,'down','▼')}</div>`;
 }
 function doTrade(res,dir){const r=K.tradeAtYuki(world,res,dir);if(r.ok){renderShop();}else toast(r.reason||'Cannot trade.');}
 // How many of this organ you already carry (drives the ×N badge + "Graft +1" wording).

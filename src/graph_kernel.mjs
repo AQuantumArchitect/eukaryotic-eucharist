@@ -4777,9 +4777,9 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 // buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
 const YUKI_TRADES = Object.freeze([
   { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
-  { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -6 }, down: { d: -10,   lip: 4 } },
+  { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -2 }, down: { d: -10,   lip: 1 } },
   { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { flush: true, lip: -1 } },
-  { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -2 }, down: { d: -0.30, lip: -1 } },
+  { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -1 }, down: { d: -0.30, lip: -1 } },
   { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
 ]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
@@ -4812,6 +4812,7 @@ export function getYukiTrades(world, entityId = world.playerId) {
   for (const t of YUKI_TRADES) rows.push({
     res: t.res, label: t.label, cur: tradeCur(e, t.res), cap: tradeCap(e, t.res, c),
     color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
+    step: t.up ? Math.abs(t.up.d) : (t.down && t.down.d != null ? Math.abs(t.down.d) : null), // resource moved per click
     up: t.up ? { lip: t.up.lip, flush: !!t.up.flush, canDo: tradeLegOk(e, t.res, t.up, c) } : null,
     down: t.down ? { lip: t.down.lip, flush: !!t.down.flush, canDo: tradeLegOk(e, t.res, t.down, c) } : null,
   });
