@@ -4876,8 +4876,14 @@ export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
   const leg = t && t[dir];
   if (!leg) return { ok: false, reason: 'not tradeable' };
   const c = caps(e);
-  if (!tradeLegOk(e, res, leg, c)) return { ok: false, reason: 'cannot trade now' };
   const cur = tradeCur(e, res), cap = tradeCap(e, res, c), lipCap = c.lipids ?? 0;
+  const lip = e.cargo.lipids || 0, lab = t.label;
+  // Specific, friendly failure reasons (surfaced as a toast on the tap-zone).
+  if (leg.flush) { if (cur <= 1e-6) return { ok: false, reason: `no ${lab.toLowerCase()} to empty` }; }
+  else if (leg.d > 0 && cur >= cap - 1e-6) return { ok: false, reason: `${lab} already full` };
+  else if (leg.d < 0 && cur < -leg.d - 1e-6) return { ok: false, reason: `need ${Math.ceil(-leg.d)} ${lab.toLowerCase()}` };
+  if (leg.lip < 0 && lip < -leg.lip - 1e-6) return { ok: false, reason: `need ${Math.ceil(-leg.lip)} lipids` };
+  if (leg.lip > 0 && lip >= lipCap - 1e-6) return { ok: false, reason: 'lipid wallet full' };
   const nv = leg.flush ? 0 : clamp(cur + leg.d, 0, cap);       // flush empties the whole tank
   if (res === 'hp') e.hp = nv;
   else if (res === 'oxygen') e.oxygen = nv;

@@ -584,10 +584,16 @@ function drawFields(){
     const amt=f.stock[f.resType]||0; if(amt<=0.05)continue;
     const R=f.radius, T=world.t;
     if(f.resType==='biomass'){
-      const c=RES_COLORS.biomass.join(','), a=clamp(amt/80,.14,.5);
+      const c=RES_COLORS.biomass.join(','), a=clamp(amt/70,.20,.6);
+      // Dark backing halo so green reads against ANY water — especially the warm/autumn transitional band.
+      const bk=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,R*1.02);
+      bk.addColorStop(0,'rgba(3,7,9,.32)'); bk.addColorStop(.72,'rgba(3,7,9,.13)'); bk.addColorStop(1,'rgba(3,7,9,0)');
+      ctx.fillStyle=bk; ctx.beginPath(); ctx.arc(f.x,f.y,R*1.02,0,Math.PI*2); ctx.fill();
       const rg=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,R);
-      rg.addColorStop(0,`rgba(${c},${a})`); rg.addColorStop(.7,`rgba(${c},${a*.34})`); rg.addColorStop(1,`rgba(${c},0)`);
+      rg.addColorStop(0,`rgba(${c},${a})`); rg.addColorStop(.65,`rgba(${c},${a*.4})`); rg.addColorStop(1,`rgba(${c},0)`);
       ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(f.x,f.y,R,0,Math.PI*2); ctx.fill();
+      // crisp edge ring — a defined green footprint that doesn't wash out on a busy background
+      ctx.strokeStyle=`rgba(${c},${0.4*Math.min(1,amt/28)})`; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(f.x,f.y,R*0.9,0,Math.PI*2); ctx.stroke();
     } else if(f.resType==='lipids'){
       // amber fat globules — the whole field rises (fat is light), so they float up with it
       const c=RES_COLORS.lipids.join(','), n=Math.min(8,1+Math.floor(amt/4)), sz=2.2+Math.min(3.2,amt/8);
