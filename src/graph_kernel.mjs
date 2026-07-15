@@ -252,7 +252,7 @@ const ALGAE_BLOAT_K = 0.85;       // radius bloat per √(structural mass) — a
 // than population targets or behavioral switches, so a tuning pass changes the flow field instead
 // of prescribing an outcome. createEcologyWorld({ ecologyTuning: { ... } }) overrides any subset.
 export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
-  algaePhotoScale: 0.04,
+  algaePhotoScale: 0.018,
   algaeLightVent: ALGAE_LIGHT_GAS_VENT_K,
   scavengerDetritusGain: 1.0,
   scavengerHunterPressure: 1.0,
@@ -264,16 +264,18 @@ export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
 // distribution, not a script: every world samples a different collection of phases and
 // metabolic traits from this same aggregate ecology.
 export const DEFAULT_ALGAE_REGIME = Object.freeze({
-  algaeMeanCount: 60,
-  algaeCountSpread: 7,
-  producerMassTarget: 13000,
+  algaeMeanCount: 82,
+  algaeCountSpread: 4.5,
+  producerMassTarget: 10500,
   producerMassSpread: 1800,
   cycleMinSeconds: 45,
   cycleMaxSeconds: 120,
   depthMin: 210,
   depthMax: 2350,
-  structuralMean: 98,
-  structuralSpread: 15,
+  structuralMean: 72,
+  structuralSpread: 22,
+  structuralMedian: 48,
+  structuralLogSpread: 0.72,
   traitSpread: 0.22
 });
 // Resource fields drift by what they're made of, so matter stratifies in the column:
@@ -1200,27 +1202,43 @@ function seedAnalyticAlgaeRegime(world) {
   for (let i = 0; i < count; i++) {
     const traits = sampleAlgaeTraits(world, r);
     const seedPhase = world.rng() * Math.PI * 2;
-    const cycleHistory = world.rng() < 0.030 ? 11 + Math.floor(rand(world, 0, 18)) : Math.floor(rand(world, 0, 4));
-    const veteranScale = 1 + 2.5 * (1 - Math.exp(-cycleHistory / 11));
-    const structural = clamp(gaussian(world.rng, r.structuralMean, r.structuralSpread) * veteranScale, 58, 420);
-    const cargoBiomass = clamp(gaussian(world.rng, 92, 19), 42, 142);
+    // A log-normal producer spectrum gives the canopy its dream-of-fuzz shape without
+    // size classes: abundant tiny blooms, progressively fewer medium bodies, and a long
+    // continuous tail containing the rare old giant.
+    const structural = clamp(Math.exp(gaussian(world.rng,
+      Math.log(r.structuralMedian || 48), r.structuralLogSpread || 0.72)), 20, 420);
+    const cycleHistory = Math.max(0, Math.floor(Math.log(Math.max(1, structural / 26)) * 5 + gaussian(world.rng, 0, 1.8)));
+    const cargoBiomass = clamp(structural * rand(world, 0.22, 0.42) + gaussian(world.rng, 0, 4), 5, 112);
     const depthWave = (1 - Math.cos(seedPhase)) * 0.5;
+    const surfaceDepth = clamp(58 + structural * 0.72, 70, 260);
     const workDepth = WORLD.canopy + clamp(220 + structural * 10, r.depthMin, Math.min(r.depthMax + 900, 3200));
-    const y = clamp(WORLD.canopy + r.depthMin + (workDepth - WORLD.canopy - r.depthMin) * depthWave + gaussian(world.rng, 0, 70), WORLD.canopy + 45, WORLD.h - 100);
+    const orbitSpan = Math.max(120, workDepth - WORLD.canopy - surfaceDepth);
+    const y = clamp(WORLD.canopy + surfaceDepth + orbitSpan * depthWave + gaussian(world.rng, 0, 32), WORLD.canopy + 35, WORLD.h - 100);
     const period = clamp(gaussian(world.rng, 78, 17) / traits.cycle, r.cycleMinSeconds, r.cycleMaxSeconds);
-    const gasFill = clamp(0.56 + 0.22 * Math.cos(seedPhase) - 0.10 * (structural - r.structuralMean) / Math.max(1, r.structuralSpread), 0.12, 0.94);
+    // At the bright top, gas has vented and weight starts the descent. At the deep
+    // turn, fermentation has filled the bladder for the return. The old sign was
+    // reversed, which seeded every depth with downward pressure.
+    const sizeGas = 0.07 * Math.tanh((structural - r.structuralMean) / Math.max(1, r.structuralSpread * 2));
+    const gasFill = clamp(0.67 - 0.25 * Math.cos(seedPhase) + sizeGas, 0.25, 0.96);
     const e = spawnAlgae(world, {
-      mature: true, biomass: cargoBiomass, y, x: rand(world, 0, WORLD.w),
+      mature: false, r: clamp(11 + Math.sqrt(structural) * 1.55, 16, 45), biomass: cargoBiomass, y, x: rand(world, 0, WORLD.w),
       algaeTraits: traits, algaeSeedPhase: seedPhase, algaeCyclePeriod: period
     });
     e.biomassMass = structural;
     e.algaeCycleCount = cycleHistory;
+    e.organelles.storage_vacuole = clamp(Math.round(2.5 + Math.sqrt(structural) * 0.48), 4, 8);
+    e.organelles.membrane_hardening = clamp(Math.round(0.6 + structural / 105), 1, 4);
+    e.organelles.oxygen_tolerance = clamp(Math.round(2.2 + structural / 90), 3, 6);
     e.ballastGas = caps(e).ballastGas * gasFill;
-    // This is a sampled state on a continuous orbit, not a discrete rise/sink bucket.
-    e.vy = Math.sin(seedPhase) * (7 + 9 * (structural / Math.max(1, r.structuralMean))) + gaussian(world.rng, 0, 2.5);
+    // Analytic derivative of the sampled continuous depth orbit. This is the crucial
+    // in-medias-res condition: half the phases rise, half descend, at velocities that
+    // agree with their individual amplitude and period instead of beginning nearly still.
+    e.vy = Math.sin(seedPhase) * orbitSpan * Math.PI / period + gaussian(world.rng, 0, 1.5);
     e.algaePrevDirection = Math.sign(e.vy);
-    e.organelles.photosystem = clamp(2 + Math.floor(structural / 38), 2, ORGANELLES.photosystem.max);
+    e.fallState = e.vy > 0.4 ? 'sinking' : (e.vy < -0.4 ? 'rising' : null);
+    e.organelles.photosystem = clamp(Math.round(1.8 + Math.sqrt(structural) * 0.28), 2, ORGANELLES.photosystem.max);
     e._capsEpoch = -1;
+    e.r = targetRadius(e);
   }
 }
 
@@ -2461,7 +2479,11 @@ function updateAlgaeAI(world, e, dt) {
   e.vx += Math.cos(phase * 0.73 + e.id.length) * speedOf(e) * 0.22 * dt;
   // Vertical: buoyancy is the sole driver. sinkPressure<0 (buoyant) → up (vy negative);
   // sinkPressure>0 (heavy) → down. Gentle gain + clamp so it's a smooth drift, not a lurch.
-  const topRepel = Math.max(0, WORLD.canopy + 95 - e.y) * 0.036;
+  // A continuous pressure cushion turns a fast-rising bloom before the emergency
+  // world clamp. It is negligible below the surface shelf and steepens smoothly
+  // as the canopy compresses the bladder.
+  const topCompression = Math.max(0, (WORLD.canopy + 180 - e.y) / 140);
+  const topRepel = 24 * topCompression * topCompression;
   const deepRepel = Math.max(0, e.y - (WORLD.h - 150)) * 0.022;
   e.vy += (clamp(sinkPressure * 0.33, -15, 20) + phaseBias + deepReturn + topRepel - deepRepel) * dt;
   // A committed plunge picks up speed, but the deeper it goes the harder its ballast fights back
@@ -4789,7 +4811,7 @@ export function getYukiOfferings(world, entityId = world.playerId) {
     name: canSeq ? `Sequence Genome (${dnaHeld})` : 'Sequence Genome', dnaHeld,
     desc: canSeq ? `Yuki reads your ${dnaHeld} DNA record${dnaHeld > 1 ? 's' : ''}: ${carried.length ? carried.map(([s, v]) => `${ORGANELLES[s].name} ${Math.round(v * 100)}%${world.discoveredSources.has(s) ? ' (upgrade)' : ''}`).join(', ') : 'no new traits'}${junkCount > 0 ? `; ${junkCount} junk strand${junkCount > 1 ? 's' : ''} → restock your scarcest exotics` : ''}.` : 'Nothing to sequence yet — harvest DNA from mutant strains, then bring it here.',
     cost: seqCost, costText: fmtStock(seqCost),
-    locked: !canSeq || !affordSeq, affordable: affordSeq,
+    locked: !canSeq || !affordSeq, affordable: affordSeq, available: canSeq,
     reasons: seqReasons,
     owned: false, maxed: false, undiscovered: false, category: null, potency: null, tier3: false, readiness: null
   }];
