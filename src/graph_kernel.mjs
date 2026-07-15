@@ -4,8 +4,8 @@
 export const VERSION = 'mobile_v1_3_3_light_oxygen_cloud_20260714h';
 
 export const WORLD = Object.freeze({
-  w: 2340,
-  h: 5600,
+  w: 3200,
+  h: 11200,
   canopy: 220,
   surfaceZone: 520,
   nurseryTop: 900,
@@ -1078,10 +1078,13 @@ export function oxygenAt(y) {
   // a long tail: low-light water can still support aerobic metabolism, while the
   // deepest water remains genuinely oxygen-poor. This is one continuous field,
   // not a policy boundary.
-  const floor = 0.06;
-  const cloud = 0.66;
-  const cliffDepth = 2300 - WORLD.canopy;
-  const cliffWidth = 350;
+  // O2 now BLANKETS the entire lit column and a margin below it (the cliff sits BELOW the light's
+  // dark shoulder ~y3400), so "in the light" always means "in oxygen". Beneath the cliff lies a vast,
+  // genuinely anaerobic abyss — the realm of the ancient O2-intolerant deep creatures.
+  const floor = 0.04;
+  const cloud = 0.70;
+  const cliffDepth = 4200 - WORLD.canopy;
+  const cliffWidth = 520;
   return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
 }
 
@@ -4176,7 +4179,7 @@ function populationTick(world, dt) {
 function escalationLevel(world) {
   const p = getPlayer(world);
   if (p) {
-    const depthTier = clamp((p.maxDepth || 0) / 850, 0, 6);      // 0 (canopy) .. ~6 (abyss floor)
+    const depthTier = clamp((p.maxDepth || 0) / ((WORLD.h - WORLD.canopy) / 6), 0, 6); // 0 (canopy) .. ~6 (abyss floor), spread across the full column
     const mitoJump = hasMito(p) ? 3 : 0;                          // the climax throws open the deep
     const genomeTier = clamp((world.discoveredSources?.size || 0) * 0.25, 0, 3);
     const target = depthTier + mitoJump + genomeTier;            // 0 .. ~12
@@ -4830,10 +4833,10 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 // buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
 const YUKI_TRADES = Object.freeze([
   { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
-  { res: 'energy',  label: 'ATP',     up: { d: 10,    lip: -2 }, down: { d: -10,   lip: 1 } },
+  { res: 'energy',  label: 'ATP',     up: { d: 24,    lip: -2 }, down: { d: -10,   lip: 1 } }, // big cheap charge — survival top-up
   { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { flush: true, lip: -1 } },
   { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -1 }, down: { d: -0.30, lip: -1 } },
-  { res: 'hp',      label: 'HP',      up: { d: 40,    lip: -8 } },
+  { res: 'hp',      label: 'HP',      up: { d: 70,    lip: -3 } },                             // big cheap patch — survival top-up
 ]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
 function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
