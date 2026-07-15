@@ -4,8 +4,8 @@
 export const VERSION = 'mobile_v1_3_3_light_oxygen_cloud_20260714h';
 
 export const WORLD = Object.freeze({
-  w: 3200,
-  h: 11200,
+  w: 2240,
+  h: 7840,
   canopy: 220,
   surfaceZone: 520,
   nurseryTop: 900,
@@ -313,6 +313,8 @@ const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still cl
 const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
 const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
+const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat is calorie-dense day-to-day fuel
+const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -1092,6 +1094,11 @@ function yAtLight(targetLight) {
   return (bright + dark) * 0.5;
 }
 
+// The mitochondrial Eucharist's depth precondition (hostReadiness) is pinned to the 1% luminosity
+// mark rather than a raw pixel depth, so it stays correct if the light column's optics are ever
+// retuned. Expressed as maxDepth (relative to the canopy), matching how entity.maxDepth is tracked.
+const MITO_DEPTH_MARK = yAtLight(0.01) - WORLD.canopy;
+
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
   // Photosynthesis fills the upper 0..1500 water with a broad diffuse O2 cloud.
@@ -1743,8 +1750,8 @@ function hostReadiness(entity, world) {
   const unlockCount = (world && world.discoveredSources) ? world.discoveredSources.size : (entity.cargo.dna || 0);
   const unlocked = clamp(unlockCount / 1, 0, 1);
   // Descent is now a real precondition: the Eucharist demands you carry the pressure
-  // of the deep in your body. Full credit only past the rupture layer, into the deep.
-  const depth = clamp((entity.maxDepth || 0) / 3000, 0, 1);
+  // of the deep in your body. Full credit only once you've reached the 1% luminosity mark.
+  const depth = clamp((entity.maxDepth || 0) / MITO_DEPTH_MARK, 0, 1);
   const score = 0.20 * lipid + 0.22 * membrane + 0.20 * exotics + 0.18 * unlocked + 0.20 * depth;
   const reasons = [];
   if (lipid < 0.8) reasons.push('needs lipid reserve');
@@ -2296,8 +2303,17 @@ function updateNpcBrain(world, e, player, dt) {
   }
 
   if (!e.ownerId) {
-    e.depthHome += (e.y - e.depthHome) * 0.12 * dt;
-    e.depthHome = clamp(e.depthHome, WORLD.canopy + 180, WORLD.h - 220);
+    // Parametric (light × O2) niche home — the SAME idea the scavengers use, on two axes. A hunter
+    // returns to the shallowest depth it can bear: a light-tolerant SKIRMISHER rides the lit+oxic
+    // shallows, the light-intolerant AEROBIC WALL holds just under the light in the O2 cloud, and an
+    // O2-intolerant deep boss sinks below the cloud. It still raids OUT after prey; this is where it
+    // drifts home. The two inverses are cached and refreshed on the throttled think tick.
+    if (e._nicheHome == null || e._think <= 0) {
+      const lightHome = e.photophobic ? yAtLight(e.lightTolerance) : WORLD.canopy + 260;
+      const o2Home = depthForOxygen(oxygenTolerance(e));
+      e._nicheHome = clamp(Math.max(lightHome, o2Home) + 250, WORLD.canopy + 200, WORLD.h - 220);
+    }
+    e.depthHome += (e._nicheHome - e.depthHome) * Math.min(1, 0.35 * dt);
   }
 
   // A completed hunt pays meat/fat once. ATP itself was transferred at the killing blow in hurt().
@@ -2839,6 +2855,17 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // but the conversion is less efficient. Bare reserves are slow but frugal.
       const volumeCurve = 0.10 + 1.60 * Math.pow(biomassFill, 1.35);
       const enzymeFill = clamp((e.cargo.enzymes || 0) / Math.max(1, caps(e).enzymes), 0, 1);
+      // Mid predators run day-to-day on FAT: lipids oxidize straight to ATP, sparing the biomass belly
+      // for the gorge-gated cleave. Grazing rising fat keeps a hunter charged; hunting fills the meat it
+      // can only reproduce with. Runs before the biomass processors so fat is the first fuel drawn.
+      if (FREE_HUNTERS.has(e.controller) && (e.cargo.lipids || 0) > 0.01) {
+        const atpRoom = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
+        if (atpRoom > 0) {
+          const burn = Math.min(e.cargo.lipids, atpRoom / LIPID_ATP_YIELD, HUNTER_LIPID_BURN * dt);
+          e.cargo.lipids -= burn;
+          e.cargo.energy += burn * LIPID_ATP_YIELD;
+        }
+      }
       for (const procId of PROCESSORS) {
         const level = orgCount(e, procId);
         if (level <= 0) continue;
@@ -4674,7 +4701,10 @@ function bestFieldFor(entity, world) {
     const matter = f._matter || 0; if (matter <= 0.5) continue; // cached in updateFields this frame
     const depthPenalty = Math.abs(f.y - entity.depthHome) * 0.010;
     const toxinPenalty = (f.stock.toxins || 0) * (hasOrg(entity, 'toxin_launcher') ? 0.01 : 0.09);
-    const score = matter / (35 + d) - depthPenalty - toxinPenalty;
+    // FAT is the mid predators' day-to-day food: a rising fat plume is calorie-dense and strongly
+    // preferred by the hunter guild (which grazes it for upkeep between kills). Others value it mildly.
+    const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : 0.018);
+    const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus;
     if (score > bestScore) { best = f; bestScore = score; }
   }
   return best;
