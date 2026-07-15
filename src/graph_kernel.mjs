@@ -85,6 +85,7 @@ const STRAINS = Object.freeze({
   // emergency digester, the efficient gut, and BOTH leech organs (they parasitize, they
   // don't fight). The most common, shallowest kill — the on-ramp for utility exotics.
   scavenger: [
+    { org: 'charge_cytostome', tint: '#49b6ff' },
     { org: 'cytostome', tint: '#8ef19e' },
     { org: 'selective_membrane', tint: '#8ef19e' },
     { org: 'chemotaxis_cilia', tint: '#6fd6ff' },
@@ -103,6 +104,7 @@ const STRAINS = Object.freeze({
   // predatory rasp, the harpoon, the adrenal surge, the dash-charge, and the hot
   // venom-fuel metabolism.
   predator: [
+    { org: 'charge_cytostome', tint: '#49b6ff' },
     { org: 'velocity_lance', tint: '#ff3d9a' },
     { org: 'lipid_vacuole', tint: '#f0c46a' },
     { org: 'cleavage_furrow', tint: '#ff9ad2' },
@@ -308,7 +310,7 @@ function fib(n) { let a = 1, b = 1; for (let i = 1; i < n; i++) { const t = a + 
 const CATEGORY_EXEMPT = new Set(['exotic_vacuole', 'dna_memory_vesicle']);
 // Functional buckets — mirror of index.html SHOP_GROUPS (keep the two in sync).
 const ORGAN_CATEGORY = {
-  membrane_intake: 'feeding', selective_membrane: 'feeding', cytostome: 'feeding', chemotaxis_cilia: 'feeding', nuclease_vesicle: 'feeding',
+  membrane_intake: 'feeding', selective_membrane: 'feeding', charge_cytostome: 'feeding', cytostome: 'feeding', chemotaxis_cilia: 'feeding', nuclease_vesicle: 'feeding',
   anaerobic_processor: 'metabolism', oxidase_vesicle: 'metabolism', anabolic_vesicle: 'metabolism',
   lipolytic_vesicle: 'metabolism', mineralizing_gland: 'metabolism', clean_processor: 'metabolism',
   virulent_processor: 'metabolism', catalytic_processor: 'metabolism', lipogenic_processor: 'metabolism',
@@ -455,6 +457,11 @@ export const ORGANELLES = Object.freeze({
     desc: 'A discriminating intake skin sequenced from choosy feeders. It pulls ATP fastest, skews between biomass and lipids toward whichever tank is emptier, and screens out toxins — so you can graze fouled fields safely and refuel efficiently.',
     stats: { energyAffinity: 1.55, skew: 0.7, toxinFilter: 0.14 }
   },
+  charge_cytostome: {
+    name: 'Charge Cytostome', tier: 3, action: null, stackable: false, max: 1, category: 'feed',
+    desc: 'A specialized intake mouth that flash-ingests ATP from a body at the moment it ruptures. It captures charge; an ATP Reservoir merely determines how much charge can be stored.',
+    stats: { corpseChargeCapture: 1.0 }
+  },
   flagella: {
     name: 'Flagellum', tier: 2, action: null, stackable: true, max: 8,
     desc: 'One flagellum. Buy one, grow one. Each adds swimming force and a little lift.',
@@ -498,7 +505,7 @@ export const ORGANELLES = Object.freeze({
   },
   atp_reservoir: {
     name: 'ATP Reservoir', tier: 3, action: null, stackable: true, max: 4, category: 'metabolic',
-    desc: 'A dedicated high-capacity charge sac — pure ATP storage, nothing else. Innate to the predator lineage: hunters bank a deep reserve of stolen charge and stay topped-up, leaving the biomass and fat of their kills to the scavengers. Sequenced from a predator, it lets any cell hoard energy the way they do.',
+    desc: 'A dedicated high-capacity charge sac — pure ATP storage, nothing else. It cannot ingest charge; pair it with a Charge Cytostome if you want to capture ATP directly from ruptured prey.',
     stats: { energy: 70, bulk: 0.020 }
   },
   exotic_vacuole: {
@@ -883,9 +890,10 @@ export const OFFERINGS = Object.freeze([
   { id: 'lipid_repair_loom', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Lipid Repair Loom', desc: 'Self-repair organ: lipids + ATP stitch the membrane. Harvested from resilient, self-mending cells.', cost: { biomass: 16, lipids: 12, enzymes: 1 }, organelle: 'lipid_repair_loom', requiresDiscovery: 'lipid_repair_loom', stackLimit: 5 },
   { id: 'cytostome', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Cytostome Bloom', desc: 'Larger feeding morphology harvested from voracious feeders: radius and flow increase together, at the cost of a softer membrane while gorging.', cost: { biomass: 18, lipids: 9, spores: 1 }, organelle: 'cytostome', requiresDiscovery: 'cytostome', stackLimit: 5 },
   { id: 'selective_membrane', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Selective Intake Membrane', desc: 'A choosy intake skin sequenced from discriminating feeders: pulls ATP fastest, favours the emptier of biomass/lipids, and filters out toxins so fouled fields become safe to graze.', cost: { biomass: 16, lipids: 8, enzymes: 1 }, organelle: 'selective_membrane', requiresDiscovery: 'selective_membrane', stackLimit: 1 },
+  { id: 'charge_cytostome', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Charge Cytostome', desc: 'Flash-ingests ATP from a prey body as it ruptures. This is the feeding organ that captures corpse charge; ATP Reservoirs only add storage.', cost: { biomass: 18, enzymes: 1, spores: 1 }, organelle: 'charge_cytostome', requiresDiscovery: 'charge_cytostome', stackLimit: 1 },
   { id: 'membrane_hardening', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Membrane Hardening Layer', desc: 'Tougher, less permeable skin sequenced from armored cells: better protection and slower diffusion, at a little flow and speed. Good for algae armor and predator survival.', cost: { biomass: 15, lipids: 11, crystals: 1 }, organelle: 'membrane_hardening', requiresDiscovery: 'membrane_hardening', stackLimit: 6 },
   { id: 'enzyme_reserve', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Enzyme Reserve Sac', desc: 'Emergency catalyst store from hardy cells: auto-spends an enzyme to flash-digest biomass into ATP whenever your energy runs critically low.', cost: { biomass: 14, enzymes: 2 }, organelle: 'enzyme_reserve', requiresDiscovery: 'enzyme_reserve', stackLimit: 1 },
-  { id: 'atp_reservoir', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'ATP Reservoir', desc: 'A deep charge sac sequenced from the predator lineage: pure ATP capacity, so you can hoard energy the way the hunters do — bank the harvest of many kills, then spend it all at once (a fission, a long sprint, a burst of costly organs).', cost: { biomass: 12, lipids: 8, crystals: 1 }, organelle: 'atp_reservoir', requiresDiscovery: 'atp_reservoir', stackLimit: 4 },
+  { id: 'atp_reservoir', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'ATP Reservoir', desc: 'A deep charge sac: pure ATP capacity, nothing more. It stores charge gathered by metabolism, feeding, or a Charge Cytostome; it does not ingest a corpse by itself.', cost: { biomass: 12, lipids: 8, crystals: 1 }, organelle: 'atp_reservoir', requiresDiscovery: 'atp_reservoir', stackLimit: 4 },
   { id: 'spore_jet', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Spore Jet Vesicle', desc: 'Wires your dash to a spore charge, sequenced from swift chargers: a stronger lunge that vents a spore cloud. Spends one spore per dash. Needs a Dash Vacuole.', cost: { biomass: 14, spores: 2 }, requiresOrganelle: 'dash_vacuole', requiresDiscovery: 'spore_jet', organelle: 'spore_jet', stackLimit: 1 },
   { id: 'crystal_ward', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Crystalline Ward Lattice', desc: 'Spend a crystal to sheathe the membrane, a lattice grown from armored deep cells: harder skin, reflected damage, and piercing shots for a few seconds.', cost: { biomass: 16, lipids: 6, crystals: 2 }, organelle: 'crystal_ward', requiresDiscovery: 'crystal_ward', stackLimit: 1 },
   { id: 'toxin_cloud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent bred from venomous deep hunters. Requires a Toxic Launcher to route the venom.', cost: { biomass: 16, toxins: 16, enzymes: 1 }, requiresOrganelle: 'toxin_launcher', requiresDiscovery: 'toxin_cloud', organelle: 'toxin_cloud', stackLimit: 3 },
@@ -1677,8 +1685,12 @@ function finishWorldStep(world, player, dt) {
       continue;
     }
     e.x = wrapX(e.x); e.y = clamp(e.y, WORLD.canopy + 2, WORLD.h - 30);
-    const damp = e.kind === 'player' ? 0.986 : 0.965;   // the player coasts (submarine INERTIA); NPCs settle quicker
-    e.vx *= Math.pow(damp, dt * 60); e.vy *= Math.pow(damp, dt * 60);
+    // Horizontal water drag is stronger on the starter player, preventing zero-upgrade lateral
+    // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
+    // not the 5-10 minutes produced by the old generic NPC damping.
+    const dampX = e.kind === 'player' ? 0.976 : 0.965;
+    const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.986 : 0.965;
+    e.vx *= Math.pow(dampX, dt * 60); e.vy *= Math.pow(dampY, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
     e.fissionCooldown = Math.max(0, (e.fissionCooldown || 0) - dt);
     e.maxDepth = Math.max(e.maxDepth || 0, e.y - WORLD.canopy);
@@ -1722,7 +1734,7 @@ function applyPlayerCommands(world, player, commands, dt) {
     if (player.cargo.energy >= moveCost) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
-      player.vx += move.x * sp * 3.8 * dt;
+      player.vx += move.x * sp * 2.5 * dt;
       player.vy += move.y * sp * 1.5 * dt;   // vertical is mostly BALLAST-driven — direct swim is a weak correction, not a jetpack
       if (!(Number.isFinite(commands.aimX) && Number.isFinite(commands.aimY))) player.phase = Math.atan2(move.y, move.x);
     }
@@ -3694,10 +3706,10 @@ function hurt(world, entity, amount, sourceId = null) {
     // On-kill riders belonging to the KILLER: necrotic bloom + fission budding.
     const killer = sourceId && sourceId !== entity.id ? world.entities.find(x => x.id === sourceId && x.alive) : null;
     if (killer) {
-      // ATP HARVEST — an ATP Reservoir is the explicit DNA organ that captures a corpse's charge.
-      // Wild predator lineages start with one; the player must sequence and graft one. Without it,
-      // energy stays in the corpse field for field-feeders rather than becoming hidden kill magic.
-      if ((ATP_HARVESTERS.has(killer.controller) || killer.kind === 'player') && hasOrg(killer, 'atp_reservoir')) {
+      // ATP HARVEST — the Charge Cytostome is the explicit feeding organ that captures a corpse's
+      // charge. ATP Reservoirs only expand storage. Without this mouth, energy remains in the corpse
+      // field for ordinary field-feeding rather than becoming controller-specific kill magic.
+      if ((ATP_HARVESTERS.has(killer.controller) || killer.kind === 'player') && hasOrg(killer, 'charge_cytostome')) {
         const room = caps(killer).energy - (killer.cargo.energy || 0);
         const playerYield = killer.kind === 'player' || killer.friendly;
         const drainFrac = playerYield ? ATP_HARVEST.playerDrainFrac : ATP_HARVEST.npcDrainFrac;
@@ -4216,7 +4228,7 @@ function spawnScavenger(world, opts = {}) {
   const hp = rand(world, 28, 45);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 11, 18), color: '#8ef19e', controller: 'scavenger', trophicRole: 'anaerobic_scavenger', depthHome: y,
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
+    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
   if (!opts.noStrain) { applyStrain(world, e); assignBody(e); }
   e.brainState = 'forage';
@@ -4234,7 +4246,7 @@ function spawnPredator(world, opts = {}) {
   const depthT = clamp((y - WORLD.ruptureTop) / 1700, 0, 1);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 20, 30) + depthT * 16, color: '#ff7897', controller: 'predator', trophicRole: 'rupture_predator', depthHome: y,
-    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), basal_motility: 1, flagella: 1, rasping_lamella: 1, storage_vacuole: 4, exotic_vacuole: 1, membrane_hardening: 1 + Math.round(depthT * 2), atp_reservoir: 1 + Math.round(depthT), cleavage_furrow: 1 }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
+    organelles: { membrane: 2 + Math.round(depthT * 2), anaerobic_processor: 3 + Math.round(depthT * 2), basal_motility: 1, flagella: 1, rasping_lamella: 1, charge_cytostome: 1, storage_vacuole: 4, exotic_vacuole: 1, membrane_hardening: 1 + Math.round(depthT * 2), atp_reservoir: 1 + Math.round(depthT), cleavage_furrow: 1 }, cargo: { biomass: rand(world, 24, 44), energy: rand(world, 34, 68), lipids: rand(world, 10, 30) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.48
   });
   const roll = world.rng();
@@ -4265,7 +4277,7 @@ function spawnProtozoan(world, opts = {}) {
   const hp = rand(world, 150, 230);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 34, 52), color: '#d892ff', controller: 'protozoan', trophicRole: 'deep_predator', depthHome: y,
-    organelles: { membrane: 3, anaerobic_processor: 3, basal_motility: 1, flagella: 1, rasping_lamella: 1, toxin_launcher: 1, mitochondrion: 1, lance_bristle: 1, storage_vacuole: 6, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 2, atp_reservoir: 2, cleavage_furrow: 1 }, cargo: { biomass: rand(world, 40, 78), energy: rand(world, 70, 120), lipids: rand(world, 24, 58), toxins: rand(world, 4, 18) }, oxygen: oxygenAt(y),
+    organelles: { membrane: 3, anaerobic_processor: 3, basal_motility: 1, flagella: 1, rasping_lamella: 1, charge_cytostome: 1, toxin_launcher: 1, mitochondrion: 1, lance_bristle: 1, storage_vacuole: 6, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 2, atp_reservoir: 2, cleavage_furrow: 1 }, cargo: { biomass: rand(world, 40, 78), energy: rand(world, 70, 120), lipids: rand(world, 24, 58), toxins: rand(world, 4, 18) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.65
   });
   e.photophobic = true; // deep predators are creatures of the dark
@@ -4302,7 +4314,7 @@ function spawnMetazoan(world, opts = {}) {
   const x = opts.x ?? rand(world, 0, WORLD.w);
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 42, 60), color: '#b060d0', controller: 'metazoan', trophicRole: 'colonial_predator', depthHome: y,
-    organelles: { membrane: 4, anaerobic_processor: 4, mitochondrion: 1, basal_motility: 1, flagella: 2, lance_bristle: 1, rasping_lamella: 1, toxin_launcher: 1, storage_vacuole: 8, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 3, atp_reservoir: 3, cleavage_furrow: 1 },
+    organelles: { membrane: 4, anaerobic_processor: 4, mitochondrion: 1, basal_motility: 1, flagella: 2, lance_bristle: 1, rasping_lamella: 1, charge_cytostome: 1, toxin_launcher: 1, storage_vacuole: 8, exotic_vacuole: 2, dna_memory_vesicle: 2, membrane_hardening: 3, atp_reservoir: 3, cleavage_furrow: 1 },
     cargo: { biomass: rand(world, 70, 120), energy: rand(world, 90, 150), lipids: rand(world, 40, 80), toxins: rand(world, 10, 24) }, oxygen: oxygenAt(y),
     ruptureThreshold: 0.7
   });
@@ -4862,7 +4874,7 @@ export function getHudProjection(world, entityId = world.playerId) {
   return {
     hp: { value: e.hp, max: c.hp, label: 'HP', layers: orgCount(e, 'membrane') },
     oxygen: { value: e.oxygen, max: c.oxygen, external: env.oxygen, tolerance: oxygenTolerance(e), label: 'O2' },
-    depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen },
+    depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen, photosynthetic: orgCount(e, 'photosystem') > 0 },
     resources: RESOURCES.map(r => ({ id: r, label: r === 'energy' ? 'ATP' : r, value: e.cargo[r] || 0, max: c[r] ?? 99, color: COLORS[r] || '#fff' })),
     organelles: Object.entries(e.organelles).map(([id, count]) => ({ id, count, name: ORGANELLES[id]?.name || id, tier: ORGANELLES[id]?.tier || 1, action: ORGANELLES[id]?.action || null, desc: ORGANELLES[id]?.desc || '', category: ORGANELLES[id]?.category || null })),
     graphStats: { caps: c, hpSource: 'Cell Membrane count × membrane HP + graph armor/chassis', storageSource: 'Storage Vacuole / Exotic Vesicle Rack / DNA Memory Vesicle counts' },

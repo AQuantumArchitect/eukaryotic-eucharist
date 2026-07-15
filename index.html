@@ -270,7 +270,7 @@ function updateUI(){
   // ATP keeps its vital bar above; the slot under the O2 meter becomes the ballast trim meter.
   const visible = ['biomass','lipids','toxins','__ballast','spores','enzymes','crystals','dna'];
   const glowT=0.5+0.5*Math.sin(uiPhase*0.42); // shared pulse phase for the filling glow
-  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';return `<div class="chip" title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i></div>`}).join('');
+  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';return `<div class="chip" title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i>${id==='biomass'?sunBar():''}</div>`}).join('');
   const metab = hud.metabolism ? ` · processors ${hud.metabolism.anaerobicProcessorLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
   const carried = (hud.carriedStrains&&hud.carriedStrains.length)?`<br><span style="color:#8fe37a;font-weight:900">◈ ${hud.carriedStrains.length} DNA sample${hud.carriedStrains.length>1?'s':''} carried — sequence at Yuki to unlock (lost if you die)</span>`:'';
   ui.status.innerHTML = `<strong>${hud.depth.zone}</strong> &nbsp; O2 water ${Math.round(hud.depth.externalOxygen*100)} · light ${Math.round(hud.depth.light*100)}${metab}<br>${hud.objective}${carried}`;
@@ -298,7 +298,7 @@ function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clea
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
 const SHOP_GROUPS=[
-  ['Feeding & Intake','intake pores, selective feeding, field-vacuum, DNA digestion',['membrane_intake','selective_membrane','cytostome','chemotaxis_cilia','nuclease_vesicle']],
+  ['Feeding & Intake','intake pores, selective feeding, corpse-charge ingestion, field-vacuum, DNA digestion',['membrane_intake','selective_membrane','charge_cytostome','cytostome','chemotaxis_cilia','nuclease_vesicle']],
   ['Metabolism & Fuel','biomass ⇄ ATP ⇄ lipids ⇄ crystals ⇄ gas flows',['anaerobic_processor','oxidase_vesicle','anabolic_vesicle','lipolytic_vesicle','mineralizing_gland','clean_processor','virulent_processor','catalytic_processor','lipogenic_processor','hydrogenosome','countercurrent_gill','chemosynthetic_vesicle','lipid_bladder','enzyme_reserve']],
   ['Structure, Storage & Defense','membranes, general + per-fluid tanks, armor, self-repair',['membrane','storage_vacuole','biomass_vacuole','lipid_vacuole','toxin_vacuole','atp_reservoir','exotic_vacuole','dna_memory_vesicle','membrane_hardening','lipid_repair_loom','thorn_coat','corrosive_pellicle','crystal_ward','volatile_vacuole','barophilic_sheath']],
   ['Oxygen & Buoyancy','bask · ferment gas to rise · flood ballast to dive · jettison to escape',['photosystem','oxygen_vacuole','oxygen_store','oxygen_tolerance','jettison_vesicle','gas_gland','pressure_bladder','ballast_siphon','aerocyst','catalase_vesicle','photolytic_vacuole','ballast_stone']],
@@ -445,6 +445,15 @@ function ballastChip(){
   const state=b.flooded?'DIVE':(buoyant?'RISE':'SINK');
   const col=b.flooded?'232,150,60':(buoyant?'73,182,255':'240,120,90');
   return `<div class="chip ballast" title="${CHIP_TIP.__ballast}"><div class="chipTop"><span>Ballast</span><span style="color:rgb(${col})">${state}</span></div><i class="ballastTrack"><b style="width:${(fill*100).toFixed(0)}%;background:rgb(${col})"></b></i></div>`;
+}
+// Sunlight sub-bar under the Biomass chip — appears only once a Photosystem is grafted (you're
+// now a light-harvester). Warm yellow that fills and brightens as you rise toward the idyllic lit
+// shallows, giving the algae path a direct read on "am I in good light to grow?".
+function sunBar(){
+  const d=hud&&hud.depth; if(!d||!d.photosynthetic) return '';
+  const l=Math.max(0,Math.min(1,d.light||0));
+  const col=`rgba(245,${Math.round(200+40*l)},${Math.round(85+35*l)},${(0.5+0.5*l).toFixed(2)})`;
+  return `<div class="chipTop" style="margin-top:5px;color:#f5d47a"><span>☀ Light</span><span>${Math.round(l*100)}%</span></div><i><b style="width:${(l*100).toFixed(0)}%;background:${col};box-shadow:0 0 ${(7*l).toFixed(1)}px ${col}"></b></i>`;
 }
 function resLabel(k){return k==='energy'?'ATP':k}
 // Each pill wears its resource's own color, so ATP reads blue, toxins yellow, biomass
