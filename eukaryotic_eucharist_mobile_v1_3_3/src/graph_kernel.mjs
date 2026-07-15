@@ -223,7 +223,7 @@ const VERT_GRADIENT = Object.freeze({
 });
 // Global dial on the WHOLE movement-ATP economy below — applies identically to the player and
 // every NPC (not a per-species exception), so ecology tuning is one number, not a body-type branch.
-const MOVE_ATP_SCALE = 0.35;
+const MOVE_ATP_SCALE = 0;
 const BALLAST_PUMP_ATP = Object.freeze({
   // Ballast PUMP (rise) is compression, not creation: forcing gas into a bladder that's already
   // full pushes back harder, and pumping while genuinely heavy is real work against your own
@@ -1502,6 +1502,15 @@ function seedMatureEcosystem(world) {
 
   for (let i = 0; i < 20; i++) {
     spawnParticle(world, choice(world, ['spores', 'spores', 'enzymes', 'crystals']), rand(world, 0, WORLD.w), WORLD.ruptureTop + rand(world, 120, 1650), 1);
+  }
+
+  // SNAP: a second pass randomizing EVERY body's HP, so the world never starts as a synchronized
+  // full-health platoon — a mature froth is a spread of freshly-wounded and veteran cells. Every body
+  // with an HP bar gets a fresh random fill (the player, if present, is left alone so a run starts whole).
+  for (const e of world.entities) {
+    if (!e.alive || e.kind === 'player') continue;
+    const hpCap = caps(e).hp;
+    if (hpCap > 0) { e.hp = hpCap * rand(world, 0.25, 1.0); e._capsEpoch = -1; }
   }
 
   world.spawn.algae = rand(world, 0.8, 1.4);
@@ -4313,9 +4322,23 @@ function removeDead(world) {
 
 // A shed membrane layer spills mostly lipids (and a little biomass) into the water where
 // it tore — the underhost swims on. Shared by combat, engulf, and algae-peeling.
+// The lipid worth of the Nth membrane layer = its Yuki-shop install price refined to lipids: base
+// {biomass:12,lipids:8} → (12·0.4 + 8)·0.5 = 6.4 lipids for the 1st, climbing by φ per layer (the
+// same geometric armour curve the shop charges). Kept in sync with the membrane OFFERING cost.
+const MEMBRANE_LAYER_LIPID = (12 * BIOMASS_TO_LIPID + 8) * 0.5; // ≈ 6.4
+function membraneLayerLipidCost(layerIndex) { // layerIndex is 1-based (the nth plate)
+  return MEMBRANE_LAYER_LIPID * Math.pow(MEMBRANE_COST_RATIO, Math.max(0, layerIndex - 1));
+}
 function shedMembraneLayers(world, e, count) {
+  // Every membrane layer torn off by HP damage sheds LIPIDS equal to 50% of its install cost — which
+  // climbs geometrically (φ per layer), so stripping the outer plates off a heavily-armoured cell (a
+  // huge deep toxic alga, a veteran predator) floods the water with fat. `count` outer plates were just
+  // peeled; e.organelles.membrane already holds what REMAINS, so the shed layers are the ones above it.
+  const remaining = orgCount(e, 'membrane');
+  let lip = 0;
+  for (let k = 1; k <= count; k++) lip += 0.5 * membraneLayerLipidCost(remaining + k);
   const stock = emptyCargo();
-  stock.lipids = 3.5 * count + (e.cargo.lipids || 0) * 0.06 * count;
+  stock.lipids = lip + (e.cargo.lipids || 0) * 0.06 * count;
   stock.biomass = 2 * count;
   spawnResourceField(world, e.x, e.y, stock, { radius: clamp(e.r * 0.9, 18, 90), density: 1.1, sourceKind: 'shed_membrane', maxAge: 20, maxRadius: 120 });
 }
