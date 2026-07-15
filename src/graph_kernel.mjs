@@ -843,14 +843,10 @@ export const ORGANELLES = Object.freeze({
   }
 });
 
+// Yuki's exchange is now a lipid-currency counter (see YUKI_TRADES / tradeAtYuki below), not a set of
+// fixed-recipe offerings — every resource buys/sells against lipids with up/down arrows. The old
+// repair/buy_*/detox offerings are gone; repair = buying HP, detox = selling toxins/O2.
 export const OFFERINGS = Object.freeze([
-  { id: 'repair', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Repair Communion', output: 'hp', desc: 'Yuki patches your membrane from whatever matter you bring — pay a fair share of your biomass and fat, no exact recipe.', value: 10, effect: { heal: 38 } },
-  { id: 'buy_biomass', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render Lipids into Biomass', output: 'biomass', desc: 'Convert stored fat into construction slurry.', cost: { lipids: 8, energy: 3 }, gain: { biomass: 9 } },
-  { id: 'buy_lipids', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Render Biomass into Lipids', output: 'lipids', desc: 'Sell your heavy biomass for light, spendable fat — the shop currency. No ATP needed: offload the mass, bank the wealth, escape the biomass tax.', cost: { biomass: 8 }, gain: { lipids: 6 } },
-  { id: 'buy_energy', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Charge ATP', output: 'energy', desc: 'Yuki burns a fair share of your matter into a clean ATP charge — no exact recipe, pay from what you carry.', value: 6, gain: { energy: 10 } },
-  { id: 'buy_toxins', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Distill Toxins', output: 'toxins', desc: 'Restock toxin chemistry as a single clean tank.', cost: { biomass: 4, energy: 3 }, gain: { toxins: 7 } },
-  { id: 'detox', section: 'Tier 1 - Matter survival', kind: 'exchange', name: 'Yuki Detox', output: 'detox', desc: 'Pass toxins and oxygen stress into the canopy — cuts each by two-thirds. Not a combat vent.', cost: { energy: 4 }, effect: { detoxFrac: 2 / 3, oxygenVentFrac: 2 / 3 } },
-
   { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8 }, organelle: 'membrane', stackLimit: 8 },
   { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4 }, organelle: 'membrane_intake', stackLimit: 6 },
   { id: 'anaerobic_processor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anaerobic Processor', desc: 'Add one more biomass-to-ATP organ flow. More processors mean more flow and more toxin waste.', cost: { biomass: 14, lipids: 5, enzymes: 1 }, organelle: 'anaerobic_processor', stackLimit: 8 },
@@ -4658,6 +4654,68 @@ export function getAvailableActions(world, entityId = world.playerId) {
 }
 
 export function nearYuki(world, entity = getPlayer(world)) { return !!entity && entity.y < WORLD.canopy + 220; }
+
+// ── Yuki exchange counter: LIPIDS are the currency ──────────────────────────
+// Every tradeable resource buys (lipids→R, ▲) and sells (R→lipids, ▼) in fixed chunks. Lipids itself is
+// the money (no self-trade). HP can only be BOUGHT (repair — you can't sell your own flesh). Selling
+// toxins / O2 is the new "detox" (dump the excess for a little cash). Biomass trades near-symmetric (it's
+// the core refine loop); ATP/toxins/O2 carry a spread so trading isn't free arbitrage.
+const YUKI_TRADES = Object.freeze([
+  { res: 'hp', label: 'HP', buyLip: 8, buyAmt: 40 },                                   // repair only
+  { res: 'biomass', label: 'Biomass', buyLip: 6, buyAmt: 8, sellAmt: 8, sellLip: 6 },  // core loop — no spread
+  { res: 'energy', label: 'ATP', buyLip: 6, buyAmt: 10, sellAmt: 10, sellLip: 4 },
+  { res: 'toxins', label: 'Toxins', buyLip: 4, buyAmt: 8, sellAmt: 8, sellLip: 3 },
+  { res: 'oxygen', label: 'O2', buyLip: 5, buyAmt: 0.30, sellAmt: 0.30, sellLip: 4 },
+]);
+function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
+function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
+
+export function getYukiTrades(world, entityId = world.playerId) {
+  CAPS_EPOCH++;
+  const e = world.entities.find(x => x.id === entityId);
+  if (!e) return [];
+  const c = caps(e);
+  const lip = e.cargo.lipids || 0, lipCap = c.lipids ?? 0;
+  return YUKI_TRADES.map(t => {
+    const cur = tradeCur(e, t.res), cap = tradeCap(e, t.res, c);
+    return {
+      res: t.res, label: t.label, cur, cap,
+      color: COLORS[t.res] || (t.res === 'hp' ? '#ff6c8e' : t.res === 'oxygen' ? '#bfe8ff' : '#fff'),
+      buyLip: t.buyLip, buyAmt: t.buyAmt, sellLip: t.sellLip ?? null, sellAmt: t.sellAmt ?? null,
+      canBuy: t.buyLip != null && lip >= t.buyLip && cur < cap - 1e-6,
+      canSell: t.sellAmt != null && cur >= t.sellAmt && lip < lipCap - 1e-6,
+      sellable: t.sellAmt != null,
+    };
+  });
+}
+
+export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
+  CAPS_EPOCH++;
+  const e = world.entities.find(x => x.id === entityId);
+  if (!e) return { ok: false, reason: 'missing entity' };
+  const t = YUKI_TRADES.find(x => x.res === res);
+  if (!t) return { ok: false, reason: 'not tradeable' };
+  const c = caps(e);
+  const cur = tradeCur(e, res), cap = tradeCap(e, res, c);
+  const setRes = (v) => { if (res === 'hp') e.hp = v; else if (res === 'oxygen') e.oxygen = v; else e.cargo[res] = v; };
+  if (dir === 'buy') {
+    if (t.buyLip == null) return { ok: false, reason: 'not buyable' };
+    if ((e.cargo.lipids || 0) < t.buyLip) return { ok: false, reason: 'not enough lipids' };
+    if (cur >= cap - 1e-6) return { ok: false, reason: `${t.label} full` };
+    e.cargo.lipids -= t.buyLip;
+    setRes(Math.min(cap, cur + t.buyAmt));
+  } else {
+    if (t.sellAmt == null) return { ok: false, reason: `cannot sell ${t.label}` };
+    const lipCap = c.lipids ?? 0;
+    if (cur < t.sellAmt) return { ok: false, reason: `not enough ${t.label}` };
+    if ((e.cargo.lipids || 0) >= lipCap - 1e-6) return { ok: false, reason: 'lipid tank full' };
+    setRes(cur - t.sellAmt);
+    e.cargo.lipids = Math.min(lipCap, (e.cargo.lipids || 0) + t.sellLip);
+  }
+  clampCargo(e);
+  world.events.push({ type: 'buy', entityId, offeringId: `trade_${dir}_${res}` });
+  return { ok: true, res, dir };
+}
 
 export function getYukiOfferings(world, entityId = world.playerId) {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo

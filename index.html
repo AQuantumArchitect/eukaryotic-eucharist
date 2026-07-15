@@ -55,6 +55,24 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 /* The recommended survival exchange — a bright ribbon so the eye lands on Repair/ATP/Detox, not ammo. */
 .offer.exchange.rec{position:relative;outline:1.5px solid rgba(255,255,255,.5);outline-offset:1px}
 .offer.exchange .recTag{display:block;font-size:8px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#fff;margin-bottom:3px;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+/* Lipid exchange counter — currency bank + per-resource ▲buy / ▼sell rows. */
+.lipBank{width:100%;font-size:12px;font-weight:950;color:#f0c46a;margin:0 0 4px;display:flex;align-items:baseline;gap:6px}
+.lipBank small{font-weight:800;color:var(--muted);text-transform:none;letter-spacing:0}
+.lipBank b{color:#ffe0a0;font-size:15px;margin-left:auto}
+.lipBank .lipCap{color:var(--muted);font-size:11px}
+.tRow{display:flex;align-items:center;gap:8px;width:100%;padding:2px 0}
+.tName{width:56px;font-size:11px;font-weight:950;flex:0 0 auto}
+.tVal{width:44px;font-size:10px;font-weight:900;color:#cfd6e8;text-align:right;flex:0 0 auto}
+.tTrack{flex:1 1 auto;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
+.tTrack b{display:block;height:100%;border-radius:99px}
+.tArrow{flex:0 0 auto;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(255,255,255,.06);color:#eaffef;font-size:11px;font-weight:950;padding:3px 6px;min-width:46px;display:inline-flex;align-items:center;justify-content:center;gap:3px}
+.tArrow b{font-size:10px;font-weight:900}
+.tArrow.up{border-color:rgba(158,240,189,.42);color:#c8ffdd}
+.tArrow.down{border-color:rgba(240,196,106,.42);color:#ffe0a0}
+.tArrow.live{cursor:pointer;pointer-events:auto}
+.tArrow.live:hover{background:rgba(255,255,255,.13)}
+.tArrow.dis{opacity:.28;cursor:not-allowed}
+.tArrow.none{border:0;background:transparent;pointer-events:none}
 </style>
 </head>
 <body>
@@ -345,14 +363,14 @@ function closeShop(force){
 // your owned organs AND the whole organelle store — lives in one scrollable body, grouped by system.
 function renderShop(){
   const offers=K.getYukiOfferings(world);
-  const EXCH_ORDER=['repair','buy_energy','detox','buy_lipids','buy_biomass','buy_toxins'];
-  const exOffers=offers.filter(o=>o.kind==='exchange').sort((a,b)=>{const ia=EXCH_ORDER.indexOf(a.id),ib=EXCH_ORDER.indexOf(b.id);return (ia<0?99:ia)-(ib<0?99:ib)});
-  for(const o of exOffers) o._rec=false;
-  let topRec=null,topNeed=0.34;
-  for(const o of exOffers){if(o.locked)continue;const n=exchangeNeed(o);if(n>topNeed){topNeed=n;topRec=o;}}
-  if(topRec) topRec._rec=true;
-  const exchanges=[...exOffers, ...offers.filter(o=>o.kind==='sequence')];
-  ui.shopExchange.innerHTML = exchanges.map(offerCard).join('');
+  // Yuki exchange counter — LIPIDS are the currency. Each resource has ▲ buy (lipids→it) and ▼ sell
+  // (it→lipids). HP buys only (repair); lipids is the money itself. Selling toxins/O2 is the new detox.
+  const trades=K.getYukiTrades(world);
+  const lipRes=(hud&&hud.resources)?hud.resources.find(r=>r.id==='lipids'):null;
+  const seqOffers=offers.filter(o=>o.kind==='sequence');
+  ui.shopExchange.innerHTML = `<div class="lipBank">🪙 Lipids <small>— the currency</small> <b>${lipRes?fmt(lipRes.value):0}</b><span class="lipCap">/ ${lipRes?fmt(lipRes.max):0}</span></div>`
+    + trades.map(tradeRow).join('')
+    + seqOffers.map(offerCard).join('');
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
   const rest=offers.filter(o=>!inBar(o));
   const buckets=SHOP_GROUPS.map(()=>[]);
@@ -372,11 +390,23 @@ function renderShop(){
   if(ui.shopWarn){const s=shopStress();if(s.stressed){ui.shopWarn.style.display='block';ui.shopWarn.innerHTML='⚠ '+s.msg+' before you leave';}else{ui.shopWarn.style.display='none';}}
   // Exchange bar: the whole card buys. Body organelle cards: the ⊕ button buys (1-click, no expand
   // needed); tapping the card body toggles the detail (description, category, DNA variant notes).
+  for(const b of ui.shopExchange.querySelectorAll('.tArrow.live')) b.onpointerup=e=>{e.preventDefault();doTrade(b.dataset.res,b.dataset.dir);};
   for(const card of ui.shopExchange.querySelectorAll('.offer')) card.onpointerup=e=>{e.preventDefault();doBuy(card.dataset.id,card.dataset.kind);};
   for(const btn of ui.shopBody.querySelectorAll('.oBuy[data-id]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doBuy(btn.dataset.id,btn.closest('.offer').dataset.kind);};
   for(const card of ui.shopBody.querySelectorAll('.offer.organelle,.offer.sacrament,.offer.colony')) card.onclick=e=>{if(e.target.closest('.oBuy'))return;card.classList.toggle('open');};
 }
-function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='exchange'?'Yuki obliges — the exchange flows through you.':kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
+function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
+// One row of the lipid exchange counter: name · amount · fill bar · ▼ sell (→lipids) · ▲ buy (lipids→).
+function tradeRow(t){
+  const pctCur=Math.round(100*t.cur/Math.max(1e-6,t.cap));
+  const val=t.res==='oxygen'?Math.round(t.cur*100)+'%':fmt(t.cur);
+  const sell=t.sellable
+    ? `<button class="tArrow down ${t.canSell?'live':'dis'}" data-res="${t.res}" data-dir="sell" title="Sell ${t.sellAmt} ${t.label} → +${t.sellLip} lipids">▼<b>+${t.sellLip}</b></button>`
+    : `<span class="tArrow none"></span>`;
+  const buy=`<button class="tArrow up ${t.canBuy?'live':'dis'}" data-res="${t.res}" data-dir="buy" title="Buy ${t.buyAmt} ${t.label} for ${t.buyLip} lipids">▲<b>${t.buyLip}</b></button>`;
+  return `<div class="tRow"><span class="tName" style="color:${t.color}">${t.label}</span><span class="tVal">${val}</span><i class="tTrack"><b style="width:${pctCur}%;background:${t.color}"></b></i>${sell}${buy}</div>`;
+}
+function doTrade(res,dir){const r=K.tradeAtYuki(world,res,dir);if(r.ok){renderShop();}else toast(r.reason||'Cannot trade.');}
 // How many of this organ you already carry (drives the ×N badge + "Graft +1" wording).
 function orgCardCount(o){if(!hud||!o.organelle)return 0;const oc=hud.organelles.find(x=>x.id===o.organelle);return oc?oc.count:0;}
 // Tri-state so the three cases READ differently (not just in text): ready to graft (affordable),
