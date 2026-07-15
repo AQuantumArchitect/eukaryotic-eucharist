@@ -104,10 +104,10 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
   <div class="hud">
     <div class="canopyBar card">All Praise Yuki <small>metabolism to information</small></div>
     <div class="vitals">
-      <div class="vital hp card" id="hpVital" data-tres="hp"><div class="vtop"><span>HP</span><span id="hpText">0</span></div><div class="track"><div class="fill" id="hpFill"></div><div class="layerLines" id="hpLayers"></div></div></div>
-      <div class="vital energy card" id="energyVital" data-tres="energy"><div class="vtop"><span>ATP</span><span id="energyText">0</span></div><div class="track"><div class="fill" id="energyFill"></div></div></div>
+      <div class="vital hp card" id="hpVital"><div class="vtop"><span>HP</span><span id="hpText">0</span></div><div class="track"><div class="fill" id="hpFill"></div><div class="layerLines" id="hpLayers"></div></div></div>
+      <div class="vital energy card" id="energyVital"><div class="vtop"><span>ATP</span><span id="energyText">0</span></div><div class="track"><div class="fill" id="energyFill"></div></div></div>
       <div class="vital depth card" id="depthVital"><div class="vtop"><span>Depth</span><span id="depthText">0</span></div><div class="track"><div class="fill" id="depthFill"></div></div></div>
-      <div class="vital oxygen card" id="o2Vital" data-tres="oxygen"><div class="vtop"><span>O2</span><span id="o2Text">0</span></div><div class="track"><div class="fill" id="o2Fill"></div></div></div>
+      <div class="vital oxygen card" id="o2Vital"><div class="vtop"><span>O2</span><span id="o2Text">0</span></div><div class="track"><div class="fill" id="o2Fill"></div></div></div>
     </div>
     <div class="chips" id="chips"></div>
     <div class="status card" id="status"><strong>v1.3.3</strong> predator flow balance</div>
@@ -233,6 +233,7 @@ function command(){
 function loop(now){
   const dt=Math.min(.05,(now-last)/1000||1/60); last=now;
   if(ui.shopOverlay.style.display!=='flex') K.step(world, command(), dt);
+  else K.yukiRestore(world, dt);   // in Yuki's chamber she freely heals HP, recharges ATP, eases O2
   projection=K.getRenderProjection(world); hud=K.getHudProjection(world);
   const player=projection.entities.find(e=>e.id===world.playerId);
   if(player){camera.x=player.x-innerWidth*.5;camera.y=clamp(player.y-innerHeight*.53,0,K.WORLD.h-innerHeight);}

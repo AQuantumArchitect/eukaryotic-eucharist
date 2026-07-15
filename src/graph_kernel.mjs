@@ -4213,6 +4213,30 @@ function algaeBirthHazard(world, algaeCount, producerMass) {
   return 1.5 * crowding * vacancy;
 }
 
+// Directional, off-screen, player-FAIR spawn entry. Bodies immigrate from the world's edges and swim
+// into view — MID predators up from the bottom of the oxygenated column, DEEP anaerobes up from the
+// abyss, scavengers in from the wrapping sides, algae down from the canopy — and NEVER inside the
+// player's view or directly above a descending player. Off-screen X is the far side of the cylinder:
+// out of sight now, but the player can still swim around into it, which is earned rather than an
+// ambush. With no player (ecology sims) it's just the directional band with a free horizontal spot.
+const SPAWN_CLEARANCE = 1300;   // keep a new body at least this far below the player before it appears
+const O2_ZONE_BOTTOM = 4000;    // ~just above the oxygen cliff — the floor of the aerobic hunters' range
+function entrySpawn(world, role) {
+  const p = getPlayer(world);
+  const freeX = () => rand(world, 0, WORLD.w);
+  const offX = () => p ? wrapX(p.x + WORLD.w * 0.5 + rand(world, -WORLD.w * 0.14, WORLD.w * 0.14)) : freeX();
+  if (role === 'algae') return { x: freeX(), y: WORLD.canopy + rand(world, 40, 170) };
+  if (role === 'scavenger') {
+    let y = WORLD.nurseryTop + rand(world, 0, 1600);
+    if (p && y < p.y && p.y - y < SPAWN_CLEARANCE) y = p.y + rand(world, SPAWN_CLEARANCE, SPAWN_CLEARANCE + 800);
+    return { x: offX(), y: clamp(y, WORLD.nurseryTop - 200, WORLD.ruptureBottom + 400) };
+  }
+  // hunters: aerobic mid predators rise from the O2-zone floor; deep anaerobes rise from the abyss.
+  let y = role === 'predator' ? O2_ZONE_BOTTOM - rand(world, 0, 500) : WORLD.h - rand(world, 200, 2200);
+  if (p && y < p.y + SPAWN_CLEARANCE) y = Math.max(y, p.y + SPAWN_CLEARANCE); // never above the player
+  return { x: offX(), y: clamp(y, WORLD.ruptureTop, WORLD.h - 60) };
+}
+
 function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt; world.spawn.nursery -= dt;
   // ALGAE — minted top-down by the canopy fungus, the primary producer renewed from the light up
@@ -4831,12 +4855,11 @@ export function nearYuki(world, entity = getPlayer(world)) { return !!entity && 
 // pays you a little to haul them off (up = +1 lip — the venom build gets paid to stock ammo) and it costs
 // a little to dump them back (down = −1). O2 is a cheap utility service, a small fee either way. HP is
 // buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
+// HP / ATP / O2 are NOT traded — Yuki restores them for free while you browse (see yukiRestore). The
+// exchange is just the two matter currencies you actually manage: biomass (feedstock) and toxins (venom).
 const YUKI_TRADES = Object.freeze([
-  { res: 'biomass', label: 'Biomass', up: { d: 8,     lip: -6 }, down: { d: -8,    lip: 6 } },
-  { res: 'energy',  label: 'ATP',     up: { d: 24,    lip: -2 }, down: { d: -10,   lip: 1 } }, // big cheap charge — survival top-up
-  { res: 'toxins',  label: 'Toxins',  up: { d: 8,     lip: 1  }, down: { flush: true, lip: -1 } },
-  { res: 'oxygen',  label: 'O2',      up: { d: 0.30,  lip: -1 }, down: { d: -0.30, lip: -1 } },
-  { res: 'hp',      label: 'HP',      up: { d: 70,    lip: -3 } },                             // big cheap patch — survival top-up
+  { res: 'biomass', label: 'Biomass', up: { d: 8, lip: -6 }, down: { d: -8, lip: 6 } },
+  { res: 'toxins',  label: 'Toxins',  up: { d: 8, lip: 1  }, down: { flush: true, lip: -1 } },
 ]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
 function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
@@ -4899,6 +4922,20 @@ export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
   clampCargo(e);
   world.events.push({ type: 'buy', entityId, offeringId: `trade_${dir}_${res}` });
   return { ok: true, res, dir };
+}
+
+// Yuki is a warm, maternal goddess: while you rest in her chamber (the shop is open) she FREELY heals
+// your membrane, recharges your ATP, and eases your oxygen to a comfortable, safe level — no trade
+// needed. Call this each frame while the shop is open. HP/ATP/O2 are therefore NOT part of the exchange.
+export function yukiRestore(world, dt, entityId = world.playerId) {
+  const e = world.entities.find(x => x.id === entityId);
+  if (!e || !e.alive) return;
+  const c = caps(e);
+  e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s
+  e.cargo.energy = Math.min(c.energy, (e.cargo.energy || 0) + c.energy * 0.45 * dt); // full charge in ~2s
+  const ideal = Math.min(c.oxygen, oxygenTolerance(e) * 0.85);                 // comfortable, below the poison line
+  e.oxygen = (e.oxygen || 0) + (ideal - (e.oxygen || 0)) * Math.min(1, 1.6 * dt);
+  clampCargo(e);
 }
 
 export function getYukiOfferings(world, entityId = world.playerId) {
@@ -5093,12 +5130,12 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
     entity.organelles[offering.organelle] = (entity.organelles[offering.organelle] || 0) + 1;
     entity._capsEpoch = -1; // organelles changed — force a caps() recompute
     if (offering.organelle === 'multicell_chassis') { entity.r += 8; entity.hp = Math.min(caps(entity).hp, entity.hp + 70); }
-    // Initiation trauma: the freshly-spliced organ inflames the body and tears membrane.
+    // Initiation trauma: the freshly-spliced organ tears the membrane (HP hit) — but Yuki's chamber
+    // heals it back as you rest. No toxin spike: she is a gentle mother, not a poisoner.
     const c = caps(entity);
-    entity.cargo.toxins = Math.min(c.toxins, (entity.cargo.toxins || 0) + GRAFT_INITIATION.toxins);
     const hpHit = Math.max(GRAFT_INITIATION.hpMin, c.hp * GRAFT_INITIATION.hpFrac);
     entity.hp = Math.max(1, entity.hp - hpHit);
-    world.events.push({ type: 'graft_trauma', entityId, toxins: GRAFT_INITIATION.toxins, hp: hpHit });
+    world.events.push({ type: 'graft_trauma', entityId, toxins: 0, hp: hpHit });
   }
   clampCargo(entity);
   world.events.push({ type: 'buy', entityId, offeringId });
