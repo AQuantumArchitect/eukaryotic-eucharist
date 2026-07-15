@@ -2350,7 +2350,7 @@ function updateAlgaeAI(world, e, dt) {
   const lift = buoyancy(e); // ballast gas + base only — no flagella term
   const sinkPressure = weight - lift; // >0 sinks, <0 floats
   const workDepth = algaeBallastWorkDepth(e);
-  const depthError = clamp((e.y - workDepth) / Math.max(220, workDepth - WORLD.canopy), -1, 1);
+  const deepReturn = -14 * clamp(Math.max(0, e.y - workDepth) / 180, 0, 1);
   const phaseBias = Math.sin(phase) * (9.2 + 2.4 * traits.cycle);
 
   // Fall event = a bloom the ballast can no longer hold. Wide dead-band so a marginal bloom
@@ -2362,7 +2362,7 @@ function updateAlgaeAI(world, e, dt) {
   // sinkPressure>0 (heavy) → down. Gentle gain + clamp so it's a smooth drift, not a lurch.
   const topRepel = Math.max(0, WORLD.canopy + 95 - e.y) * 0.036;
   const deepRepel = Math.max(0, e.y - (WORLD.h - 150)) * 0.022;
-  e.vy += (clamp(sinkPressure * 0.33, -15, 20) + phaseBias + depthError * 1.1 + topRepel - deepRepel) * dt;
+  e.vy += (clamp(sinkPressure * 0.33, -15, 20) + phaseBias + deepReturn + topRepel - deepRepel) * dt;
   // A committed plunge picks up speed, but the deeper it goes the harder its ballast fights back
   // (deep fermentation, below), so the fall is a bob that bottoms out — not a one-way drop to the
   // floor. Softened from the old runaway accelerant that showered small blooms past the scavengers.
