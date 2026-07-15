@@ -4258,7 +4258,7 @@ function spawnTick(world, dt) {
   if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
     world.spawn.npc = rand(world, 0.7, 1.5);
     if (scavN < scavengerTarget(world)) {
-      spawnScavenger(world);
+      spawnScavenger(world, entrySpawn(world, 'scavenger'));
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -4277,10 +4277,10 @@ function spawnTick(world, dt) {
       for (const e of world.entities) if (e.alive) counts[e.controller] = (counts[e.controller] || 0) + 1;
       let want = null, worst = 0;
       for (const ctrl in dynFloor) { const d = dynFloor[ctrl] - (counts[ctrl] || 0); if (d > worst) { worst = d; want = ctrl; } }
-      if (want === 'predator') spawnPredator(world, { escalation: esc });
-      else if (want === 'protozoan') spawnProtozoan(world, { escalation: esc });
-      else if (want === 'metazoan') spawnMetazoan(world, { escalation: esc });
-      else if (want === 'brood') spawnBrood(world, { escalation: esc });
+      if (want === 'predator') spawnPredator(world, { ...entrySpawn(world, 'predator'), escalation: esc });
+      else if (want === 'protozoan') spawnProtozoan(world, { ...entrySpawn(world, 'protozoan'), escalation: esc });
+      else if (want === 'metazoan') spawnMetazoan(world, { ...entrySpawn(world, 'metazoan'), escalation: esc });
+      else if (want === 'brood') spawnBrood(world, { ...entrySpawn(world, 'brood'), escalation: esc });
       if (want) {
         world.stats.immigrations += 1;
         world.events.push({ type: 'immigrate', controller: want });
