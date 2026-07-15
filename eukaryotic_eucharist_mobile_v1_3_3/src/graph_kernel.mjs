@@ -313,6 +313,8 @@ const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still cl
 const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
 const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
+const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat is calorie-dense day-to-day fuel
+const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -2848,6 +2850,17 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // but the conversion is less efficient. Bare reserves are slow but frugal.
       const volumeCurve = 0.10 + 1.60 * Math.pow(biomassFill, 1.35);
       const enzymeFill = clamp((e.cargo.enzymes || 0) / Math.max(1, caps(e).enzymes), 0, 1);
+      // Mid predators run day-to-day on FAT: lipids oxidize straight to ATP, sparing the biomass belly
+      // for the gorge-gated cleave. Grazing rising fat keeps a hunter charged; hunting fills the meat it
+      // can only reproduce with. Runs before the biomass processors so fat is the first fuel drawn.
+      if (FREE_HUNTERS.has(e.controller) && (e.cargo.lipids || 0) > 0.01) {
+        const atpRoom = Math.max(0, caps(e).energy - (e.cargo.energy || 0));
+        if (atpRoom > 0) {
+          const burn = Math.min(e.cargo.lipids, atpRoom / LIPID_ATP_YIELD, HUNTER_LIPID_BURN * dt);
+          e.cargo.lipids -= burn;
+          e.cargo.energy += burn * LIPID_ATP_YIELD;
+        }
+      }
       for (const procId of PROCESSORS) {
         const level = orgCount(e, procId);
         if (level <= 0) continue;
@@ -4683,7 +4696,10 @@ function bestFieldFor(entity, world) {
     const matter = f._matter || 0; if (matter <= 0.5) continue; // cached in updateFields this frame
     const depthPenalty = Math.abs(f.y - entity.depthHome) * 0.010;
     const toxinPenalty = (f.stock.toxins || 0) * (hasOrg(entity, 'toxin_launcher') ? 0.01 : 0.09);
-    const score = matter / (35 + d) - depthPenalty - toxinPenalty;
+    // FAT is the mid predators' day-to-day food: a rising fat plume is calorie-dense and strongly
+    // preferred by the hunter guild (which grazes it for upkeep between kills). Others value it mildly.
+    const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : 0.018);
+    const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus;
     if (score > bestScore) { best = f; bestScore = score; }
   }
   return best;
