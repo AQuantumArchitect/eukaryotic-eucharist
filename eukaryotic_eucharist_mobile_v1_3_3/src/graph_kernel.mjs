@@ -1095,15 +1095,15 @@ const MITO_DEPTH_MARK = (WORLD.h - WORLD.canopy) * 0.95;
 export function oxygenAt(y) {
   const d = Math.max(0, y - WORLD.canopy);
   // The O2 cloud is a survival-strategy trap for the algae, not a uniform bath: it's bright and
-  // oxygen-SATURATED through the nursery band, then falls off a real cliff right at the nursery
-  // floor/rupture threshold — so the nursery is the poison zone and the twilight just below it is
-  // the refuge. An algal cell must fatten to sink OUT of the nursery, but sinking too far carries it
-  // into predator water instead: grow fast to escape the O2, but the growing itself is what gets you
-  // caught. Beneath the cliff lies a vast, genuinely anaerobic abyss — the ancient O2-intolerant deep.
+  // MACRO O2 CLOUD (world-space shape). A broad oxygenated cloud blankets the whole LIT column and a
+  // margin below it, then falls off a smooth cliff at ~y4400 — deeper than the light's dark shoulder
+  // (~y3900). That leaves a dark-but-oxic band (~y3750–4450) between where the light dies and where
+  // the O2 does, and a vast genuinely-anaerobic abyss below the cliff for the O2-intolerant deep.
+  // Aerobes (O2-tolerant) thrive across the cloud; anaerobes are poisoned by it and are driven deep.
   const floor = 0.04;
   const cloud = 0.70;
-  const cliffDepth = (WORLD.nurseryTop + WORLD.nurseryBottom) / 2 - WORLD.canopy;
-  const cliffWidth = 130;
+  const cliffDepth = 4400 - WORLD.canopy;
+  const cliffWidth = 500;
   return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
 }
 
@@ -1696,22 +1696,30 @@ function speedOf(entity) {
   return sp;
 }
 
+// charge_cytostome is the HUNTER GUILD's fat-mouth: it lets a predator slurp the rising fat plumes
+// that are its day-to-day fuel (it can't otherwise field-feed). Scoped to FREE_HUNTERS so the player's
+// and scavengers' general intake economy is unchanged — membrane_intake/cytostome stay the grazer mouth.
+function hunterFatMouth(entity) {
+  return FREE_HUNTERS.has(entity.controller) ? orgCount(entity, 'charge_cytostome') : 0;
+}
 function feedingOrgCount(entity) {
-  return orgCount(entity, 'membrane_intake') + orgCount(entity, 'cytostome');
+  return orgCount(entity, 'membrane_intake') + orgCount(entity, 'cytostome') + hunterFatMouth(entity);
 }
 
 function feedRadius(entity) {
   if (feedingOrgCount(entity) <= 0) return 0;
   const base = orgCount(entity, 'membrane_intake') > 0 ? entity.r * ORGANELLES.membrane_intake.stats.feedRadiusFactor : 0;
-  return base + orgCount(entity, 'cytostome') * ORGANELLES.cytostome.stats.feedRadiusBonus;
+  return base + orgCount(entity, 'cytostome') * ORGANELLES.cytostome.stats.feedRadiusBonus
+    + hunterFatMouth(entity) * entity.r * 0.35;
 }
 
 function feedRate(entity) {
   if (feedingOrgCount(entity) <= 0) return 0;
   const membraneFlow = orgCount(entity, 'membrane_intake') * ORGANELLES.membrane_intake.stats.feedRate;
   const cytostomeFlow = orgCount(entity, 'cytostome') * ORGANELLES.cytostome.stats.feedRateBonus;
+  const fatMouthFlow = hunterFatMouth(entity) * ORGANELLES.cytostome.stats.feedRateBonus * 0.8;
   const hardeningPenalty = 1 - orgCount(entity, 'membrane_hardening') * ORGANELLES.membrane_hardening.stats.feedPenalty;
-  return Math.max(0, (membraneFlow + cytostomeFlow) * clamp(hardeningPenalty, 0.55, 1));
+  return Math.max(0, (membraneFlow + cytostomeFlow + fatMouthFlow) * clamp(hardeningPenalty, 0.55, 1));
 }
 
 function targetRadius(entity) {
@@ -2034,6 +2042,37 @@ function sunExposure(entity, y = entity.y) {
   return logistic((lightAt(y) - tolerance) / width);
 }
 
+// COMFORT (world-space, emergent zonation). ONE smooth scalar shaping where a body prefers to be,
+// from light and O2 through its OWN organelles — there is no coded home depth, band, or zone. A body
+// climbs this gradient (blended with the food/prey pull); the layered structure of the ecosystem is
+// the emergent OUTCOME of overlapping tolerance curves. Returns PAIN in 0..1 (comfort = 1 - pain).
+const O2_WORK_MIN = 0.30;   // ambient O2 below which an O2-breathing body starts to labour (aerobic floor)
+const COMFORT_PUSH = 820;   // px-scale of the vertical steer produced by a full unit of pain gradient
+function comfortPain(entity, y) {
+  // LIGHT: a photophobic body hurts where ambient light exceeds its tolerance (smooth logistic). A
+  // light-lover (algae, oxic scavenger; photophobic=false) feels none — the lit nursery is its home.
+  const lightPain = entity.photophobic ? sunExposure(entity, y) : 0;
+  const o2 = oxygenAt(y);
+  // O2-OVER: an O2-INTOLERANT body is poisoned in PROPORTION to how far ambient O2 EXCEEDS its
+  // tolerance — zero while tolerated, ramping up above — so anaerobes are driven down out of the cloud
+  // but a body evolved for the cloud (tolerance ≈ ambient) sits pain-free in it.
+  const o2OverPain = clamp((o2 - oxygenTolerance(entity)) / 0.15, 0, 1);
+  // O2-UNDER: a body ADAPTED to breathe O2 (its oxygen_tolerance / catalase investment) labours where
+  // ambient O2 falls below a working level, keeping aerobes above the cliff and out of the anaerobic
+  // deep with no coded floor. A true anaerobe (no such organs) feels none and is free to sink.
+  const aerobic = clamp(orgCount(entity, 'oxygen_tolerance') * 0.22 + orgCount(entity, 'catalase_vesicle') * 0.16, 0, 1);
+  const o2UnderPain = aerobic * clamp((O2_WORK_MIN - o2) / 0.15, 0, 1);
+  return 1 - (1 - lightPain) * (1 - o2OverPain) * (1 - o2UnderPain);
+}
+
+// The vertical steer a body feels from its comfort gradient: ~0 in the flat comfortable band (so it
+// roams freely, food-led) and strong only at the light/O2 edges (pushed back in). Positive = go up.
+function comfortSteerY(entity) {
+  const painDown = comfortPain(entity, entity.y + 90);
+  const painUp = comfortPain(entity, entity.y - 90);
+  return (painDown - painUp) * COMFORT_PUSH;
+}
+
 function normalizeWeights(weights) {
   let total = 0;
   for (const value of Object.values(weights)) total += Math.max(0, value);
@@ -2330,17 +2369,12 @@ function updateNpcBrain(world, e, player, dt) {
   }
 
   if (!e.ownerId) {
-    // Parametric (light × O2) niche home — the SAME idea the scavengers use, on two axes. A hunter
-    // returns to the shallowest depth it can bear: a light-tolerant SKIRMISHER rides the lit+oxic
-    // shallows, the light-intolerant AEROBIC WALL holds just under the light in the O2 cloud, and an
-    // O2-intolerant deep boss sinks below the cloud. It still raids OUT after prey; this is where it
-    // drifts home. The two inverses are cached and refreshed on the throttled think tick.
-    if (e._nicheHome == null || e._think <= 0) {
-      const lightHome = e.photophobic ? yAtLight(e.lightTolerance) : WORLD.canopy + 260;
-      const o2Home = depthForOxygen(oxygenTolerance(e));
-      e._nicheHome = clamp(Math.max(lightHome, o2Home) + 250, WORLD.canopy + 200, WORLD.h - 220);
-    }
-    e.depthHome += (e._nicheHome - e.depthHome) * Math.min(1, 0.35 * dt);
+    // No coded niche home. depthHome merely TRACKS where the body currently is (a slow lag), so the
+    // depthPenalty/depthHome references elsewhere read as "near me" locality — never a spring to a
+    // line. Vertical placement is emergent: the body climbs its comfort gradient (comfortSteerY,
+    // folded into the steer below), so a light-intolerant O2-breather settles into the dark-oxic band,
+    // an anaerobe sinks past the cliff, all with continuous per-body variation instead of a wall.
+    e.depthHome += (e.y - e.depthHome) * Math.min(1, 0.12 * dt);
   }
 
   // A completed hunt pays meat/fat once. ATP itself was transferred at the killing blow in hurt().
@@ -2432,12 +2466,14 @@ function updateNpcBrain(world, e, player, dt) {
     }
     default:
       e._wander += Math.sin((world.t + e.phase) * 0.5) * 0.6 * dt;
-      tx = e.x + Math.cos(e._wander) * 220; ty = e.depthHome + Math.sin(e._wander) * 60;
+      tx = e.x + Math.cos(e._wander) * 220; ty = e.y + Math.sin(e._wander) * 60;
       break;
   }
 
-  const dyHome = e.depthHome - e.y;
-  let toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * homeBias);
+  // Vertical steer = the pull toward the target/wander point PLUS the comfort gradient. In the flat
+  // comfortable band comfortSteerY≈0 (roam freely, food-led); at the light/O2 edges it dominates and
+  // pulls the body back in — so a hunter that chases prey into the glare breaks off and returns.
+  let toward = norm(dxWrap(e.x, tx), (ty - e.y) + comfortSteerY(e));
   let sepX = 0, sepY = 0;
   for (const other of world.entities) {
     if (!other.alive || other.id === e.id || !HUNTER_GUILD.has(other.controller)) continue;
@@ -2543,28 +2579,12 @@ function scavengerBite(world, s, prey, dt) {
 function updateScavengerBrain(world, e, dt) {
   const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
 
-  // Parametric O2 niche — the ONE rule both castes share. A forager settles toward the shallowest
-  // depth whose ambient oxygen it can bear (from its own oxygenTolerance): the oxic caste rides up
-  // into the oxygenated nursery, the O2-INTOLERANT abyssal clone is pinned down in the anaerobic
-  // deep where the whale-fall piles. Same reasoning, opposite homes. (Acute overload flight below.)
-  // The ceiling depends only on the (static) O2 field + this body's tolerance, so the 22-iter inverse
-  // is cached and refreshed on the throttled think tick, not recomputed every frame.
-  if (e._nicheHome == null || e._think <= 0) {
-    if (e.trophicRole === 'abyssal_scavenger') {
-      // O2-INTOLERANT abyssal caste: the O2 inverse correctly pins it into the anaerobic deep
-      // where the whale-fall piles. Same "shallowest depth I can bear" rule as always.
-      e._nicheHome = clamp(depthForOxygen(oxygenTolerance(e)) + 250, WORLD.deepTop, WORLD.h - 200);
-    } else {
-      // Oxic caste THRIVES inside the O2 cloud — its binding constraint is FOOD, not oxygen, so it
-      // belongs up in the nursery where the small biomass spawns rain down, not exiled to the depth
-      // where ambient O2 happens to match its tank fraction. A per-body band (seeded once) scatters
-      // the caste through the nursery instead of stacking it on one depth line; the O2 inverse only
-      // caps how deep a straggler may sink.
-      if (e._homeBand == null) e._homeBand = rand(world, WORLD.nurseryTop - 60, WORLD.nurseryTop + 820);
-      e._nicheHome = clamp(e._homeBand, WORLD.canopy + 180, depthForOxygen(oxygenTolerance(e)));
-    }
-  }
-  e.depthHome += (e._nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
+  // No coded niche home for either caste — same emergent comfort rule the hunters now use. The OXIC
+  // caste (O2-tolerant, light-indifferent) is pain-free across the whole oxygenated column and simply
+  // forages where the food is (the nursery); the O2-INTOLERANT abyssal caste is poisoned by the cloud
+  // and its comfort minimum lies past the cliff, so it sinks into the anaerobic deep — all from the
+  // same comfortSteerY gradient folded into the steer below. depthHome just tracks the body (locality).
+  e.depthHome += (e.y - e.depthHome) * Math.min(1, 0.12 * dt);
 
   e._think -= dt;
   const think = e._think <= 0;
@@ -2644,16 +2664,17 @@ function updateScavengerBrain(world, e, dt) {
         e.feedIntent = true; feedFromFields(world, e, dt); collectParticles(world, e);
       }
     } else {
-      // Idle roam: patrol the nursery band for small biomass spawns instead of hovering on one line.
-      // The wider vertical sweep + the per-body home band spread the flock into a foraging cloud.
+      // Idle roam: drift and let comfort + food place the body. No home line to hover on.
       e._wander += Math.sin((world.t + e.phase) * 0.5) * 0.6 * dt;
-      tx = e.x + Math.cos(e._wander) * 210; ty = e.depthHome + Math.sin(e._wander) * 150; mode = 'home'; spMul = 0.66;
+      tx = e.x + Math.cos(e._wander) * 210; ty = e.y + Math.sin(e._wander) * 150; mode = 'home'; spMul = 0.66;
     }
   }
 
-  const dyHome = e.depthHome - e.y;
-  const homeBias = mode === 'flee' || mode === 'mob' || mode === 'wounded_algae' ? 0.05 : mode === 'field' ? 0.16 : 0.26;
-  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + dyHome * homeBias);
+  // Vertical steer = pull toward the forage/flee point PLUS the comfort gradient (comfortSteerY≈0
+  // across the caste's comfortable column, strong at its light/O2 edge). Fleeing/mobbing damp comfort
+  // so a scavenger can briefly bolt through its edge, but it always drifts back into comfortable water.
+  const comfortW = (mode === 'flee' || mode === 'mob') ? 0.35 : 1.0;
+  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + comfortSteerY(e) * comfortW);
   const sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * spMul : 0;
   const accel = mode === 'flee' ? 4.0 : 2.5;
   e.vx += toward.x * sp * accel * dt;
@@ -4679,15 +4700,13 @@ function spawnPredator(world, opts = {}) {
   applyStrain(world, e);
   assignBody(e);
   initBrain(world, e, depthT); // deeper predators roll bolder + less cautious
-  // Two O2-tolerant mid-predator sub-tiers (light is the axis that splits them). TIER A "skirmisher":
-  // light-tolerant, raids up into the lit+oxic shallows — the early-game pressure that can chase the
-  // player into the light. TIER B "aerobic wall": light-INtolerant, holds the dark-but-oxygenated
-  // mid band — the main mid-game froth and the source of Tier-2 organ DNA.
-  if (world.rng() < 0.3) {
-    e.photophobic = false; e.lightTolerance = 1.0; e.trophicRole = 'skirmisher';
-  } else {
-    e.photophobic = true; e.lightTolerance = clamp(gaussian(world.rng, 0.30, 0.05), 0.18, 0.42); e.trophicRole = 'aerobic_wall';
-  }
+  // All predators are LIGHT-BURNED — none can hold the bright nursery for long — but their light
+  // tolerance VARIES continuously, so they stratify across the twilight at different heights (emergent,
+  // no wall). The more light-tolerant keep the 'skirmisher' label (early pressure just under the
+  // nursery); the rest are the 'aerobic wall' whose kills seed Tier-2 organ DNA. All are O2-tolerant.
+  e.photophobic = true;
+  e.lightTolerance = clamp(gaussian(world.rng, 0.32, 0.13), 0.10, 0.60);
+  e.trophicRole = e.lightTolerance > 0.40 ? 'skirmisher' : 'aerobic_wall';
   if (migrating) {
     // Immigration follows physiology rather than a stale named layer: arrive
     // comfortably below this individual's tolerance, then choose whether to raid.
