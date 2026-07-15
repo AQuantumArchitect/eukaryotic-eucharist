@@ -206,8 +206,9 @@ const GRAFT_INITIATION = Object.freeze({ hpFrac: 0.09, hpMin: 7, toxins: 6 });
 // goes dense and plunges. Venting is free, but it spends the internal O2 you need for
 // lift, oxygen tolerance, and aerobic ATP — and you can only re-inflate in oxygenated
 // water. So a heavy tank dives cheaply, but the deep is O2-poor and the ascent is earned.
-const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', trimRate: 0.16 }); // ballast-GAS pumped/vented per second at full W/S — an ANALOG trim, not a binary flood
+const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', trimRate: 0.32 }); // ballast-GAS pumped/vented per second at full W/S — an ANALOG trim (blow the tanks to dive)
 const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives a ballast cell's vertical drift (submarine feel)
+const BALLAST_FLOOD_W = 6.5;      // weight of a water-flooded (empty-gas) bladder per bladder — an empty ballast is HEAVY, so venting makes you DIVE and keep diving (it is not neutral)
 // The deepest creatures are dark-adapted — sunlight burns them like vampires. A body
 // tagged photophobic (spawned in the deep) takes HP damage wherever light exceeds the
 // threshold, so it cannot chase you up into the lit shallows without cooking. Surface
@@ -726,7 +727,7 @@ export const ORGANELLES = Object.freeze({
   siphon_rasp: {
     name: 'Siphon Rasp', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'rasp',
     desc: 'A parasitic shredding membrane. While rasping, it drains a share of the victim\'s biomass and lipids straight into your cargo.',
-    stats: { dps: 10.5, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.5 }
+    stats: { dps: 8.0, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
   },
   spore_toxin_launcher: {
     name: 'Sporo-Toxic Launcher', tier: 3, action: 'sporeshot', stackable: true, max: 3, category: 'launcher',
@@ -742,12 +743,12 @@ export const ORGANELLES = Object.freeze({
   leech_rasp: {
     name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
     desc: 'A parasitic feeding membrane. Deals almost no damage, but while rasping it siphons biomass, lipids, and a modest ATP trickle straight out of the host — the algae-parasite\'s core organ.',
-    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 4.5 }
+    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
   },
   leech_lance: {
     name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
     desc: 'A feeding spine. Its jab barely wounds, but on contact it draws biomass, lipids, and a modest ATP trickle at range — parasitize prey without killing it.',
-    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 7.0 }
+    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 3.2 }
   },
 
   // ── Deep-predator strains (survivor-like exotic organelles) ────────────────
@@ -929,7 +930,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'toxin_cloud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent bred from venomous deep hunters. Requires a Toxic Launcher to route the venom.', cost: { biomass: 16, toxins: 16, enzymes: 1 }, requiresOrganelle: 'toxin_launcher', requiresDiscovery: 'toxin_cloud', organelle: 'toxin_cloud', stackLimit: 3 },
   { id: 'clean_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Purified Processor', desc: 'Biomass to ATP with almost no toxic waste, at a slightly lower yield.', cost: { biomass: 18, enzymes: 1 }, organelle: 'clean_processor', requiresDiscovery: 'clean_processor', stackLimit: 6 },
   { id: 'virulent_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Virulent Processor', desc: 'More ATP and throughput, but floods the body with toxin waste — weapon fuel, if you can hold it.', cost: { biomass: 18, toxins: 6 }, organelle: 'virulent_processor', requiresDiscovery: 'virulent_processor', stackLimit: 6 },
-  { id: 'lipogenic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Lipogenic Processor', desc: 'Spends biomass and a little ATP to synthesize lipid reserve. Self-sufficient mitochondrial fuel.', cost: { biomass: 20, lipids: 6 }, organelle: 'lipogenic_processor', requiresDiscovery: 'lipogenic_processor', stackLimit: 5 },
+  { id: 'lipogenic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Lipogenic Processor', desc: 'Spends biomass and a little ATP to synthesize lipid reserve. Self-sufficient mitochondrial fuel.', cost: { biomass: 20, lipids: 6, enzymes: 1 }, organelle: 'lipogenic_processor', requiresDiscovery: 'lipogenic_processor', stackLimit: 5 },
   { id: 'catalytic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Catalytic Processor', desc: 'Enzyme-accelerated flow: the more enzymes you carry, the faster it runs.', cost: { biomass: 18, enzymes: 2 }, organelle: 'catalytic_processor', requiresDiscovery: 'catalytic_processor', stackLimit: 6 },
   { id: 'velocity_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Velocity Lance', desc: 'A charge spine — near-harmless at a drift, brutal at dash speed.', cost: { biomass: 18, crystals: 1 }, organelle: 'velocity_lance', requiresDiscovery: 'velocity_lance', stackLimit: 6 },
   { id: 'saw_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Saw Lance', desc: 'A grinding blade: flat, reliable damage regardless of speed, biting from wider angles.', cost: { biomass: 20, crystals: 1 }, organelle: 'saw_lance', requiresDiscovery: 'saw_lance', stackLimit: 6 },
@@ -1792,7 +1793,7 @@ function finishWorldStep(world, player, dt) {
     // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
     // not the 5-10 minutes produced by the old generic NPC damping.
     const dampX = e.kind === 'player' ? 0.974 : 0.965;
-    const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.986 : 0.965;
+    const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.992 : 0.965; // player keeps vertical momentum (submarine drift), not a walking stop
     e.vx *= Math.pow(dampX, dt * 60); e.vy *= Math.pow(dampY, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
     e.fissionCooldown = Math.max(0, (e.fissionCooldown || 0) - dt);
@@ -1838,7 +1839,10 @@ function applyPlayerCommands(world, player, commands, dt) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
       player.vx += move.x * sp * 2.1 * dt;
-      player.vy += move.y * sp * 1.5 * dt;   // vertical is mostly BALLAST-driven — direct swim is a weak correction, not a jetpack
+      // A body with a ballast bladder steers vertically ONLY through the gas (W/S trim below) — no direct
+      // vertical thrust, so it behaves like a submarine (momentum + buoyancy), not a walker that stops on
+      // key-release. A bladderless scavenger still swims up/down directly.
+      if (!hasOrg(player, BALLAST.requires)) player.vy += move.y * sp * 1.5 * dt;
       if (!(Number.isFinite(commands.aimX) && Number.isFinite(commands.aimY))) player.phase = Math.atan2(move.y, move.x);
     }
   }
@@ -2967,8 +2971,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const bladders = orgCount(e, 'oxygen_vacuole');
       const flagLift = orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
       if (bladders > 0) {
+        const gasCap = Math.max(0.001, caps(e).ballastGas);
+        const gasFill = clamp((e.ballastGas || 0) / gasCap, 0, 1);
         const gasLift = (e.ballastGas || 0) * ORGANELLES.oxygen_vacuole.stats.liftPerGas;
-        const sink = biomassWeight(e) - (1.0 + gasLift + flagLift);
+        const floodWeight = BALLAST_FLOOD_W * (1 - gasFill) * bladders; // empty bladder = water-flooded = heavy → dives and STAYS diving
+        const sink = biomassWeight(e) + floodWeight - (1.0 + gasLift + flagLift);
         e.vy += clamp(sink * BALLAST_DRIFT_K, -62, 74) * dt;
       } else {
         const sink = biomassWeight(e) - buoyancy(e) - flagLift;
@@ -4996,9 +5003,10 @@ export function yukiRestore(world, dt, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e || !e.alive) return;
   const c = caps(e);
-  e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s
-  e.cargo.energy = Math.min(c.energy, (e.cargo.energy || 0) + c.energy * 0.45 * dt); // full charge in ~2s
+  e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s (free)
   e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - Math.max(4, c.toxins * 0.5) * dt); // she scrubs your poison — so venom builds must self-produce
+  // NOTE: ATP is NOT topped up by resting — it comes only WITH a graft (see buyOffering). Otherwise you
+  // could spam the rest chamber to refill energy for free, which trivializes the early game.
   const ideal = Math.min(c.oxygen, oxygenTolerance(e) * 0.85);                 // comfortable, below the poison line
   e.oxygen = (e.oxygen || 0) + (ideal - (e.oxygen || 0)) * Math.min(1, 1.6 * dt);
   clampCargo(e);
@@ -5201,6 +5209,7 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
     const c = caps(entity);
     const hpHit = Math.max(GRAFT_INITIATION.hpMin, c.hp * GRAFT_INITIATION.hpFrac);
     entity.hp = Math.max(1, entity.hp - hpHit);
+    entity.cargo.energy = caps(entity).energy;   // the graft comes with a full ATP charge — the only free recharge
     world.events.push({ type: 'graft_trauma', entityId, toxins: 0, hp: hpHit });
   }
   clampCargo(entity);
