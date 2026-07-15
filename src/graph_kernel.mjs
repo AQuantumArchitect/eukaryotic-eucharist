@@ -293,6 +293,16 @@ const FIELD_SINK_K = 0.9;         // biomass sink speed = K * biomassFrac * sqrt
 const FIELD_RISE_K = 1.1;         // lipid rise speed  = K * lipidFrac  * sqrt(lipids)
 const FIELD_DIFFUSE_K = 6.0;      // radius spread/sec at full (energy+toxins) fraction
 const FIELD_TERMINAL_VY = 30;     // px/s cap on field vertical drift, so patches never teleport
+// Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
+// the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
+// wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
+const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins']);
+const FIELD_TYPE = Object.freeze({
+  biomass: { vy:  15, spread: 0.4, decay: 0.9, radiusScale: 8.0, maxRadius: 170 }, // sinks slowly, holds together
+  lipids:  { vy: -13, spread: 0.5, decay: 0.7, radiusScale: 6.5, maxRadius: 130 }, // rises slowly
+  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5, maxRadius: 260 }, // flashes wide + thins fast
+  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5, maxRadius: 210 }, // slow diffuse, lingers
+});
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
 // exponentially expensive, so a many-layered tank is a serious investment.
 const MEMBRANE_COST_RATIO = (1 + Math.sqrt(5)) / 2; // golden ratio φ ≈ 1.618 per added layer
@@ -3022,19 +3032,13 @@ function updateFields(world, dt) {
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
     const total = totalMatter(f.stock);
     f._matter = total; // cache for this frame's AI field scans (bestFieldFor)
-    // Drift by composition: biomass slurry sinks (faster the more biomass it carries),
-    // lipids float, and the net eases into f.vy so patches slide rather than snap.
+    // Per-type drift: each field follows its own material's physics (set at spawn) — biomass sinks,
+    // lipids rise, ATP holds position but spreads fast, toxins seep slowly. Eased so it slides not snaps.
     if (total > 0) {
-      const bio = f.stock.biomass || 0, lip = f.stock.lipids || 0;
-      const sink = FIELD_SINK_K * (bio / total) * Math.sqrt(bio);
-      const rise = FIELD_RISE_K * (lip / total) * Math.sqrt(lip);
-      const targetVy = clamp(sink - rise, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
+      const targetVy = clamp(f.vyTarget || 0, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
-      // Volatile ATP/toxins diffuse: the patch spreads outward (density thins) as those
-      // fractions bleed off — a permanent spread that outlives the mass into a fading cloud.
-      const diffuseFrac = ((f.stock.energy || 0) + (f.stock.toxins || 0)) / total;
-      f.spread = (f.spread || 0) + FIELD_DIFFUSE_K * diffuseFrac * dt;
+      f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
     }
     const massR = Math.sqrt(Math.max(8, total)) * (f.radiusScale || 8.0);
     f.radius = clamp(massR + (f.spread || 0), 9, f.maxRadius || 180);
@@ -4698,17 +4702,28 @@ function collectParticles(world, entity) {
 
 
 function spawnResourceField(world, x, y, stock, opts = {}) {
-  const f = {
-    id: id('field'), x: wrapX(x), y: clamp(y, WORLD.canopy + 5, WORLD.h - 25), radius: opts.radius || 42,
-    stock: emptyCargo(stock), density: opts.density || 1, sourceKind: opts.sourceKind || 'slurry', age: 0,
-    maxAge: opts.maxAge || 24, decayRate: opts.decayRate ?? 0.10, radiusScale: opts.radiusScale || 8, maxRadius: opts.maxRadius || 180,
-    // vy/spread grow during drift; _matter caches totalMatter(stock) so the per-NPC field
-    // scan (bestFieldFor) reads a number instead of re-reducing every field's stock each query.
-    vy: 0, spread: 0, _matter: 0
-  };
-  f._matter = totalMatter(f.stock);
-  world.fields.push(f);
-  return f;
+  // Split the dropped stock into a SEPARATE field object per resource, each with its material's physics.
+  const s = emptyCargo(stock);
+  const yy = clamp(y, WORLD.canopy + 5, WORLD.h - 25);
+  let ret = null;
+  for (const r of FIELD_RES) {
+    const amt = s[r] || 0;
+    if (amt <= 0.3) continue;
+    const tp = FIELD_TYPE[r];
+    const single = emptyCargo({}); single[r] = amt;
+    const f = {
+      id: id('field'), resType: r, x: wrapX(x), y: yy, radius: opts.radius || 42,
+      stock: single, density: opts.density || 1, sourceKind: opts.sourceKind || 'slurry', age: 0,
+      maxAge: opts.maxAge || 24, decayRate: tp.decay, radiusScale: tp.radiusScale,
+      maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
+      // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
+      // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt
+    };
+    world.fields.push(f);
+    if (!ret) ret = f;
+  }
+  return ret;
 }
 
 function mergeNearbyFields(world) {
@@ -4716,6 +4731,7 @@ function mergeNearbyFields(world) {
     const a = world.fields[i];
     for (let j = world.fields.length - 1; j > i; j--) {
       const b = world.fields[j];
+      if (a.resType !== b.resType) continue;                 // types stay decoupled — only like merges with like
       const d = distWrap(a.x, a.y, b.x, b.y);
       if (d > Math.min(80, (a.radius + b.radius) * 0.35)) continue;
       const ta = totalMatter(a.stock), tb = totalMatter(b.stock), total = Math.max(1, ta + tb);
@@ -5163,7 +5179,7 @@ export function getRenderProjection(world) {
     t: world.t,
     environment: { oxygenSurface: oxygenAt(WORLD.canopy + 30), oxygenNursery: oxygenAt(WORLD.nurseryTop + 100), lightSurface: lightAt(WORLD.canopy + 30) },
     entities: [...entityProjection, ...colonyRender, ...orbitalRender],
-    fields: world.fields.map(f => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
+    fields: world.fields.map(f => ({ id: f.id, resType: f.resType, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
     particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, potency: p.potency || null, age: p.age, maxAge: p.maxAge })),
     events: world.events.slice()
