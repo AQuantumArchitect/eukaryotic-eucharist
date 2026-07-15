@@ -1961,7 +1961,7 @@ function logistic(x) { return 1 / (1 + Math.exp(-clamp(x, -24, 24))); }
 function sunExposure(entity, y = entity.y) {
   if (!entity.photophobic) return 0;
   const tolerance = Math.max(0.001, entity.lightTolerance ?? LIGHT_BURN.threshold);
-  const width = Math.max(0.006, tolerance * 0.18);
+  const width = Math.max(0.0015, tolerance * 0.18);
   return logistic((lightAt(y) - tolerance) / width);
 }
 
@@ -4363,6 +4363,7 @@ function spawnPredator(world, opts = {}) {
   // edge of the abyss — and prowl upward, rather than materializing at the top where the
   // player descends into them. (Seeded in-medias-res predators pass an explicit spread y.)
   // Depth still drives strength: a body formed near the gap is bigger, tougher, better armed.
+  const migrating = opts.y == null;
   const y = opts.y ?? (WORLD.ruptureBottom - rand(world, 0, 450));
   const x = opts.x ?? rand(world, 0, WORLD.w);
   // 0 at the top of the rupture layer, 1 deep — drives every strength stat below.
@@ -4380,6 +4381,13 @@ function spawnPredator(world, opts = {}) {
   applyStrain(world, e);
   assignBody(e);
   initBrain(world, e, depthT); // deeper predators roll bolder + less cautious
+  if (migrating) {
+    // Immigration follows physiology rather than a stale named layer: arrive
+    // comfortably below this individual's tolerance, then choose whether to raid.
+    e.y = yAtLight(e.lightTolerance * rand(world, 0.35, 0.65));
+    e.depthHome = e.y;
+    e.oxygen = oxygenAt(e.y);
+  }
   world.entities.push(e); return e;
 }
 
