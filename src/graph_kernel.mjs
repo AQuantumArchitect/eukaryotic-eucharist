@@ -307,9 +307,11 @@ const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patch
 // piles on the floor, so the pump is bounded but the deep stays fed.
 const BIOMASS_SINK_K = 1.25;      // biomass sink speed = K * biomass^(2/3)  (square-cube: big = fast)
 const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
-const BIOMASS_SINK_DECAY = 0.05;  // biomass barely remineralizes while sinking — it arrives intact
-const BIOMASS_FLOOR_DECAY = 0.45; // ...but piled on the abyss floor it dissolves back into the water
+const BIOMASS_SINK_DECAY = 0.02;  // biomass barely remineralizes while sinking — it arrives intact
+const BIOMASS_FLOOR_DECAY = 0.15; // ...but piled on the abyss floor it slowly dissolves back into the water
 const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still clears eventually
+const LIPID_SURFACE_DECAY = 0.03; // once a lipid slick reaches the canopy it pools there — barely fades
+const LIPID_MAX_AGE = 120;        // lipids get a much longer lifetime than the 24s default so a slow rise can actually reach and pool at the surface
 const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
 const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
@@ -321,7 +323,7 @@ const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares
 const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins']);
 const FIELD_TYPE = Object.freeze({
   biomass: { vy:  15, spread: 0.4, decay: 0.9, radiusScale: 8.0, maxRadius: 170 }, // sinks slowly, holds together
-  lipids:  { vy: -13, spread: 0.5, decay: 0.7, radiusScale: 6.5, maxRadius: 130 }, // rises slowly
+  lipids:  { vy: -13, spread: 0.5, decay: 0.12, radiusScale: 6.5, maxRadius: 130 }, // rises slowly, fades slowly
   energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5, maxRadius: 260 }, // flashes wide + thins fast
   toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5, maxRadius: 210 }, // slow diffuse, lingers
 });
@@ -591,7 +593,7 @@ export const ORGANELLES = Object.freeze({
   jettison_vesicle: {
     name: 'Jettison Vesicle', tier: 2, action: 'jettison', stackable: true, max: 3,
     desc: 'Punch out a slug of your own biomass on command (T). You lose the mass, lurch upward, and spill a feed-field where you were — a deliberate ascent and an escape from a swarm.',
-    stats: { ejectFraction: 0.20, ejectMin: 6, energyCost: 3, structuralShed: 0.5, thrust: 60, cooldown: 1.2 }
+    stats: { ejectFraction: 0.20, ejectMin: 6, energyCost: 1, structuralShed: 0.5, thrust: 60, cooldown: 1.2 }
   },
   // ── Ballast / respiration organs (for the O2⟂ballast split) ──────────────────
   gas_gland: {
@@ -1544,12 +1546,19 @@ function capsCompute(entity) {
   const m = ORGANELLES.membrane.stats;
   const ov = ORGANELLES.oxygen_vacuole.stats;
   const os = ORGANELLES.oxygen_store.stats;
+  // The BASE_*_CAP constants exactly duplicate one storage_vacuole's own stats (22/14/10/24) — a
+  // leftover floor from before storage_vacuole was granted to every spawned body. For the PLAYER this
+  // silently doubled the very first storage organ, so caps stay purely organ-derived (matching HP,
+  // which already has no hidden floor) — no free capacity without a dedicated organ providing it. NPCs
+  // keep the floor: some wild bodies (e.g. swarm agents) carry no storage_vacuole at all and would be
+  // capped at zero without it, so this stays scoped to the player only.
+  const isPlayer = entity.kind === 'player';
   return {
     hp: membrane * m.hp + hard * 8 + oc('multicell_chassis') * 70,
-    energy: BASE_ENERGY_CAP + storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
-    biomass: BASE_BIOMASS_CAP + storage * s.biomass + oc('biomass_vacuole') * ORGANELLES.biomass_vacuole.stats.biomass + oc('multicell_chassis') * 80,
-    lipids: BASE_LIPID_CAP + storage * s.lipids + oc('lipid_vacuole') * ORGANELLES.lipid_vacuole.stats.lipids + mito * 30,
-    toxins: BASE_TOXIN_CAP + storage * s.toxins + oc('toxin_vacuole') * ORGANELLES.toxin_vacuole.stats.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
+    energy: (isPlayer ? 0 : BASE_ENERGY_CAP) + storage * s.energy + mito * ORGANELLES.mitochondrion.stats.energyMaxBonus + oc('atp_reservoir') * ORGANELLES.atp_reservoir.stats.energy,
+    biomass: (isPlayer ? 0 : BASE_BIOMASS_CAP) + storage * s.biomass + oc('biomass_vacuole') * ORGANELLES.biomass_vacuole.stats.biomass + oc('multicell_chassis') * 80,
+    lipids: (isPlayer ? 0 : BASE_LIPID_CAP) + storage * s.lipids + oc('lipid_vacuole') * ORGANELLES.lipid_vacuole.stats.lipids + mito * 30,
+    toxins: (isPlayer ? 0 : BASE_TOXIN_CAP) + storage * s.toxins + oc('toxin_vacuole') * ORGANELLES.toxin_vacuole.stats.toxins + oc('toxin_launcher') * ORGANELLES.toxin_launcher.stats.toxinCapBonus + oc('spore_toxin_launcher') * ORGANELLES.spore_toxin_launcher.stats.toxinCapBonus,
     spores: exotic * x.spores,
     enzymes: exotic * x.enzymes,
     crystals: exotic * x.crystals,
@@ -3256,7 +3265,10 @@ function updateFields(world, dt) {
     // only remineralizes once it piles on the abyss floor. Everything else keeps its material decay.
     const isBiomass = f.resType === 'biomass';
     const atFloor = f.y > WORLD.h - 160;
-    const decayRate = isBiomass ? (atFloor ? BIOMASS_FLOOR_DECAY : BIOMASS_SINK_DECAY) : f.decayRate;
+    // Mirror of the biomass floor: a lipid slick that actually reaches the canopy pools there instead
+    // of fading mid-rise, the same way sunk biomass barely decays until it piles on the abyss floor.
+    const atSurface = f.resType === 'lipids' && f.y < WORLD.canopy + 80;
+    const decayRate = isBiomass ? (atFloor ? BIOMASS_FLOOR_DECAY : BIOMASS_SINK_DECAY) : atSurface ? LIPID_SURFACE_DECAY : f.decayRate;
     const decay = decayRate * dt;
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
     // Return arm of the carbon pump: DEEP whale-fall biomass slowly decomposes into buoyant FAT that
@@ -3292,9 +3304,10 @@ function updateFields(world, dt) {
     }
     const massR = Math.sqrt(Math.max(8, total)) * (f.radiusScale || 8.0);
     f.radius = clamp(massR + (f.spread || 0), 9, f.maxRadius || 180);
-    // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); other
-    // matter keeps its short material lifetime.
-    const maxAge = isBiomass ? Math.max(f.maxAge, BIOMASS_MAX_AGE) : f.maxAge;
+    // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
+    // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
+    // aging out mid-climb; everything else keeps its short material lifetime.
+    const maxAge = isBiomass ? Math.max(f.maxAge, BIOMASS_MAX_AGE) : f.resType === 'lipids' ? Math.max(f.maxAge, LIPID_MAX_AGE) : f.maxAge;
     if (total <= 0.35 || f.age > maxAge) world.fields.splice(i, 1);
   }
   mergeNearbyFields(world);
