@@ -301,7 +301,7 @@ function updateUI(){
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
   ui.hpVital.classList.toggle('duress', hpFlash>0);
   const atpFrac=energy.value/Math.max(1,energy.max); ui.energyVital.classList.toggle('duress', atpFrac<0.10);
-  const o2Over=hud.oxygen.value>hud.oxygen.tolerance; ui.o2Vital.classList.toggle('duress', o2Over);
+  const o2Over=hud.oxygen.value>hud.oxygen.tolerance && (hud.depth?.value||0)<400; ui.o2Vital.classList.toggle('duress', o2Over);
   // ── Fill flashing: stats that are actively GAINING glow green (is my feeding working?) ──
   uiPhase++;
   ui.hpVital.classList.toggle('filling', fillPulse('hp',hud.hp.value) && hpFlash<=0);
@@ -315,7 +315,7 @@ function updateUI(){
   // ATP keeps its vital bar above; the slot under the O2 meter becomes the ballast trim meter.
   const visible = ['biomass','lipids','toxins','__ballast','spores','enzymes','crystals','dna'];
   const glowT=0.5+0.5*Math.sin(uiPhase*0.42); // shared pulse phase for the filling glow
-  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';const tr=['biomass','toxins'].includes(id)?` data-tres="${id}"`:'';const wal=id==='lipids'?' wallet':'';return `<div class="chip${wal}"${tr} title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i>${id==='biomass'?sunBar():''}</div>`}).join('');
+  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';const tr=false?` data-tres="${id}"`:'';const wal=id==='lipids'?' wallet':'';return `<div class="chip${wal}"${tr} title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i>${id==='biomass'?sunBar():''}</div>`}).join('');
   paintTradeZones();
   const metab = hud.metabolism ? ` · processors ${hud.metabolism.anaerobicProcessorLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
   const carried = (hud.carriedStrains&&hud.carriedStrains.length)?`<br><span style="color:#8fe37a;font-weight:900">◈ ${hud.carriedStrains.length} DNA sample${hud.carriedStrains.length>1?'s':''} carried — sequence at Yuki to unlock (lost if you die)</span>`:'';
@@ -415,6 +415,7 @@ function renderShop(){
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
   let rest=offers.filter(o=>!inBar(o));
   if(affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
+  if(ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
   const buckets=SHOP_GROUPS.map(()=>[]);
   const groupOf=id=>{for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
   for(const o of rest) buckets[groupOf(o.id)].push(o);
@@ -485,13 +486,14 @@ function organCard(o){
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 // Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
 // plus quick-jump chips to each populated shop category.
-let affordableOnly=true;
+let affordableOnly=true, ownedOnly=false;
 const CAT_SHORT=['Feed','Metab','Struct','Oxygen','Move','Weapons','Swarm','Euchar','Tier 3','Other'];
 function renderGuide(){
   if(!ui.shopGuide) return;
   const chips=SHOP_GROUPS.map((g,i)=>ui.shopBody.querySelector('#grp'+i)?`<button class="mgrCat" data-grp="${i}">${CAT_SHORT[i]||g[0].slice(0,6)}</button>`:'').join('');
-  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable only</button><div class="mgrCats">${chips}</div>`;
+  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable</button><button class="mgrToggle${ownedOnly?' on':''}" id="mgrOwned">${ownedOnly?'✓':'○'} Owned</button><div class="mgrCats">${chips}</div>`;
   const af=ui.shopGuide.querySelector('#mgrAfford'); if(af) af.onpointerup=e=>{e.preventDefault();affordableOnly=!affordableOnly;renderShop();};
+  const ow=ui.shopGuide.querySelector('#mgrOwned'); if(ow) ow.onpointerup=e=>{e.preventDefault();ownedOnly=!ownedOnly;renderShop();};
   for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
@@ -706,7 +708,7 @@ function drawEntity(e){
   if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
   if(e.action==='rasp'){ctx.strokeStyle='rgba(255,180,110,.72)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,r+5,ang-.9,ang+.9);ctx.stroke()}
   if(e.repairIntent){ctx.strokeStyle='rgba(245,212,122,.55)';ctx.lineWidth=2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+10,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
-  if(e.oxygen>e.oxygenTolerance){ctx.strokeStyle='rgba(191,232,255,.70)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,r+4+Math.sin(world.t*14)*2,0,Math.PI*2);ctx.stroke()}
+  if(e.oxygen>e.oxygenTolerance && (e.y-K.WORLD.canopy)<400){ctx.strokeStyle='rgba(191,232,255,.70)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,r+4+Math.sin(world.t*14)*2,0,Math.PI*2);ctx.stroke()}
   if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(232,226,44,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(232,226,44,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
   if(e.strain&&e.kind!=='player'){ctx.save();ctx.globalAlpha=.45+.3*Math.sin(world.t*4+e.x);ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(e.x,e.y,r+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
   if(e.marked>0){ctx.save();const spin=world.t*2.2;ctx.strokeStyle='#ff2d5a';ctx.lineWidth=2.4;ctx.globalAlpha=.5+.4*Math.abs(Math.sin(world.t*6));const rr=r+11;for(let q=0;q<4;q++){const a=spin+q*Math.PI/2;ctx.beginPath();ctx.arc(e.x,e.y,rr,a-.35,a+.35);ctx.stroke();ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*(rr-5),e.y+Math.sin(a)*(rr-5));ctx.lineTo(e.x+Math.cos(a)*(rr+5),e.y+Math.sin(a)*(rr+5));ctx.stroke();}ctx.restore();}

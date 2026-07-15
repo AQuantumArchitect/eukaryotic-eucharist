@@ -215,6 +215,7 @@ const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives 
 // The dark lineages are true light-vampires: the tail is inhabitable, but the bright transition
 // burns them quickly enough that light forms a meaningful spatial refuge.
 const LIGHT_BURN = Object.freeze({ threshold: 0.30, rate: 90, slope: 22 });
+const O2_BURN_DEPTH = 400;  // O2 poisoning is a SHALLOW hazard only: above this depth the bright, oxygen-rich water overloads you; below it (the lower nursery and deeper) every body is safe from O2 damage no matter how much it banked.
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
@@ -292,7 +293,17 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
 const FIELD_SINK_K = 0.9;         // biomass sink speed = K * biomassFrac * sqrt(biomass)
 const FIELD_RISE_K = 1.1;         // lipid rise speed  = K * lipidFrac  * sqrt(lipids)
 const FIELD_DIFFUSE_K = 6.0;      // radius spread/sec at full (energy+toxins) fraction
-const FIELD_TERMINAL_VY = 30;     // px/s cap on field vertical drift, so patches never teleport
+const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patches never teleport
+// ── Whale fall: the biomass carbon pump that feeds the deep ──────────────────────────────────
+// A dead body's biomass sinks nearly UNDECAYED (it is food, not smoke) all the way to the abyss,
+// feeding the anaerobic deep. By a square-cube law a bigger mass sinks FASTER (more volume per
+// drag area), so a giant "whale fall" plummets while flecks drift. It only remineralizes once it
+// piles on the floor, so the pump is bounded but the deep stays fed.
+const BIOMASS_SINK_K = 2.5;       // biomass sink speed = K * biomass^(2/3)  (square-cube: big = fast)
+const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
+const BIOMASS_SINK_DECAY = 0.05;  // biomass barely remineralizes while sinking — it arrives intact
+const BIOMASS_FLOOR_DECAY = 0.45; // ...but piled on the abyss floor it dissolves back into the water
+const BIOMASS_MAX_AGE = 300;      // safety lifetime so an uneaten fall still clears eventually
 // Resources are MECHANICALLY DECOUPLED: a drop splits into one field OBJECT per resource, each moving
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
@@ -375,7 +386,7 @@ function categoryMult(entity, offering) {
 // (spores/enzymes/crystals) and the venom currency (toxins) pass through untouched. The FAT Biomass
 // Vacuole is the one exception — it still pays in biomass, because paying in biomass IS the FAT build.
 const BIOMASS_TO_LIPID = 0.4;
-function lipidize(cost, org) {
+function lipidize(cost, org, mult = 1) {
   if (!cost || org === 'biomass_vacuole') return cost;
   const c = {};
   let lip = 0, hasExotic = false;
@@ -384,10 +395,11 @@ function lipidize(cost, org) {
     else if (k === 'lipids') lip += v;
     else { c[k] = v; if (EXOTIC_KEYS.includes(k)) hasExotic = true; } // exotics/toxins/energy pass through
   }
-  // For an exotic-requiring organ the EXOTIC is the real cost; lipids are just a token fee. Cut the lipid
-  // portion 4× so an exotic + a few lipids buys a T1 organ (e.g. anaerobic processor ≈ 1 enzyme + 3 lipids),
-  // leaving pure-lipid buys (membranes, oxygen path) to carry the full lipid price.
-  if (hasExotic) lip *= 0.25;
+  // For an exotic-requiring organ the EXOTIC is the real cost, so lipids are only a token fee (÷4). A
+  // pure-lipid organ carries the real lipid price, halved so a "big" one is ~6 lipids. Then the whole
+  // lipid cost ESCALATES with the category mult (so every category climbs geometrically, not just exotics).
+  lip *= hasExotic ? 0.25 : 0.5;
+  lip *= mult;
   if (lip > 0) c.lipids = Math.max(1, Math.ceil(lip));
   return c;
 }
@@ -395,17 +407,17 @@ function scaledCost(entity, offering) {
   const base = offering?.cost || {};
   const org = offering?.organelle;
   if (!org) return base;                     // exchanges, sequencing, eucharist sacrament, companions — untouched
-  let out;
-  if (org === 'membrane') {                  // whole-cost φ scaling (membranes are armour — priced in lipids)
+  let out, mult = 1;
+  if (org === 'membrane') {                  // whole-cost φ scaling (membranes are armour, its own curve)
     const f = Math.pow(MEMBRANE_COST_RATIO, Math.max(0, orgCount(entity, 'membrane') - 1));
     out = {};
     for (const [k, v] of Object.entries(base)) out[k] = Math.ceil(v * f);
   } else {
-    const mult = categoryMult(entity, offering);  // exempt racks / uncategorised return 1
+    mult = categoryMult(entity, offering);   // Fibonacci by category purchase count (exempt racks → 1)
     if (mult <= 1) out = { ...base };
     else { out = {}; for (const [k, v] of Object.entries(base)) out[k] = EXOTIC_KEYS.includes(k) ? Math.ceil(v * mult) : v; }
   }
-  return lipidize(out, org);                  // flip construction-matter → lipid currency (FAT tank exempt)
+  return lipidize(out, org, mult);           // matter→lipids; exotics AND lipids escalate by the category mult
 }
 const COMPANIONS = Object.freeze({
   grazer: {
@@ -2921,9 +2933,10 @@ function updateEnvironmentAndMetabolism(world, dt) {
       if (e.kind === 'player') world.events.push({ type: 'surge', entityId: e.id });
     }
 
-    // Oxygen overload is tick damage unless tolerated or burned by mitochondria.
+    // Oxygen overload is tick damage — but ONLY in the bright shallows. Below O2_BURN_DEPTH (the lower
+    // nursery and deeper) the water is safe to hold a full breath in, so a diver isn't punished for it.
     const tol = oxygenTolerance(e);
-    if (e.grace <= 0 && e.oxygen > tol) {
+    if (e.grace <= 0 && e.oxygen > tol && (e.y - WORLD.canopy) < O2_BURN_DEPTH) {
       const excess = e.oxygen - tol;
       e.hp -= excess * (hasMito(e) ? 3.4 : 7.4) * dt;
       e.hit = Math.max(e.hit, 0.05);
@@ -3061,21 +3074,31 @@ function updateFields(world, dt) {
   for (let i = world.fields.length - 1; i >= 0; i--) {
     const f = world.fields[i];
     f.age += dt;
-    const decay = f.decayRate * dt;
+    // Biomass is the whale-fall carbon pump: it barely decays while sinking (it's intact food), and
+    // only remineralizes once it piles on the abyss floor. Everything else keeps its material decay.
+    const isBiomass = f.resType === 'biomass';
+    const atFloor = f.y > WORLD.h - 160;
+    const decayRate = isBiomass ? (atFloor ? BIOMASS_FLOOR_DECAY : BIOMASS_SINK_DECAY) : f.decayRate;
+    const decay = decayRate * dt;
     for (const r of MATTER_RESOURCES) f.stock[r] = Math.max(0, (f.stock[r] || 0) - decay * (r === 'toxins' ? 0.35 : 1));
     const total = totalMatter(f.stock);
     f._matter = total; // cache for this frame's AI field scans (bestFieldFor)
-    // Per-type drift: each field follows its own material's physics (set at spawn) — biomass sinks,
-    // lipids rise, ATP holds position but spreads fast, toxins seep slowly. Eased so it slides not snaps.
+    // Per-type drift: each field follows its own material's physics — lipids rise, ATP spreads, toxins
+    // seep. Biomass sinks by a square-cube law: a bigger fall plummets, a fleck drifts.
     if (total > 0) {
-      const targetVy = clamp(f.vyTarget || 0, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
+      const targetVy = isBiomass
+        ? clamp(BIOMASS_SINK_K * Math.pow(Math.max(0, f.stock.biomass || 0), 2 / 3), 0, WHALE_FALL_TERMINAL)
+        : clamp(f.vyTarget || 0, -FIELD_TERMINAL_VY, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
     }
     const massR = Math.sqrt(Math.max(8, total)) * (f.radiusScale || 8.0);
     f.radius = clamp(massR + (f.spread || 0), 9, f.maxRadius || 180);
-    if (total <= 0.35 || f.age > f.maxAge) world.fields.splice(i, 1);
+    // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); other
+    // matter keeps its short material lifetime.
+    const maxAge = isBiomass ? Math.max(f.maxAge, BIOMASS_MAX_AGE) : f.maxAge;
+    if (total <= 0.35 || f.age > maxAge) world.fields.splice(i, 1);
   }
   mergeNearbyFields(world);
 }
@@ -4258,7 +4281,7 @@ function spawnTick(world, dt) {
   if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
     world.spawn.npc = rand(world, 0.7, 1.5);
     if (scavN < scavengerTarget(world)) {
-      spawnScavenger(world);
+      spawnScavenger(world, entrySpawn(world, 'scavenger'));
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -4277,10 +4300,10 @@ function spawnTick(world, dt) {
       for (const e of world.entities) if (e.alive) counts[e.controller] = (counts[e.controller] || 0) + 1;
       let want = null, worst = 0;
       for (const ctrl in dynFloor) { const d = dynFloor[ctrl] - (counts[ctrl] || 0); if (d > worst) { worst = d; want = ctrl; } }
-      if (want === 'predator') spawnPredator(world, { escalation: esc });
-      else if (want === 'protozoan') spawnProtozoan(world, { escalation: esc });
-      else if (want === 'metazoan') spawnMetazoan(world, { escalation: esc });
-      else if (want === 'brood') spawnBrood(world, { escalation: esc });
+      if (want === 'predator') spawnPredator(world, { ...entrySpawn(world, 'predator'), escalation: esc });
+      else if (want === 'protozoan') spawnProtozoan(world, { ...entrySpawn(world, 'protozoan'), escalation: esc });
+      else if (want === 'metazoan') spawnMetazoan(world, { ...entrySpawn(world, 'metazoan'), escalation: esc });
+      else if (want === 'brood') spawnBrood(world, { ...entrySpawn(world, 'brood'), escalation: esc });
       if (want) {
         world.stats.immigrations += 1;
         world.events.push({ type: 'immigrate', controller: want });
@@ -4899,12 +4922,10 @@ export function getYukiTendrils(world) {
 // pays you a little to haul them off (up = +1 lip — the venom build gets paid to stock ammo) and it costs
 // a little to dump them back (down = −1). O2 is a cheap utility service, a small fee either way. HP is
 // buy-only (repair). Round-trips are ≤0 net lipids, so there's no arbitrage.
-// HP / ATP / O2 are NOT traded — Yuki restores them for free while you browse (see yukiRestore). The
-// exchange is just the two matter currencies you actually manage: biomass (feedstock) and toxins (venom).
-const YUKI_TRADES = Object.freeze([
-  { res: 'biomass', label: 'Biomass', up: { d: 8, lip: -6 }, down: { d: -8, lip: 6 } },
-  { res: 'toxins',  label: 'Toxins',  up: { d: 8, lip: 1  }, down: { flush: true, lip: -1 } },
-]);
+// There is NO exchange any more — Yuki is a rest point + graft shop, nothing else. She freely restores
+// HP/ATP/O2 and scrubs toxins while you rest (yukiRestore); lipids (the graft currency) are harvested by
+// FEEDING on lipid fields, not traded. Kept empty so the trade API/UI degrade to nothing.
+const YUKI_TRADES = Object.freeze([]);
 function tradeCur(e, res) { return res === 'hp' ? e.hp : res === 'oxygen' ? (e.oxygen || 0) : (e.cargo[res] || 0); }
 function tradeCap(e, res, c) { return res === 'hp' ? c.hp : res === 'oxygen' ? c.oxygen : (c[res] ?? 99); }
 function tradeLegOk(e, res, leg, c) {
@@ -4977,6 +4998,7 @@ export function yukiRestore(world, dt, entityId = world.playerId) {
   const c = caps(e);
   e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s
   e.cargo.energy = Math.min(c.energy, (e.cargo.energy || 0) + c.energy * 0.45 * dt); // full charge in ~2s
+  e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - Math.max(4, c.toxins * 0.5) * dt); // she scrubs your poison — so venom builds must self-produce
   const ideal = Math.min(c.oxygen, oxygenTolerance(e) * 0.85);                 // comfortable, below the poison line
   e.oxygen = (e.oxygen || 0) + (ideal - (e.oxygen || 0)) * Math.min(1, 1.6 * dt);
   clampCargo(e);
