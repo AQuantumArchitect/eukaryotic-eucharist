@@ -206,8 +206,9 @@ const GRAFT_INITIATION = Object.freeze({ hpFrac: 0.09, hpMin: 7, toxins: 6 });
 // goes dense and plunges. Venting is free, but it spends the internal O2 you need for
 // lift, oxygen tolerance, and aerobic ATP — and you can only re-inflate in oxygenated
 // water. So a heavy tank dives cheaply, but the deep is O2-poor and the ascent is earned.
-const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', trimRate: 0.16 }); // ballast-GAS pumped/vented per second at full W/S — an ANALOG trim, not a binary flood
+const BALLAST = Object.freeze({ requires: 'oxygen_vacuole', trimRate: 0.32 }); // ballast-GAS pumped/vented per second at full W/S — an ANALOG trim (blow the tanks to dive)
 const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives a ballast cell's vertical drift (submarine feel)
+const BALLAST_FLOOD_W = 6.5;      // weight of a water-flooded (empty-gas) bladder per bladder — an empty ballast is HEAVY, so venting makes you DIVE and keep diving (it is not neutral)
 // The deepest creatures are dark-adapted — sunlight burns them like vampires. A body
 // tagged photophobic (spawned in the deep) takes HP damage wherever light exceeds the
 // threshold, so it cannot chase you up into the lit shallows without cooking. Surface
@@ -215,6 +216,7 @@ const BALLAST_DRIFT_K = 6.0;      // how strongly gas-vs-weight buoyancy drives 
 // The dark lineages are true light-vampires: the tail is inhabitable, but the bright transition
 // burns them quickly enough that light forms a meaningful spatial refuge.
 const LIGHT_BURN = Object.freeze({ threshold: 0.30, rate: 90, slope: 22 });
+const O2_BURN_DEPTH = 400;  // O2 poisoning is a SHALLOW hazard only: above this depth the bright, oxygen-rich water overloads you; below it (the lower nursery and deeper) every body is safe from O2 damage no matter how much it banked.
 // Oxygen (respiration FUEL) is split from ballast GAS (buoyancy). A bare cell has this base
 // O2 fuel volume; more comes from the Oxygen Vesicle. Buoyancy comes only from ballast gas.
 const BASE_OXYGEN_CAP = 0.62;
@@ -725,7 +727,7 @@ export const ORGANELLES = Object.freeze({
   siphon_rasp: {
     name: 'Siphon Rasp', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'rasp',
     desc: 'A parasitic shredding membrane. While rasping, it drains a share of the victim\'s biomass and lipids straight into your cargo.',
-    stats: { dps: 10.5, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.5 }
+    stats: { dps: 8.0, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
   },
   spore_toxin_launcher: {
     name: 'Sporo-Toxic Launcher', tier: 3, action: 'sporeshot', stackable: true, max: 3, category: 'launcher',
@@ -741,12 +743,12 @@ export const ORGANELLES = Object.freeze({
   leech_rasp: {
     name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
     desc: 'A parasitic feeding membrane. Deals almost no damage, but while rasping it siphons biomass, lipids, and a modest ATP trickle straight out of the host — the algae-parasite\'s core organ.',
-    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 4.5 }
+    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
   },
   leech_lance: {
     name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
     desc: 'A feeding spine. Its jab barely wounds, but on contact it draws biomass, lipids, and a modest ATP trickle at range — parasitize prey without killing it.',
-    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 7.0 }
+    stats: { damage: 4, length: 50, rupturePower: 0.40, alignmentFloor: 0.30, flat: true, leechRate: 3.2 }
   },
 
   // ── Deep-predator strains (survivor-like exotic organelles) ────────────────
@@ -928,7 +930,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'toxin_cloud', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Toxin Cloud Gland', desc: 'Local toxic vent bred from venomous deep hunters. Requires a Toxic Launcher to route the venom.', cost: { biomass: 16, toxins: 16, enzymes: 1 }, requiresOrganelle: 'toxin_launcher', requiresDiscovery: 'toxin_cloud', organelle: 'toxin_cloud', stackLimit: 3 },
   { id: 'clean_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Purified Processor', desc: 'Biomass to ATP with almost no toxic waste, at a slightly lower yield.', cost: { biomass: 18, enzymes: 1 }, organelle: 'clean_processor', requiresDiscovery: 'clean_processor', stackLimit: 6 },
   { id: 'virulent_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Virulent Processor', desc: 'More ATP and throughput, but floods the body with toxin waste — weapon fuel, if you can hold it.', cost: { biomass: 18, toxins: 6 }, organelle: 'virulent_processor', requiresDiscovery: 'virulent_processor', stackLimit: 6 },
-  { id: 'lipogenic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Lipogenic Processor', desc: 'Spends biomass and a little ATP to synthesize lipid reserve. Self-sufficient mitochondrial fuel.', cost: { biomass: 20, lipids: 6 }, organelle: 'lipogenic_processor', requiresDiscovery: 'lipogenic_processor', stackLimit: 5 },
+  { id: 'lipogenic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Lipogenic Processor', desc: 'Spends biomass and a little ATP to synthesize lipid reserve. Self-sufficient mitochondrial fuel.', cost: { biomass: 20, lipids: 6, enzymes: 1 }, organelle: 'lipogenic_processor', requiresDiscovery: 'lipogenic_processor', stackLimit: 5 },
   { id: 'catalytic_processor', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Catalytic Processor', desc: 'Enzyme-accelerated flow: the more enzymes you carry, the faster it runs.', cost: { biomass: 18, enzymes: 2 }, organelle: 'catalytic_processor', requiresDiscovery: 'catalytic_processor', stackLimit: 6 },
   { id: 'velocity_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Velocity Lance', desc: 'A charge spine — near-harmless at a drift, brutal at dash speed.', cost: { biomass: 18, crystals: 1 }, organelle: 'velocity_lance', requiresDiscovery: 'velocity_lance', stackLimit: 6 },
   { id: 'saw_lance', section: 'Tier 2D - Exotic traits (DNA)', theme: 'exotic', kind: 'organelle', name: 'Saw Lance', desc: 'A grinding blade: flat, reliable damage regardless of speed, biting from wider angles.', cost: { biomass: 20, crystals: 1 }, organelle: 'saw_lance', requiresDiscovery: 'saw_lance', stackLimit: 6 },
@@ -1097,6 +1099,21 @@ export function oxygenAt(y) {
   const cliffDepth = 4200 - WORLD.canopy;
   const cliffWidth = 520;
   return clamp(floor + cloud / (1 + Math.exp((d - cliffDepth) / cliffWidth)), floor, 1);
+}
+
+// Inverse of oxygenAt: the SHALLOWEST depth whose ambient O2 has fallen to `o2`. Since O2 decreases
+// monotonically with depth, any y at or below this is breathable-enough for a body that tolerates
+// `o2`. This lets one parametric rule place a forager in its niche: a high-O2-tolerance scavenger's
+// ceiling is near the surface (it roams the oxic shallows); an O2-INTOLERANT one's ceiling is deep,
+// confining it to the anaerobic abyss. Same reasoning, opposite habitats.
+function depthForOxygen(o2) {
+  const target = clamp(o2, oxygenAt(WORLD.h), oxygenAt(WORLD.canopy));
+  let shallow = WORLD.canopy, deep = WORLD.h;
+  for (let i = 0; i < 22; i++) {
+    const mid = (shallow + deep) * 0.5;
+    if (oxygenAt(mid) > target) shallow = mid; else deep = mid;
+  }
+  return (shallow + deep) * 0.5;
 }
 
 export function pressureAt(y) {
@@ -1791,7 +1808,7 @@ function finishWorldStep(world, player, dt) {
     // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
     // not the 5-10 minutes produced by the old generic NPC damping.
     const dampX = e.kind === 'player' ? 0.974 : 0.965;
-    const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.986 : 0.965;
+    const dampY = e.controller === 'algae' ? 0.992 : e.kind === 'player' ? 0.992 : 0.965; // player keeps vertical momentum (submarine drift), not a walking stop
     e.vx *= Math.pow(dampX, dt * 60); e.vy *= Math.pow(dampY, dt * 60);
     e.hit = Math.max(0, e.hit - dt); e.combatHit = Math.max(0, (e.combatHit || 0) - dt); e.grace = Math.max(0, (e.grace || 0) - dt);
     e.fissionCooldown = Math.max(0, (e.fissionCooldown || 0) - dt);
@@ -1837,7 +1854,10 @@ function applyPlayerCommands(world, player, commands, dt) {
       player.cargo.energy = Math.max(0, (player.cargo.energy || 0) - moveCost);
       const sp = speedOf(player);
       player.vx += move.x * sp * 2.1 * dt;
-      player.vy += move.y * sp * 1.5 * dt;   // vertical is mostly BALLAST-driven — direct swim is a weak correction, not a jetpack
+      // A body with a ballast bladder steers vertically ONLY through the gas (W/S trim below) — no direct
+      // vertical thrust, so it behaves like a submarine (momentum + buoyancy), not a walker that stops on
+      // key-release. A bladderless scavenger still swims up/down directly.
+      if (!hasOrg(player, BALLAST.requires)) player.vy += move.y * sp * 1.5 * dt;
       if (!(Number.isFinite(commands.aimX) && Number.isFinite(commands.aimY))) player.phase = Math.atan2(move.y, move.x);
     }
   }
@@ -2427,6 +2447,14 @@ function grazeWoundedAlgae(world, scavenger, algae, dt) {
 function updateScavengerBrain(world, e, dt) {
   const powered = hasEnergy(e) && (orgCount(e, 'basal_motility') > 0 || orgCount(e, 'flagella') > 0);
 
+  // Parametric O2 niche — the ONE rule both castes share. A forager settles toward the shallowest
+  // depth whose ambient oxygen it can bear (from its own oxygenTolerance): the oxic caste rides up
+  // into the oxygenated nursery, the O2-INTOLERANT abyssal clone is pinned down in the anaerobic
+  // deep where the whale-fall piles. Same reasoning, opposite homes. (Acute overload flight below.)
+  const nicheCeiling = depthForOxygen(oxygenTolerance(e));
+  const nicheHome = clamp(nicheCeiling + 250, WORLD.canopy + 200, WORLD.h - 200);
+  e.depthHome += (nicheHome - e.depthHome) * Math.min(1, 0.5 * dt);
+
   // Panic: a combat hit (0.18; environmental stress only sets 0.05) → bolt from the attacker;
   // or the shallows are turning O2-toxic → dive back down.
   if (e.brainState !== 'flee') {
@@ -2457,6 +2485,8 @@ function updateScavengerBrain(world, e, dt) {
     let wounded = (e._targetRef && e._targetRef.controller === 'algae' && e._targetRef.alive) ? e._targetRef : null;
     if (think) {
       field = bestFieldFor(e, world);
+      // Parametric gate: never chase food up into water whose oxygen would poison this caste.
+      if (field && oxygenAt(field.y) > oxygenTolerance(e) + 0.12) field = null;
       const candidate = bestWoundedAlgaeForScavenger(e, world);
       const fieldScore = field ? fieldForageScore(e, field) : 0;
       wounded = candidate && candidate.score > fieldScore * 1.08 ? candidate.algae : null;
@@ -2932,9 +2962,10 @@ function updateEnvironmentAndMetabolism(world, dt) {
       if (e.kind === 'player') world.events.push({ type: 'surge', entityId: e.id });
     }
 
-    // Oxygen overload is tick damage unless tolerated or burned by mitochondria.
+    // Oxygen overload is tick damage — but ONLY in the bright shallows. Below O2_BURN_DEPTH (the lower
+    // nursery and deeper) the water is safe to hold a full breath in, so a diver isn't punished for it.
     const tol = oxygenTolerance(e);
-    if (e.grace <= 0 && e.oxygen > tol) {
+    if (e.grace <= 0 && e.oxygen > tol && (e.y - WORLD.canopy) < O2_BURN_DEPTH) {
       const excess = e.oxygen - tol;
       e.hp -= excess * (hasMito(e) ? 3.4 : 7.4) * dt;
       e.hit = Math.max(e.hit, 0.05);
@@ -2965,8 +2996,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const bladders = orgCount(e, 'oxygen_vacuole');
       const flagLift = orgCount(e, 'flagella') * ORGANELLES.flagella.stats.lift * 0.18;
       if (bladders > 0) {
+        const gasCap = Math.max(0.001, caps(e).ballastGas);
+        const gasFill = clamp((e.ballastGas || 0) / gasCap, 0, 1);
         const gasLift = (e.ballastGas || 0) * ORGANELLES.oxygen_vacuole.stats.liftPerGas;
-        const sink = biomassWeight(e) - (1.0 + gasLift + flagLift);
+        const floodWeight = BALLAST_FLOOD_W * (1 - gasFill) * bladders; // empty bladder = water-flooded = heavy → dives and STAYS diving
+        const sink = biomassWeight(e) + floodWeight - (1.0 + gasLift + flagLift);
         e.vy += clamp(sink * BALLAST_DRIFT_K, -62, 74) * dt;
       } else {
         const sink = biomassWeight(e) - buoyancy(e) - flagLift;
@@ -4253,6 +4287,12 @@ function entrySpawn(world, role) {
     if (p && y < p.y && p.y - y < SPAWN_CLEARANCE) y = p.y + rand(world, SPAWN_CLEARANCE, SPAWN_CLEARANCE + 800);
     return { x: offX(), y: clamp(y, WORLD.nurseryTop - 200, WORLD.ruptureBottom + 400) };
   }
+  if (role === 'abyssal_scavenger') {
+    // The ancient anaerobe rises from the abyss floor to graze the sinking whale-fall.
+    let y = WORLD.h - rand(world, 150, 1800);
+    if (p && y < p.y + SPAWN_CLEARANCE) y = Math.max(y, p.y + SPAWN_CLEARANCE);
+    return { x: offX(), y: clamp(y, WORLD.deepTop + 800, WORLD.h - 60) };
+  }
   // hunters: aerobic mid predators rise from the O2-zone floor; deep anaerobes rise from the abyss.
   let y = role === 'predator' ? O2_ZONE_BOTTOM - rand(world, 0, 500) : WORLD.h - rand(world, 200, 2200);
   if (p && y < p.y + SPAWN_CLEARANCE) y = Math.max(y, p.y + SPAWN_CLEARANCE); // never above the player
@@ -4263,8 +4303,12 @@ function spawnTick(world, dt) {
   world.spawn.algae -= dt; world.spawn.npc -= dt; world.spawn.exotic -= dt; world.spawn.nursery -= dt;
   // ALGAE — minted top-down by the canopy fungus, the primary producer renewed from the light up
   // to its carrying capacity. Young blooms drift down and live their ballast lifecycle as food.
-  let algaeN = 0, scavN = 0;
-  for (const e of world.entities) { if (!e.alive) continue; if (e.controller === 'algae') algaeN++; else if (e.controller === 'scavenger') scavN++; }
+  let algaeN = 0, scavN = 0, abyssalScavN = 0;
+  for (const e of world.entities) {
+    if (!e.alive) continue;
+    if (e.controller === 'algae') algaeN++;
+    else if (e.controller === 'scavenger') { if (e.trophicRole === 'abyssal_scavenger') abyssalScavN++; else scavN++; }
+  }
   const producerMass = algaeProducerMass(world);
   const algaeHazard = algaeBirthHazard(world, algaeN, producerMass);
   if (algaeN < ALGAE_EMERGENCY_CAP && world.rng() < 1 - Math.exp(-algaeHazard * dt)) {
@@ -4278,7 +4322,17 @@ function spawnTick(world, dt) {
   // real numbers come from fission — so a crashed hunter layer can still recover.
   if (world.spawn.npc <= 0 && world.entities.length < POP_CAP) {
     world.spawn.npc = rand(world, 0.7, 1.5);
-    if (scavN < scavengerTarget(world)) {
+    // The abyssal (O2-intolerant) scavenger caste tracks the whale-fall larder: as sinking biomass
+    // piles in the deep, more ancient anaerobes immigrate up from the floor to graze it.
+    let deepMatter = 0;
+    for (const f of world.fields) if (f.y > WORLD.deepTop + 1500) deepMatter += (f._matter || 0);
+    const abyssalTarget = clamp(Math.round(deepMatter / 1400), 0, 14);
+    if (abyssalScavN < abyssalTarget) {
+      spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true });
+      world.stats.immigrations += 1;
+      world.events.push({ type: 'immigrate', controller: 'scavenger' });
+    }
+    else if (scavN < scavengerTarget(world)) {
       spawnScavenger(world, entrySpawn(world, 'scavenger'));
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
@@ -4401,10 +4455,17 @@ function spawnScavenger(world, opts = {}) {
   const arrival = opts.x == null || opts.y == null ? scavengerImmigrationLocation(world) : null;
   const y = opts.y ?? arrival.y;
   const x = opts.x ?? arrival.x;
-  const hp = rand(world, 28, 45);
+  // Two castes of the SAME forager, differing only by O2 physiology (the brain reads it parametrically):
+  // the OXIC caste tolerates the bright, oxygenated shallows; the ABYSSAL caste is an O2-INTOLERANT
+  // "ancient" — a double-sized clone with its oxygen_tolerance stripped, so the same niche rule confines
+  // it to the anaerobic deep where it eats the sinking whale-fall.
+  const abyssal = !!opts.abyssal;
+  const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 };
+  if (!abyssal) organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   const e = makeSoftBody(world, 'npc', x, y, {
-    r: rand(world, 11, 18), color: '#8ef19e', controller: 'scavenger', trophicRole: 'anaerobic_scavenger', depthHome: y,
-    organelles: { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 }, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
+    r: rand(world, 11, 18) * (abyssal ? 2 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
+    trophicRole: abyssal ? 'abyssal_scavenger' : 'anaerobic_scavenger', depthHome: y,
+    organelles, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
   if (!opts.noStrain) { applyStrain(world, e); assignBody(e); }
   e.brainState = 'forage';
@@ -4994,9 +5055,10 @@ export function yukiRestore(world, dt, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e || !e.alive) return;
   const c = caps(e);
-  e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s
-  e.cargo.energy = Math.min(c.energy, (e.cargo.energy || 0) + c.energy * 0.45 * dt); // full charge in ~2s
+  e.hp = Math.min(c.hp, e.hp + c.hp * 0.30 * dt);                              // full heal in ~3s (free)
   e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - Math.max(4, c.toxins * 0.5) * dt); // she scrubs your poison — so venom builds must self-produce
+  // NOTE: ATP is NOT topped up by resting — it comes only WITH a graft (see buyOffering). Otherwise you
+  // could spam the rest chamber to refill energy for free, which trivializes the early game.
   const ideal = Math.min(c.oxygen, oxygenTolerance(e) * 0.85);                 // comfortable, below the poison line
   e.oxygen = (e.oxygen || 0) + (ideal - (e.oxygen || 0)) * Math.min(1, 1.6 * dt);
   clampCargo(e);
@@ -5199,6 +5261,7 @@ export function buyOffering(world, offeringId, entityId = world.playerId) {
     const c = caps(entity);
     const hpHit = Math.max(GRAFT_INITIATION.hpMin, c.hp * GRAFT_INITIATION.hpFrac);
     entity.hp = Math.max(1, entity.hp - hpHit);
+    entity.cargo.energy = caps(entity).energy;   // the graft comes with a full ATP charge — the only free recharge
     world.events.push({ type: 'graft_trauma', entityId, toxins: 0, hp: hpHit });
   }
   clampCargo(entity);
