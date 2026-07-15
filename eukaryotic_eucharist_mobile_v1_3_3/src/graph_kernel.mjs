@@ -4393,7 +4393,11 @@ const POP_CAP = 150;                // performance ceiling only — normal life 
 const ALGAE_EMERGENCY_CAP = 120;    // performance/recovery guardrail, not the normal population target
 const ALGAE_CAP = ALGAE_EMERGENCY_CAP; // retained name for legacy diagnostics and emergency-only callers
 const SCAV_TARGET = 26;             // mature seed reference; the running migration target is resource-driven
-const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 }); // fission-guild safety net; predator floor gives a standing mid-game "wall" of skirmishers + aerobic-wall hunters while leaving cap headroom for the deep bosses
+// Predator floor is a STANDING supply for now: they cannot yet self-sustain via fission (the gorge
+// gate needs a full biomass belly, but fat-grazing keeps them charged without ever hunting enough to
+// fill it — diagnosed avgBiomassFill ~12%, 0 fissions). Closing this to fission+rescue needs a
+// food-web decision (ease the gate / make fat scarcer / let them raid the nursery for prey).
+const POP_FLOOR = Object.freeze({ predator: 7, protozoan: 4, metazoan: 2, brood: 1 });
 
 function scavengerTarget(world) {
   let detritus = 0, hunterPressure = 0;
@@ -4699,21 +4703,23 @@ function spawnTick(world, dt) {
     const y = WORLD.ruptureTop - 220 + rand(world, 0, 2500);   // ~depth 1280 (upper rupture) .. 3560
     spawnParticle(world, choice(world, ['spores', 'enzymes', 'crystals']), rand(world, 0, WORLD.w), y, 1);
   }
-  // NURSERY SLURRY — a gentle, renewable food base for the O2-safe nursery band. The tuned algal
-  // ecology funnels nearly all dead matter to the deep floor, leaving the shallow-safe zone a food
-  // desert; a young scavenger (and the player's fragile opening) needs somewhere near the light to
-  // feed without braving the deep. This keeps a few modest drift-fields in the nursery so the OPENING
-  // of the run is survivable — the gentle foot of the difficulty curve. Capped by count so it never
-  // floods the ecosystem or replaces the rich (dangerous) deep as the real prize.
+  // NURSERY RESCUE (CLOSED LOOP). This was a standing from-nothing food supply for the nursery; in
+  // final form the nursery is fed by the ALGAE the scavengers graze (sun→algae→forager), so no matter
+  // enters from nowhere. This remains ONLY as a rare rescue: it fires when the nursery is genuinely
+  // starved of food AND the algal producer has crashed — a safety net against a dead opening, not a
+  // supply. Logged (world.stats.rescues) so `npm run stamp` can confirm it stays ~0 once tuned.
   let nurseryFields = 0;
   for (const f of world.fields) { const d = f.y - WORLD.canopy; if (d > 780 && d < 1300) nurseryFields++; }
-  if (world.spawn.nursery <= 0 && nurseryFields < 6) {
-    world.spawn.nursery = rand(world, 2.0, 3.8);
-    // Kept in the O2-SAFE, safely-edible band (deep enough that feeding doesn't inhale poisoning O2,
-    // shallow enough that the climb home to Yuki stays affordable) — the gentle foot of the curve.
+  const producerCrashed = algaeN < world.ecologyRegime.algaeMeanCount * 0.55;
+  if (world.spawn.nursery <= 0 && nurseryFields < 1 && producerCrashed) {
+    world.spawn.nursery = rand(world, 5.0, 9.0);   // slow — a rescue, not a feed
     spawnResourceField(world, rand(world, 0, WORLD.w), WORLD.canopy + rand(world, 800, 1180),
       { biomass: rand(world, 45, 90) * world.ecologyTuning.nurserySlurryGain, lipids: rand(world, 8, 22) * world.ecologyTuning.nurserySlurryGain, energy: rand(world, 3, 11) * world.ecologyTuning.nurserySlurryGain },
-      { radius: rand(world, 44, 68), sourceKind: 'nursery_slurry', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
+      { radius: rand(world, 44, 68), sourceKind: 'nursery_rescue', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
+    world.stats.rescues = (world.stats.rescues || 0) + 1;
+    world.events.push({ type: 'rescue', kind: 'nursery' });
+  } else if (world.spawn.nursery <= 0) {
+    world.spawn.nursery = rand(world, 2.0, 3.8);   // re-arm the check cadence without spawning
   }
 }
 
