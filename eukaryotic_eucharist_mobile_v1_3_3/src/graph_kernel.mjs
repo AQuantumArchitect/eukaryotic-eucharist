@@ -431,16 +431,11 @@ const BLOOM_ACID_RECOIL = 0.010;  // HP/s per toxin unit that a deep toxic bloom
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
 const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins', 'ballast']);
-// Diffusion (footprint spread rate) tuned down to 1/7th its old pace across the board — the old rates
-// let patches balloon in size far faster than they were being grazed down, especially visible in the
-// fat/lipid slick pooling at the canopy. vy (rise/sink drift speed) is a separate physical concept and
-// is untouched here.
-const DIFFUSE_SLOWDOWN = 7;
 const FIELD_TYPE = Object.freeze({
-  biomass: { vy:  15, spread: 0.4 / DIFFUSE_SLOWDOWN, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
-  lipids:  { vy: -13, spread: 1.8 / DIFFUSE_SLOWDOWN, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
-  energy:  { vy:   0, spread: 24 / DIFFUSE_SLOWDOWN,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
-  toxins:  { vy:   4, spread: 3.2 / DIFFUSE_SLOWDOWN, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
+  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
+  lipids:  { vy: -13, spread: 1.8, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
+  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
+  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
@@ -5801,6 +5796,7 @@ const CRAB_MAW_FRAC = 0.72;           // fields within crab.r×this are vacuumed
 const CRAB_BELLY = 80000;             // swallowed-matter cap; departs when full (or after one full loop)
 const CRAB_ENGULF_MIN_MASS = 80;      // only bodies this HEAVY (structural biomassMass) ...
 const CRAB_ENGULF_MIN_R = 50;         // ... or this GIANT (radius) are swallowed — the deep winners; small fry pass through
+const CRAB_CURRENT = 210;             // px/s lateral shove of the current field around the crab (bodies part + route around it, not damaged)
 
 function spawnShroomba(world, opts = {}) {
   const deepMatter = opts.deepMatter || CRAB_SUMMON_THRESHOLD;
@@ -5860,6 +5856,32 @@ function updateShroombaBrain(world, e, dt) {
     e._swallowed += m;
     o.alive = false; o._noCorpse = true;
     world.events.push({ type: 'crab_swallow', entityId: e.id, victimId: o.id });
+  }
+
+  // LATERAL CURRENTS: the marching colossus shoves a field of water sideways — bodies in its vicinity are
+  // pushed laterally out of its path (they part and route AROUND it) rather than damaged. Falls off with
+  // distance; mostly horizontal, a touch of vertical parting. Cheap O(n) while a crab exists.
+  const currentR = e.r * 1.15;
+  for (const o of world.entities) {
+    if (!o.alive || o === e || o.controller === 'shroomba') continue;
+    const dx = dxWrap(e.x, o.x), dy = o.y - e.y;
+    const d = Math.hypot(dx, dy); if (d > currentR || d < 1) continue;
+    const fall = (1 - d / currentR) * CRAB_CURRENT * dt;
+    o.vx += (dx / d) * fall;             // sideways, away from the crab's core
+    o.vy += (dy / d) * fall * 0.35;      // mild vertical parting
+  }
+
+  // WASH IN PREDATORS: the marching crab stirs up different predatory bacteria in its wake. Periodic deep
+  // spawns near it; applyStrain (depth-scaled) gives them their deep signature genes.
+  e._washT -= dt;
+  if (e._washT <= 0) {
+    e._washT = rand(world, 10, 20);
+    const n = 1 + Math.floor(world.rng() * 3);
+    const esc = escalationLevel(world);
+    for (let i = 0; i < n && world.entities.length < POP_CAP; i++) {
+      spawnPredator(world, { x: wrapX(e.x + rand(world, -e.r * 0.8, e.r * 0.8)), y: clamp(e.y + rand(world, -e.r * 0.5, e.r * 0.2), WORLD.deepTop + 400, WORLD.h - 120), escalation: esc });
+    }
+    world.events.push({ type: 'crab_washin', entityId: e.id, count: n });
   }
 
   // DEPART = the sink: after a full loop (WORLD.w travelled) or a full belly, the crab leaves and its
