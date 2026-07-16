@@ -543,12 +543,12 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 // is baseline (W/S), so no dive organ is needed in the starter set.
 { const w = K.createWorld({ seed: 4242 });
   const offs = K.getYukiOfferings(w);
-  const LEAN_CORE = ['membrane', 'membrane_intake', 'anaerobic_processor', 'flagella', 'photosystem', 'oxygen_vacuole', 'storage_vacuole', 'exotic_vacuole', 'rasping_lamella', 'dna_memory_vesicle'];
+  const LEAN_CORE = ['membrane', 'membrane_intake', 'anaerobic_processor', 'flagella', 'photosystem', 'oxygen_vacuole', 'storage_vacuole', 'exotic_vacuole', 'rasping_lamella', 'dna_memory_vesicle', 'ballast_stone'];
   for (const id of LEAN_CORE) {
     const o = offs.find(x => x.id === id);
     assert(o && !o.requiresDiscovery && !o.undiscovered, `lean-core organ ${id} is buyable at start (no discovery gate)`);
   }
-  const NEWLY_LOCKED = ['oxidase_vesicle', 'anabolic_vesicle', 'lipolytic_vesicle', 'mineralizing_gland', 'nuclease_vesicle', 'dash_vacuole', 'oxygen_store', 'oxygen_tolerance', 'gas_gland', 'pressure_bladder', 'ballast_siphon', 'ballast_stone', 'lipid_bladder', 'lance_bristle', 'toxin_launcher', 'phagosome', 'biomass_vacuole', 'lipid_vacuole', 'toxin_vacuole'];
+  const NEWLY_LOCKED = ['oxidase_vesicle', 'anabolic_vesicle', 'lipolytic_vesicle', 'mineralizing_gland', 'nuclease_vesicle', 'dash_vacuole', 'oxygen_store', 'oxygen_tolerance', 'gas_gland', 'pressure_bladder', 'ballast_siphon', 'lipid_bladder', 'lance_bristle', 'toxin_launcher', 'phagosome', 'biomass_vacuole', 'lipid_vacuole', 'toxin_vacuole'];
   for (const id of NEWLY_LOCKED) {
     const o = offs.find(x => x.id === id);
     assert(o && o.requiresDiscovery === id && o.undiscovered, `${id} is DNA-locked at start`);
@@ -607,19 +607,27 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(p.hp >= 1, 'graft trauma never kills outright (clamped to 1)');
 }
 
-// Ballast trim is flattened onto W/S: sustained DOWN floods (dive), UP releases (rise).
+// Ballast is target-seeking: S/down is a fast, direct valve (vents gas immediately); W/up only sets a
+// DESIRED gas volume (gasTarget) — the tank itself fills gradually afterward via fermentation, not
+// directly from the key press.
 { const w = K.createWorld({ seed: 1301 });
   const p = K.getPlayer(w);
   p.organelles.oxygen_vacuole = 2; p._capsEpoch = -1; p.ballastGas = 0.5; p.cargo.energy = K.__test.caps(p).energy;
   const gas0 = p.ballastGas;
-  // ANALOG trim: hold S / down → GRADUALLY vent ballast gas (sink), not a binary flood-dump.
+  // ANALOG vent: hold S / down → GRADUALLY vents ballast gas (sink), not a binary flood-dump.
   for (let i = 0; i < 18; i++) K.step(w, { moveY: 1 }, 1 / 60);
   const gasVented = K.getPlayer(w).ballastGas;
   assert(gasVented < gas0, 'holding DOWN gradually vents ballast gas (sink)');
   assert(gasVented > 0.15, 'a short vent does NOT dump the whole reserve — it trims (analog)');
-  // Hold W / up → GRADUALLY pump gas back in (rise).
+  // Hold W / up → immediately raises the TARGET (an intent), not the gas itself. Venting above already
+  // clamped gasTarget down to (at most) the post-vent gas level, so its floor here is gasVented.
+  const target0 = p.gasTarget || 0;
   for (let i = 0; i < 18; i++) K.step(w, { moveY: -1 }, 1 / 60);
-  assert(K.getPlayer(w).ballastGas > gasVented, 'holding UP gradually pumps ballast gas (rise)');
+  assert(p.gasTarget > target0, 'holding UP raises the desired gas target right away');
+  // Give it real time + biomass to ferment toward that target — the tank actually follows.
+  p.cargo.biomass = Math.max(p.cargo.biomass, 40);
+  for (let i = 0; i < 60 * 6; i++) K.step(w, { moveY: -1 }, 1 / 60);
+  assert(K.getPlayer(w).ballastGas > gasVented, 'given time, fermentation gradually fills the tank toward the target');
 }
 { const w = K.createWorld({ seed: 1302 });
   const p = K.getPlayer(w);
@@ -627,6 +635,63 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   K.step(w, { moveY: 1 }, 1 / 60);
   assert(!p.ballast, 'no oxygen vacuole → ballast control is inert (the float organ gates it)');
 }
+
+// GRADIENT-TRAVERSAL COST MODEL: descending your own weight gradient is free/cheap, climbing against
+// it costs real ATP — for the player AND for every NPC brain, via the same shared functions.
+{ const run = (orgs, biomass, vy) => { const w = K.createWorld({ seed: 1310 }); const p = K.getPlayer(w);
+    p.organelles = orgs; p._capsEpoch = -1; p.cargo.biomass = biomass; p.cargo.energy = 30; p.ballastGas = 0.1;
+    const e0 = p.cargo.energy;
+    for (let i = 0; i < 60; i++) K.step(w, { moveY: vy }, 1 / 60);
+    return e0 - p.cargo.energy; };
+  const bladder = { membrane: 1, oxygen_vacuole: 1, storage_vacuole: 1 };
+  const spentNeutral = run(bladder, 0, 0), spentVent = run(bladder, 0, 1), spentPump = run(bladder, 0, -1);
+  assert(Math.abs(spentVent - spentNeutral) < 1e-6, 'venting ballast (sinking, with the weight gradient) is free — no ATP beyond background metabolism');
+  // Ballast is target-seeking now (see the plan/applyPlayerCommands): holding W itself is a free intent
+  // (no direct ATP debit from the key press, same as venting) — with zero biomass there's nothing to
+  // ferment toward the target, so pumping costs exactly as little as venting here.
+  assert(Math.abs(spentPump - spentNeutral) < 1e-6, 'holding UP with no biomass to ferment costs nothing directly — the cost moved into fermentation, not the key press');
+  // With real biomass on hand, holding W drives measurably more fermentation (ballastWork, see the
+  // PROCESSORS loop) toward the target than sitting neutral with an already-satisfied target — the
+  // real cost of "rising" now. (An untouched target defaults to full cap — same as the old always-fill
+  // offgas behavior — so both runs start from an explicitly satisfied target for a clean comparison.)
+  const runBio = (vy) => { const w = K.createWorld({ seed: 1311 }); const p = K.getPlayer(w);
+    p.organelles = { membrane: 1, oxygen_vacuole: 1, storage_vacuole: 1, anaerobic_processor: 2 }; p._capsEpoch = -1;
+    p.cargo.biomass = 40; p.cargo.energy = K.__test.caps(p).energy; p.ballastGas = 0.1; p.gasTarget = 0.1;
+    const b0 = p.cargo.biomass;
+    for (let i = 0; i < 60; i++) K.step(w, { moveY: vy }, 1 / 60);
+    return b0 - p.cargo.biomass; };
+  assert(runBio(-1) > runBio(0), 'with biomass available, holding UP (raising an already-satisfied target) burns measurably more of it than sitting neutral');
+  const heavyOrgs = { membrane: 1, storage_vacuole: 1, basal_motility: 1, ballast_stone: 4 };
+  const flat = run(heavyOrgs, 0, 0), up = run(heavyOrgs, 0, -1), down = run(heavyOrgs, 0, 1);
+  assert((up - flat) > (down - flat) * 1.5, 'bladderless direct thrust: climbing against a heavy body costs noticeably more than descending with it'); }
+
+// The same gradient-aware price now applies to NPC brains too — a wild body pays ATP to move, not
+// just an on/off "powered" gate. Force a scavenger to chase a lure and confirm it spends ATP.
+{ const w = K.createWorld({ seed: 1311 }); w.entities = w.entities.filter(e => e.kind === 'player');
+  const s = K.__test.spawnScavenger(w, { x: 500, y: 1200 }); s.cargo.energy = 20;
+  w.fields.push({ id: 'lure', x: 900, y: 1200, radius: 40, stock: { biomass: 30 }, density: 1, sourceKind: 'test', age: 0, maxAge: 999, resType: 'biomass', decayRate: 0, radiusScale: 8, maxRadius: 200 });
+  const e0 = s.cargo.energy;
+  for (let i = 0; i < 120; i++) K.step(w, {}, 1 / 60);
+  assert(s.cargo.energy < e0 - 0.1, 'an NPC now spends real ATP moving toward a target, same as the player'); }
+
+// Algae's photosynthesis O2 vent throttles as ambient O2 approaches saturation (venting into
+// already-saturated water fights the gradient, same "against the gradient costs more" principle).
+{ const shallow = K.createWorld({ seed: 1312 }); shallow.entities = shallow.entities.filter(e => e.kind === 'player');
+  const deep = K.createWorld({ seed: 1313 }); deep.entities = deep.entities.filter(e => e.kind === 'player');
+  const aShallow = K.__test.spawnAlgae(shallow, { x: 500, y: K.WORLD.canopy + 50, mature: true });
+  const aDeep = K.__test.spawnAlgae(deep, { x: 500, y: K.WORLD.h - 400, mature: true });
+  for (let i = 0; i < 60; i++) { aShallow.y = K.WORLD.canopy + 50; aShallow.vy = 0; K.step(shallow, {}, 1 / 60); }
+  for (let i = 0; i < 60; i++) { aDeep.y = K.WORLD.h - 400; aDeep.vy = 0; K.step(deep, {}, 1 / 60); }
+  assert(aShallow.oxygen > 0, 'shallow (saturated-water) algae still nets some O2 buildup — venting is throttled, not blocked'); }
+
+// O2 field anchors: near-saturated at the canopy, ~85% by the nursery (relief across most of the early
+// game), a real cliff resolved by depth 4600, at-floor well before depth 6000.
+{ const canopy = K.WORLD.canopy;
+  assert(K.oxygenAt(canopy + 0) > 0.90, 'O2 reads as ~saturated at the canopy');
+  assert(Math.abs(K.oxygenAt(canopy + 1200) - 0.85) < 0.02, 'O2 sits at the 85% relief anchor by depth 1200');
+  assert(K.oxygenAt(canopy + 2500) < K.oxygenAt(canopy + 1200), 'O2 keeps declining well before the cliff — a long gradient, not a plateau');
+  assert(Math.abs(K.oxygenAt(canopy + 4600) - 0.05) < 0.02, 'O2 sits at the 5% cliff-resolved anchor by depth 4600');
+  assert(K.oxygenAt(canopy + 6000) < 0.05, 'O2 is effectively at floor well past the cliff, not still lingering at depth 6000'); }
 
 // Junk DNA sequences into your scarcest exotic (spores/enzymes/crystals), not bulk biomass.
 { const w = K.createWorld({ seed: 1401 });
@@ -709,6 +774,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 // Layered membrane: a whole layer's worth of damage sheds the outer layer (drops lipids), underhost lives.
 { const w = K.createWorld({ seed: 7005 }); const p = K.getPlayer(w);
   p.organelles.membrane = 3; p._capsEpoch = -1; p.hp = K.__test.caps(p).hp;
+  p.biomassMass = 40; // above the shed function's structural floor (16) — a fresh spawn's default (r*0.7) sits just under it and would falsely skip this test
   K.__test.hurt(w, p, 120); // eat through the outer layer (> one layer's HP)
   assert(p.organelles.membrane === 2, 'a full layer of damage sheds exactly one membrane layer');
   assert(p.alive && p.hp > 0, 'the underhost survives the peel');
@@ -724,11 +790,17 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(p.cargo.toxins < 30, 'resting at Yuki scrubs toxins for free');
   assert(p.oxygen < 0.9, 'resting at Yuki eases oxygen toward a safe level'); }
 
-// The algal oxygen/buoyancy path costs NO exotics — it's the safe, exotic-free route.
+// The algae opener's core organs plus Ballast Stone (a cheap, category-exempt basic descent tool)
+// stay exotic-free. The rest of the oxygen/buoyancy path (gas mechanics, tolerance, capacity) got a
+// cost pass — it now carries a signature exotic like every other functional category.
 { const w = K.createWorld({ seed: 7103 });
-  for (const id of ['photosystem', 'oxygen_vacuole', 'oxygen_store', 'oxygen_tolerance', 'jettison_vesicle']) {
+  for (const id of ['photosystem', 'oxygen_vacuole', 'jettison_vesicle', 'ballast_stone']) {
     const o = K.getYukiOfferings(w).find(x => x.id === id);
-    assert(o && !['spores', 'enzymes', 'crystals', 'dna'].some(k => k in (o.cost || {})), `${id} costs no exotics (algae path is exotic-free)`);
+    assert(o && !['spores', 'enzymes', 'crystals', 'dna'].some(k => k in (o.cost || {})), `${id} costs no exotics (algae opener stays exotic-free)`);
+  }
+  for (const id of ['oxygen_store', 'oxygen_tolerance', 'gas_gland', 'pressure_bladder', 'ballast_siphon', 'aerocyst']) {
+    const o = K.getYukiOfferings(w).find(x => x.id === id);
+    assert(o && ['spores', 'enzymes', 'crystals'].some(k => k in (o.cost || {})), `${id} now carries an exotic (oxygen/buoyancy cost pass)`);
   } }
 
 // Oxidase Vesicle: burns internal O2 + biomass into ATP (pre-mitochondrial respiration).
@@ -788,15 +860,51 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   p.organelles.oxygen_vacuole = 0; p.oxygen = 1.0; p.ballastGas = 0; p._capsEpoch = -1;
   assert(Math.abs(K.__test.buoyancy(p) - 2.0) < 1e-6, 'no bladder → buoyancy is just BASE_BUOYANCY (2.0); O2 is not a balloon'); }
 
-// Jettison Vesicle: eject biomass → lose cargo + structural mass, spill a field, lurch up.
+// Jettison Vesicle: a VALVE, not a thruster — eject biomass → lose cargo + structural mass, spill a
+// field, cheap ATP. No synthetic vy kick; the weight loss makes real buoyancy() lift you next frame.
 { const w = K.createWorld({ seed: 7403 }); const p = K.getPlayer(w);
   p.organelles.jettison_vesicle = 1; p.organelles.storage_vacuole = 6; p._capsEpoch = -1;
   p.cargo.biomass = 80; p.cargo.energy = 20; p.biomassMass = 60; p.vy = 0;
-  const bm0 = p.cargo.biomass, mass0 = p.biomassMass;
+  const bm0 = p.cargo.biomass, mass0 = p.biomassMass, e0 = p.cargo.energy;
+  const weight0 = K.__test.biomassWeight(p);
   assert(K.__test.ventBiomass(w, p), 'jettison fires with biomass + energy');
   assert(p.cargo.biomass < bm0 && p.biomassMass < mass0, 'jettison sheds cargo AND structural mass');
-  assert(p.vy < 0, 'jettison lurches you upward');
+  assert(e0 - p.cargo.energy < 0.5, 'jettison is a cheap valve, not a paid thrust');
+  assert(K.__test.biomassWeight(p) < weight0, 'shedding mass genuinely lightens the body — real buoyancy follows, no synthetic kick');
   assert(w.fields.some(f => f.sourceKind === 'jettison'), 'jettison spills a feed-field'); }
+
+// Solid ballast: pressure compacts stored biomass into dense drop-weight bricks, which add real weight.
+{ const w = K.createWorld({ seed: 7405 }); const p = K.getPlayer(w);
+  p.organelles.storage_vacuole = 6; p._capsEpoch = -1;
+  p.cargo.biomass = 40; p.cargo.ballast = 0; p.y = K.WORLD.h * 0.9; // deep — high pressure, fast compaction
+  for (let i = 0; i < 20 * 60; i++) K.step(w, {}, 1 / 60, false);
+  assert(p.cargo.ballast > 0, 'pressure passively compacts stored biomass into ballast bricks over time'); }
+
+// Jettison prefers dropping carried ballast bricks first — the "drop weight" action, an instant sink
+// with no lingering feed-field (processed waste, not food) — and only falls back to biomass when empty.
+{ const w = K.createWorld({ seed: 7406 }); const p = K.getPlayer(w);
+  p.organelles.jettison_vesicle = 1; p.organelles.storage_vacuole = 6; p._capsEpoch = -1;
+  p.cargo.ballast = 8; p.cargo.biomass = 40; p.cargo.energy = 50;
+  const bm0 = p.cargo.biomass;
+  assert(K.__test.ventBiomass(w, p), 'jettison fires with ballast carried');
+  assert(p.cargo.ballast === 0, 'jettison drops the FULL carried ballast in one go — a decisive drop-weight release');
+  assert(p.cargo.biomass === bm0, 'ballast-first: biomass cargo is untouched while bricks are still carried');
+  assert(w.fields.some(f => f.sourceKind === 'ballast_drop'), 'jettisoned ballast spawns its own dense field');
+  w.fields = w.fields.filter(f => f.sourceKind === 'ballast_drop'); // isolate from ambient food fields, which would merge with and skew the comparison field
+  const ballastField = w.fields.find(f => f.sourceKind === 'ballast_drop');
+  const biomassField = K.__test.spawnResourceField(w, p.x, p.y, { biomass: 8 }, { sourceKind: 'jettison' });
+  const by0 = ballastField.y, bmy0 = biomassField.y;
+  for (let i = 0; i < 30; i++) K.stepEcology(w, 1 / 60);
+  assert((ballastField.y - by0) > (biomassField.y - bmy0) * 3, 'a dropped brick sinks much harder/faster than an equivalent loose-meat field'); }
+
+// Jettison falls back to the original biomass valve once no ballast bricks are carried.
+{ const w = K.createWorld({ seed: 7407 }); const p = K.getPlayer(w);
+  p.organelles.jettison_vesicle = 1; p.organelles.storage_vacuole = 6; p._capsEpoch = -1;
+  p.cargo.ballast = 0; p.cargo.biomass = 40; p.cargo.energy = 50;
+  const bm0 = p.cargo.biomass;
+  assert(K.__test.ventBiomass(w, p), 'jettison still fires with zero bricks carried');
+  assert(p.cargo.biomass < bm0, 'biomass-only fallback still sheds cargo, same as the original valve');
+  assert(w.fields.some(f => f.sourceKind === 'jettison'), 'fallback still spills the ordinary feed-field'); }
 
 // O2 overload is percentage-based: a bigger O2 tank raises the absolute safe threshold.
 { const w = K.createWorld({ seed: 7404 }); const p = K.getPlayer(w);
