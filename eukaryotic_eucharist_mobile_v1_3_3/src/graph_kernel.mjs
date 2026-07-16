@@ -800,6 +800,11 @@ export const ORGANELLES = Object.freeze({
     desc: 'A pre-mitochondrial oxidizer: burns internal oxygen together with biomass to make ATP. Weaker than a mitochondrion, but it gives the oxygen build an ATP payoff without the Eucharist.',
     stats: { rate: 0.9, oxygenPerBiomass: 0.06, atpPerBiomass: 2.7 }
   },
+  lipid_armor_forge: {
+    name: 'Sclerous Lamina', tier: 3, action: null, stackable: true, max: 5, category: 'metabolic',
+    desc: 'Lays down a rind of dense LIPID armour from the cell\'s own biomass — a tough, fatty shell that makes the body a poorer meal (hunters score prey by biomass) and, in a deep bloom, a thorny mouthful. In the player it doubles as a DNA lock: the hardened lamina shields the sequenced genome.',
+    stats: { rate: 2.2, lipidPerBiomass: 0.85 }
+  },
   anabolic_vesicle: {
     name: 'Anabolic Vesicle', tier: 2, action: null, stackable: true, max: 5, category: 'metabolic',
     desc: 'Banks surplus energy as body mass: when your ATP is running high, it spends the excess to build biomass — the mirror of an anaerobic processor.',
@@ -3304,12 +3309,18 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // into fat makes it a poorer meal than the raw biomass pile it feeds on — a survival strategy —
       // and when it dies its lipid-rich corpse feeds the dark with FAT instead of just more biomass,
       // diversifying the deep food web.
-      if (e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > 2) {
+      // The Sclerous Lamina organelle lays down lipid armour on any body that carries it (deep blooms,
+      // and the player as a DNA-lock shell); the abyssal bottom-feeder does the same innately off the
+      // floor pile. Both convert biomass -> buoyant lipid rind (conserved).
+      const forge = orgCount(e, 'lipid_armor_forge');
+      if ((e.trophicRole === 'abyssal_scavenger' || forge > 0) && (e.cargo.biomass || 0) > 2) {
         const lipRoom = Math.max(0, caps(e).lipids - (e.cargo.lipids || 0));
         if (lipRoom > 0) {
-          const convert = Math.min(e.cargo.biomass - 2, lipRoom / ABYSSAL_ARMOR_YIELD, ABYSSAL_ARMOR_RATE * dt);
+          const rate = forge > 0 ? ORGANELLES.lipid_armor_forge.stats.rate * forge : ABYSSAL_ARMOR_RATE;
+          const yieldPer = forge > 0 ? ORGANELLES.lipid_armor_forge.stats.lipidPerBiomass : ABYSSAL_ARMOR_YIELD;
+          const convert = Math.min(e.cargo.biomass - 2, lipRoom / yieldPer, rate * dt);
           e.cargo.biomass -= convert;
-          e.cargo.lipids = (e.cargo.lipids || 0) + convert * ABYSSAL_ARMOR_YIELD;
+          e.cargo.lipids = (e.cargo.lipids || 0) + convert * yieldPer;
         }
       }
       // Mid predators run day-to-day on FAT: lipids oxidize straight to ATP, sparing the biomass belly
@@ -5075,7 +5086,7 @@ function spawnAlgae(world, opts = {}) {
     // Algae are NOT O2-immune: a modest tolerance buys a little headroom, but lingering in the
     // nursery's saturated water still poisons them — the whole point of the dive-to-escape strategy.
     organelles: deep
-      ? { membrane: 4 + Math.floor(world.rng() * 3), anaerobic_processor: 2, photosystem: 1, oxygen_tolerance: 0, oxygen_vacuole: 1, membrane_hardening: 3 + Math.floor(world.rng() * 3), storage_vacuole: 8, exotic_vacuole: 1, toxin_launcher: 1 }
+      ? { membrane: 4 + Math.floor(world.rng() * 3), anaerobic_processor: 2, photosystem: 1, oxygen_tolerance: 0, oxygen_vacuole: 1, membrane_hardening: 3 + Math.floor(world.rng() * 3), storage_vacuole: 8, exotic_vacuole: 1, toxin_launcher: 1, lipid_armor_forge: 1 + Math.floor(world.rng() * 2) }
       : { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 2 : 1, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
     cargo: deep
       ? { biomass, lipids: rand(world, 24, 55), energy: rand(world, 12, 34), toxins: rand(world, 26, 60) }
