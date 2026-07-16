@@ -62,7 +62,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .oBuy:hover{background:rgba(158,240,189,.28)}
 .oBuy.dis{border-color:rgba(255,180,90,.5);color:#ffcf8a;background:rgba(255,150,60,.10)}
 .oBuy.maxed{border-color:rgba(255,255,255,.16);color:var(--muted);background:rgba(255,255,255,.04);cursor:default}
-.oBuy.lockicon{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.03);cursor:default;opacity:.7}
+.oBuy.lockicon{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.03);cursor:default;opacity:.7}.oRemove{appearance:none;border:1px solid rgba(255,120,151,.4);border-radius:9px;padding:6px 9px;font-size:11px;font-weight:950;color:#ffb0bf;background:rgba(255,120,151,.10);cursor:pointer;flex:0 0 auto;margin-right:5px}.oRemove:hover{background:rgba(255,120,151,.22)}
 /* Tri-state tints so the cases READ apart: READY (green, buy now) · CAN'T-AFFORD (amber, you own the recipe) · LOCKED (dim, DNA-gated). */
 .offer.organelle.ready{border-color:rgba(158,240,189,.5);background:rgba(158,240,189,.075)}
 .offer.organelle.unaff{border-color:rgba(255,180,90,.42);background:rgba(255,160,70,.07);opacity:1}
@@ -148,7 +148,7 @@ let camera = {x:0,y:0,shake:0};
 let keys = new Set();
 let pointer = {x:innerWidth/2,y:innerHeight/2,down:false,right:false};
 let moveTouch = {id:null,x:0,y:0,active:false};
-let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false};
+let buttons = {feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false,compact:false};
 let didGameOver = false;
 // Iframe focus gate: keyboard events are silently dropped until the document has focus.
 // Applies to itch.io embeds, Google Sites embeds, and any other iframe host.
@@ -172,7 +172,7 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   ui.gameOver.style.display='none';
   didGameOver=false;
   pointer.down=false; pointer.right=false;
-  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false};
+  buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false,compact:false};
   toast('Reborn from the froth — a fresh genome. Yuki\'s deeper grafts are sealed until you earn them again.');
 }
 
@@ -235,7 +235,7 @@ function command(){
   // Left click = FIRE ALL WEAPONS at once (rasp + every launcher/gland you carry). Dedicated keys still
   // fire each weapon on its own; R is the toxic launcher's own key (freed up now that rasp is on click).
   const fire=pointer.down;
-  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:fire||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:fire||keys.has('r')||keys.has('x')||buttons.acid,sporeshot:fire||keys.has('c')||buttons.sporeshot,harpoon:fire||keys.has('z')||buttons.harpoon,cloud:fire||keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:fire||keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,aimX:an.x,aimY:an.y};
+  return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:fire||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:fire||keys.has('r')||keys.has('x')||buttons.acid,sporeshot:fire||keys.has('c')||buttons.sporeshot,harpoon:fire||keys.has('z')||buttons.harpoon,cloud:fire||keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:fire||keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,compact:keys.has('u')||buttons.compact,aimX:an.x,aimY:an.y};
 }
 
 let lastCommand=null;
@@ -331,7 +331,7 @@ function dagSinkValue(id){
   if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0||hud.hp.value<=hud.hp.max*0.25};
   if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false};
   if(id==='gas'){ const b=hud.ballast||{}; return {value:b.gas||0, max:Math.max(0.05,b.gasCap||0), color:'134,210,255', duress:false, off:!b.hasOrgan}; }
-  if(id==='ballast'){ const b=hud.bricks||{value:0,cap:0}; return {value:b.value, max:Math.max(0.05,b.cap), color:hexRgb(K.COLORS.ballast), duress:false, off:!(b.cap>0)}; }
+  if(id==='ballast'){ const b=hud.bricks||{value:0}; return {value:b.value, max:1, color:hexRgb(K.COLORS.ballast), duress:false, noMax:true}; }
   const r=hud.resources.find(x=>x.id===id);
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
@@ -383,6 +383,13 @@ function dagSinkRadius(id,v){
     return 90-frac*(90-18); // INVERTED: healthy reads small/calm, near-death balloons up as a warning
   }
   if(id==='dna') return 38; // conditional, but still reads as a vital-tier node once it exists
+  if(id==='ballast'){
+    // Ballast is uncapped by design (it's the closest thing a body has to an age) — a linear fill
+    // fraction has no meaning without a max, so size grows logarithmically instead: fast early, tailing
+    // off, so it stays on-screen and readable no matter how long a body's been alive.
+    const value=(v&&v.value)||0;
+    return clamp(13+14*Math.log(1+value),13,95);
+  }
   return DAG_VITAL_SINKS.includes(id)?38:26;
 }
 // A stat is "actively filling" when its value is climbing fast right now — reused here (separately from
@@ -419,6 +426,7 @@ function dagEdgeActiveness(fromId,toId,cmd,flowIntensity,outflowIntensity){
   if(fromId==='enzymes'&&toId==='phagosome') return outflowIntensity.enzymes??0;
   if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
   if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
+  if(fromId==='waste_compactor'||toId==='waste_compactor') return (cmd&&cmd.compact)?1:0;
   // Generic fallback (not membrane_intake-specific): ANY edge ending at a resource that's currently
   // rising lights up — this is what makes storage_vacuole/biomass_vacuole/exotic_vacuole/etc actually
   // swell and accrue "grow-with-usage" heat while feeding, without needing a per-organelle special case.
@@ -445,6 +453,10 @@ const DAG_EDGE_TUNING={
   'enzymes>phagosome': {len:30, k:0.12},
   'oxygen>hp': {len:34, k:0.11},
   'toxins>hp': {len:34, k:0.11},
+  'toxins>waste_compactor': {len:26, k:0.13},
+  'biomass>waste_compactor': {len:36, k:0.08},
+  'energy>waste_compactor': {len:36, k:0.08},
+  'waste_compactor>ballast': {len:30, k:0.10},
 };
 function dagEdgeTuning(fromId,toId){
   return DAG_EDGE_TUNING[fromId+'>'+toId] || {len:DAG_ACTIVE_LEN, k:DAG_ACTIVE_K};
@@ -525,7 +537,9 @@ function dagBackdrop(g,w,h){
   g.restore();
 }
 function drawDagSink(g,s,v){
-  const frac=clamp(v.value/(v.max||1),0,1);
+  // Uncapped resources (ballast) have no ceiling to show progress toward — a full ring, since the node's
+  // own logarithmic SIZE (dagSinkRadius) is what actually communicates "how much," not a fill fraction.
+  const frac=v.noMax?1:clamp(v.value/(v.max||1),0,1);
   const filling=fillPulse('dag_'+s.id,v.value);
   const pulse=0.5+0.5*Math.sin(uiPhase*0.42);
   const off=!!v.off;
@@ -679,7 +693,7 @@ function drawDagHud(){
 
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
-  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','LMB','Rasp'],['dash','D','Dash'],['acid','R','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['divide','M','Divide'],['yuki','Y','Yuki']];
+  const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','LMB','Rasp'],['dash','D','Dash'],['acid','R','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['compact','U','Compact'],['divide','M','Divide'],['yuki','Y','Yuki']];
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
@@ -687,7 +701,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['U','Compact waste — drains most of your toxins into permanent ballast (biomass + ATP cost)',!!map.get('compact')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
@@ -758,7 +772,16 @@ function renderShop(){
   // (it→lipids). HP buys only (repair); lipids is the money itself. Selling toxins/O2 is the new detox.
   // The exchange lives on the HUD resource bars now (tap-zones). The modal is pure body + store.
   const seqOffers=offers.filter(o=>o.kind==='sequence' && o.available);
-  ui.shopExchange.style.display='none';
+  // The exchange counter is dormant for everything except ballast (see YUKI_TRADES) — the lipids row is
+  // a display-only balance reference alongside it, not itself tradeable.
+  const trades=K.getYukiTrades(world);
+  if(trades.length>1){
+    ui.shopExchange.style.display='flex';
+    ui.shopExchange.innerHTML=`<div class="tCols">${trades.map(tradeCol).join('')}</div>`;
+    for(const btn of ui.shopExchange.querySelectorAll('.tArrow.live')) btn.onpointerup=e=>{e.preventDefault();doTrade(btn.dataset.res,btn.dataset.dir);};
+  } else {
+    ui.shopExchange.style.display='none';
+  }
   const bhEl=document.getElementById('bodyHead'); if(bhEl) bhEl.style.display='none';
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
   let rest=offers.filter(o=>!inBar(o));
@@ -786,15 +809,19 @@ function renderShop(){
   // needed); tapping the card body toggles the detail (description, category, DNA variant notes).
   for(const card of ui.shopBody.querySelectorAll('.offer.sequence')) card.onpointerup=e=>{e.preventDefault();doBuy(card.dataset.id,card.dataset.kind);};
   for(const btn of ui.shopBody.querySelectorAll('.oBuy[data-id]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doBuy(btn.dataset.id,btn.closest('.offer').dataset.kind);};
+  for(const btn of ui.shopBody.querySelectorAll('.oRemove[data-remove]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doRemove(btn.dataset.remove);};
   for(const card of ui.shopBody.querySelectorAll('.offer.organelle,.offer.sacrament,.offer.colony')) card.onclick=e=>{if(e.target.closest('.oBuy'))return;card.classList.toggle('open');};
 }
 function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
+function doRemove(orgId){const res=K.removeOrganelle(world,orgId);if(res.ok){toast('Graft undone.');renderShop();}else toast(res.reason||'Cannot remove.');}
 // One row of the lipid exchange counter: name · amount · fill bar · ▼ sell (→lipids) · ▲ buy (lipids→).
 // A vertical exchange column per resource: label · ▲ increase (top) · upright fill bar · value ·
 // ▼ reduce (bottom). Each arrow shows its lipid delta — +N (green, Yuki pays you) or −N (amber, you
 // pay); ▲ raises the resource, ▼ lowers it, independent of which way the lipids flow.
 function tradeCol(t){
-  const pctCur=Math.round(100*t.cur/Math.max(1e-6,t.cap));
+  // Uncapped resources (ballast) have no real cap to divide by (Infinity) — same log-scale idea as the
+  // DAG node so the fill bar still reads as "growing," not permanently empty.
+  const pctCur=Number.isFinite(t.cap)?Math.round(100*t.cur/Math.max(1e-6,t.cap)):clamp(Math.round(100*Math.log(1+t.cur)/Math.log(201)),0,100);
   const val=t.res==='oxygen'?Math.round(t.cur*100)+'%':fmt(t.cur);
   const arrow=(leg,dir,sym)=>{
     if(!leg) return `<button class="tArrow dis" disabled>${sym}</button>`;
@@ -828,9 +855,10 @@ function organCard(o){
   else if(st==='unaff')btn=`<button class="oBuy dis" data-id="${o.id}">⊕ Graft</button>`;
   else btn=`<span class="oBuy lockicon">🔒</span>`;
   const badge=cnt>0?`<span class="ownBadge">×${cnt}</span>`:'';
+  const removeBtn=(cnt>0&&o.organelle)?`<button class="oRemove" data-remove="${o.organelle}" title="Undo one graft — free, no refund">−</button>`:'';
   const cost=o.costText?`<span class="oCost">${o.costText}</span>`:'';
   const reason=(st==='lock'||st==='unaff')&&o.reasons&&o.reasons.length?`<div class="oReason ${st}">${o.reasons[0]}</div>`:'';
-  return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${catNote}${initiation}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
+  return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${removeBtn}${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${catNote}${initiation}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
 }
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 // Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
