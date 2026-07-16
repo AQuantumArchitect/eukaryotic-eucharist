@@ -1111,6 +1111,14 @@ function widthScale(y) {
   const d = clamp((y - WORLD.canopy) / (WORLD.h - WORLD.canopy), 0, 1);
   return CONE_TOP + (1 - CONE_TOP) * d;
 }
+// DEPTH TEMPO: the nursery is the small, fast, frenetic space; it gets bigger AND slower with depth
+// (physically the warm-surface / cold-deep metabolic-rate gradient — cold, viscous, high-pressure deep).
+// A smooth pace multiplier, 1.0 in the bright shallows -> TEMPO_DEEP on the abyssal floor. No bands.
+const TEMPO_DEEP = 0.6;
+function depthTempo(y) {
+  const d = clamp((y - WORLD.canopy) / (WORLD.h - WORLD.canopy), 0, 1);
+  return 1 - (1 - TEMPO_DEEP) * d;
+}
 function dist2Wrap(ax, ay, bx, by) { const s = widthScale((ay + by) * 0.5); const dx = dxWrap(ax, bx) * s; const dy = by - ay; return dx * dx + dy * dy; }
 function distWrap(ax, ay, bx, by) { return Math.sqrt(dist2Wrap(ax, ay, bx, by)); }
 function norm(dx, dy) { const d = Math.hypot(dx, dy) || 1; return { x: dx / d, y: dy / d, d }; }
@@ -1821,6 +1829,7 @@ function speedOf(entity) {
   if (entity.hp < caps(entity).hp * 0.35) sp *= 0.8;
   if ((entity.chill || 0) > 0) sp *= (entity.chillMult ?? ORGANELLES.cryo_vesicle.stats.slowMult); // Cryo Vesicle slow
   sp *= adrenalFactor(entity); // Adrenal Vesicle: faster the closer to death
+  sp *= depthTempo(entity.y);  // fast, frenetic nursery; languid deep (the warm→cold pace gradient)
   return sp;
 }
 
