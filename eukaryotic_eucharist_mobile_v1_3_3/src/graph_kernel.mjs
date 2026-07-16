@@ -432,10 +432,10 @@ const BLOOM_ACID_RECOIL = 0.010;  // HP/s per toxin unit that a deep toxic bloom
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
 const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins', 'ballast']);
 const FIELD_TYPE = Object.freeze({
-  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0, maxRadius: 170 }, // NO decay — diffuses a little, auto-combines at the floor; only eaten matter leaves the system
-  lipids:  { vy: -13, spread: 0,   decay: 0, radiusScale: 6.5, maxRadius: 130 }, // NO decay, NO diffusion — a fat plume holds tight until something eats it
-  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5, maxRadius: 260 }, // flashes wide + thins fast
-  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5, maxRadius: 210 }, // slow diffuse, lingers
+  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
+  lipids:  { vy: -13, spread: 1.8, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
+  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
+  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
@@ -1962,13 +1962,22 @@ function membranePorosity(entity) {
     - orgCount(entity, 'membrane_hardening') * ORGANELLES.membrane_hardening.stats.porosityReduction, 0.020, 0.32);
 }
 
-function biomassWeight(entity) {
+// Named sub-terms of biomassWeight()/buoyancy(), split out so the DAG HUD's per-resource "hang forces"
+// (massBreakdown, below) read the SAME math the physics sim actually uses — one source of truth, never a
+// second parallel implementation that could quietly drift from what a body's real weight/lift is.
+function biomassCargoWeight(entity) {
   // Biomass is heavy now — accumulating it genuinely sinks you, driving the algae's fatten-and-fall.
   const cargoFactor = entity.controller === 'algae' ? 0.16 : 0.11;
   const structuralFactor = entity.controller === 'algae' ? 0.24 : 0.05;
+  return (entity.cargo.biomass || 0) * cargoFactor + entity.biomassMass * structuralFactor;
+}
+function ballastWeight(entity) {
   const stone = orgCount(entity, 'ballast_stone') * ORGANELLES.ballast_stone.stats.weight; // committed-diver anchor
   const bricks = (entity.cargo.ballast || 0) * BALLAST_BRICK_WEIGHT; // variable, carried drop-weight — the same mechanism as ballast_stone, just a resource instead of a fixed organ
-  return Math.max(0, (entity.cargo.biomass || 0) * cargoFactor + entity.biomassMass * structuralFactor + Math.pow(entity.r, 1.18) * 0.010 + stone + bricks);
+  return stone + bricks;
+}
+function biomassWeight(entity) {
+  return Math.max(0, biomassCargoWeight(entity) + Math.pow(entity.r, 1.18) * 0.010 + ballastWeight(entity));
 }
 
 function algaeBallastWorkDepth(entity) {
@@ -2008,23 +2017,17 @@ function algaeProducerMass(world) {
   return mass;
 }
 
-function buoyancy(entity) {
-  // MERGED: lift is stored internal gas (the same pool respiration and O2 poisoning read/write) in the
-  // bladder — deliberately DOES now have an oxygen term, since they're the same tank. A bladder-less body
-  // has only the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation AND passive
-  // O2 diffusion, same pool either way.
+// Bladder lift only — excludes aerocyst (a rigid, always-full float that never varies with the gas pool's
+// fill level, so it doesn't belong under the "oxygen pulls you up" hang-force; it's baseline, like
+// BASE_BUOYANCY) and lipid-bladder lift (its own separate term, see lipidBladderLift below).
+function gasLift(entity) {
   const bladders = orgCount(entity, 'oxygen_vacuole');
+  if (bladders <= 0) return 0;
   const s = ORGANELLES.oxygen_vacuole.stats;
   // Pressure compresses the gas (Boyle's Law): the same tank buys less lift the deeper you are —
   // universal for every bladder-owning body, not gated behind any one armor organ.
   const liftPerGas = s.liftPerGas / (1 + BOYLE_K * pressureAt(entity.y));
-  // Aerocysts are rigid, always-full floats — a lift floor that never vents.
-  const aero = orgCount(entity, 'aerocyst') * ORGANELLES.aerocyst.stats.fixedLift;
-  // Lipid Bladder: stored fat is lighter than water — buoyancy scaled by how full your lipid tank is.
-  const lb = orgCount(entity, 'lipid_bladder');
-  let lipidLift = 0;
-  if (lb > 0) { const c = caps(entity); lipidLift = lb * ORGANELLES.lipid_bladder.stats.lipidLift * clamp((entity.cargo.lipids || 0) / Math.max(1, c.lipids), 0, 1); }
-  if (entity.controller === 'algae' && bladders > 0) {
+  if (entity.controller === 'algae') {
     // A viable bloom must always be able to return: full gas beats its current weight, while a big
     // bloom needs a larger fraction of the bladder filled and therefore falls farther before turning.
     // The bladder is one organ, but its physical volume grows with the bloom that carries it.
@@ -2038,9 +2041,40 @@ function buoyancy(entity) {
     const recoveryMargin = 0.75 + 0.55 * Math.pow(gasFill, 8);
     const weightScaledLift = biomassWeight(entity) * recoveryMargin;
     const bladderLift = Math.max(gasCap * liftPerGas, weightScaledLift) * gasFill;
-    return BASE_BUOYANCY + aero + lipidLift + bladders * s.baseLift + bladderLift;
+    return bladders * s.baseLift + bladderLift;
   }
-  return BASE_BUOYANCY + aero + lipidLift + bladders * (s.baseLift + (entity.oxygen || 0) * liftPerGas);
+  return bladders * (s.baseLift + (entity.oxygen || 0) * liftPerGas);
+}
+// Lipid Bladder: stored fat is lighter than water — buoyancy scaled by how full your lipid tank is. Zero
+// unless the organ is owned — lipids otherwise contribute no weight or lift at all.
+function lipidBladderLift(entity) {
+  const lb = orgCount(entity, 'lipid_bladder');
+  if (lb <= 0) return 0;
+  const c = caps(entity);
+  return lb * ORGANELLES.lipid_bladder.stats.lipidLift * clamp((entity.cargo.lipids || 0) / Math.max(1, c.lipids), 0, 1);
+}
+function buoyancy(entity) {
+  // MERGED: lift is stored internal gas (the same pool respiration and O2 poisoning read/write) in the
+  // bladder — deliberately DOES now have an oxygen term, since they're the same tank. A bladder-less body
+  // has only the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation AND passive
+  // O2 diffusion, same pool either way.
+  // Aerocysts are rigid, always-full floats — a lift floor that never vents.
+  const aero = orgCount(entity, 'aerocyst') * ORGANELLES.aerocyst.stats.fixedLift;
+  return BASE_BUOYANCY + aero + lipidBladderLift(entity) + gasLift(entity);
+}
+// Per-resource weight/lift breakdown for the DAG HUD's "hang forces" (mass-contribution forces pulling
+// directly on the membrane node) — reads the SAME term functions the aggregates above use, so the graph
+// can never drift from what the physics sim actually computes. Deliberately excludes the baseline terms
+// (structural size weight, BASE_BUOYANCY, aerocyst lift) that aren't tied to any resource amount shown on
+// the graph — those stay implicit in biomassWeight()/buoyancy(), unchanged. toxins are absent on purpose:
+// they contribute zero weight or lift in the current formulas, full stop.
+function massBreakdown(entity) {
+  return {
+    biomass: biomassCargoWeight(entity),
+    ballast: ballastWeight(entity),
+    oxygen: gasLift(entity),
+    lipids: lipidBladderLift(entity),
+  };
 }
 
 // Adrenal Vesicle: a combat multiplier that ramps as HP falls below the threshold,
@@ -3883,11 +3917,11 @@ function updateFields(world, dt) {
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
     }
-    // Footprint is the ONE mass equation, driven purely by the core amount left in the field: as feeders
-    // pull mass out of f.stock, `total` drops and the radius shrinks through this same sqrt(mass) law — no
-    // separate spread/scale layer stacked on top. So all four feeding liquids visibly scale DOWN as they
-    // are eaten, straight from the core amount removed (no floor propping them up, no faked shrink).
-    f.radius = clamp(Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0), 6, f.maxRadius || 180);
+    // Footprint = the mass CORE (sqrt of the amount left in f.stock — shrinks straight from the core as
+    // feeders eat it, no floor propping it up) PLUS a per-type diffusion spread layered on top (biomass
+    // slow, toxins moderate, ATP fast, lipids into ovals — see FIELD_TYPE spread). No max cap: a field is
+    // free to diffuse as wide as its age and mass carry it.
+    f.radius = Math.max(6, Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0) + (f.spread || 0));
     // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
@@ -5860,7 +5894,8 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       id: id('field'), resType: r, x: wrapX(x), y: yy, radius: opts.radius || 42,
       stock: single, density: opts.density || 1, sourceKind: opts.sourceKind || 'slurry', age: 0,
       maxAge: opts.maxAge || 24, decayRate: tp.decay, radiusScale: tp.radiusScale,
-      maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
+      maxRadius: opts.maxRadius || 1e9,   // no cap — fields diffuse freely (kept as a field for shape stability)
+      oval: tp.oval || 1,                 // horizontal stretch for the rendered footprint (lipids diffuse into ovals)
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
       vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0
@@ -6440,7 +6475,7 @@ export function getRenderProjection(world) {
     t: world.t,
     environment: { oxygenSurface: oxygenAt(WORLD.canopy + 30), oxygenNursery: oxygenAt(WORLD.nurseryTop + 100), lightSurface: lightAt(WORLD.canopy + 30) },
     entities: [...entityProjection, ...colonyRender, ...orbitalRender],
-    fields: world.fields.map(f => ({ id: f.id, resType: f.resType, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
+    fields: world.fields.map(f => ({ id: f.id, resType: f.resType, x: f.x, y: f.y, radius: f.radius, oval: f.oval || 1, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
     particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, potency: p.potency || null, age: p.age, maxAge: p.maxAge })),
     events: world.events.slice()
@@ -6460,4 +6495,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, escalation: world.escalation || 0, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, compactWaste, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation, verticalGradientMult, chargeThrustATP, netWeightPressure };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, massBreakdown, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, compactWaste, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation, verticalGradientMult, chargeThrustATP, netWeightPressure };
