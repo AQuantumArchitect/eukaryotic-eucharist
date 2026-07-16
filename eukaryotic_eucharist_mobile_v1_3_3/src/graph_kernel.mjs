@@ -6360,6 +6360,16 @@ export function nearYuki(world, entity = getPlayer(world)) {
   }
   return false;
 }
+// Proximity to the Horseshroomba crab's fungal shop-on-its-back — mirrors nearYuki but keyed to the LIVE
+// crab's moving body. The player communes with the deep merchant when close to its mass.
+export function nearCrab(world, entity = getPlayer(world)) {
+  if (!entity) return false;
+  for (const c of world.entities) {
+    if (!c.alive || c.controller !== 'shroomba') continue;
+    if (distWrap(entity.x, entity.y, c.x, c.y) < c.r * 0.55 + 60) return true;
+  }
+  return false;
+}
 // Projection for the renderer: the strand geometry, computed fresh from the seed (never stored state).
 export function getYukiTendrils(world) {
   const out = [];
@@ -6471,12 +6481,15 @@ export function yukiRestore(world, dt, entityId = world.playerId) {
   clampCargo(e);
 }
 
-export function getYukiOfferings(world, entityId = world.playerId) {
+export function getYukiOfferings(world, entityId = world.playerId, source = 'yuki') {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo
   const e = world.entities.find(x => x.id === entityId);
   const readiness = hostReadiness(e, world);
   const activeColony = (e.colony || []).length;
-  const staticOfferings = OFFERINGS.map(o => {
+  // The Horseshroomba's fungal shop is a DEEP MERCHANT: it deals only in exotic traits, DNA information,
+  // and Tier-3 goods (the rare deep spoils), not the general Tier-2 survival stock Yuki carries.
+  const pool = source === 'crab' ? OFFERINGS.filter(o => /Exotic|Tier 3|DNA/i.test(o.section || '')) : OFFERINGS;
+  const staticOfferings = pool.map(o => {
     const def = o.organelle ? ORGANELLES[o.organelle] : null;
     const limit = o.stackLimit || def?.max || (def?.stackable ? 99 : 1);
     const owned = o.organelle && !def?.stackable && orgCount(e, o.organelle) >= limit;
@@ -6718,6 +6731,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     metabolism: { anaerobicProcessorLevel: orgCount(e, 'anaerobic_processor'), anaerobicRate: orgCount(e, 'anaerobic_processor') * ORGANELLES.anaerobic_processor.stats.rate, energyStarved: (e.cargo.energy || 0) <= 0.01 },
     actions: getAvailableActions(world, entityId),
     nearYuki: nearYuki(world, e),
+    nearCrab: nearCrab(world, e),
     ballast: (() => {
       // Trim = net vertical tendency, centered at 0.5: >0.5 buoyant (rising), <0.5 heavy (sinking).
       // Mirrors the SAME gas-vs-weight the submarine drift uses (gas is lift, biomass is weight; the

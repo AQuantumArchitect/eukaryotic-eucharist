@@ -316,7 +316,7 @@ addEventListener('keydown',e=>{
   keys.add(k);
   if(k==='e'){
     if(ui.shopOverlay.style.display==='flex') closeShop();
-    else if(hud?.nearYuki) openShop();
+    else if(hud?.nearYuki||hud?.nearCrab) openShop();
   }
   if(k==='p') resetWorld();
   if(k==='o') dagToggleOpen();
@@ -332,7 +332,7 @@ canvas.addEventListener('mousedown',e=>{ if(e.button===2){e.preventDefault(); po
 addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
 addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false; dagPressEnd(e);});
 addEventListener('blur',()=>{pointer.down=false;pointer.right=false; dagPressCancel();});
-ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Reach a Yuki tendril to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
+ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki||hud?.nearCrab) openShop(); else toast('Reach a Yuki tendril — or the crab merchant — to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
 
 function setupJoy(){
   const joy=ui.joy, knob=ui.knob;
@@ -1046,7 +1046,7 @@ function updateActionButtons(actions){
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
-    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki)openShop();else toast('Reach a Yuki tendril to commune.'); return;} buttons[id]=true; b.classList.add('active');};
+    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki||hud.nearCrab)openShop();else toast('Reach a Yuki tendril — or the crab merchant — to commune.'); return;} buttons[id]=true; b.classList.add('active');};
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
@@ -1097,7 +1097,8 @@ addEventListener('pointerdown',e=>{
   const r=K.tradeAtYuki(world,res,dir);
   if(!r.ok) toast(r.reason||'—'); else renderShop();
 }, true);
-function openShop(){shopLeaveArmed=false;refreshTradeInfo();ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
+let shopSource='yuki';
+function openShop(){shopSource=(hud&&hud.nearCrab&&!hud.nearYuki)?'crab':'yuki';shopLeaveArmed=false;refreshTradeInfo();ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');document.body.classList.toggle('crabshop',shopSource==='crab');renderShop()}
 function closeShop(force){
   const s=shopStress();
   // Send them off whole: don't let the player wander off wounded, toxic, or with a near-dead ATP
@@ -1116,7 +1117,7 @@ function closeShop(force){
 // "Your Body" IS the shop now: the exchange bar stays a frozen top cross-bar; everything else —
 // your owned organs AND the whole organelle store — lives in one scrollable body, grouped by system.
 function renderShop(){
-  const offers=K.getYukiOfferings(world);
+  const offers=K.getYukiOfferings(world, world.playerId, shopSource);
   // Yuki exchange counter — LIPIDS are the currency. Each resource has ▲ buy (lipids→it) and ▼ sell
   // (it→lipids). HP buys only (repair); lipids is the money itself. Selling toxins/O2 is the new detox.
   // The exchange lives on the HUD resource bars now (tap-zones). The modal is pure body + store.
