@@ -396,9 +396,9 @@ const FIELD_DIFFUSE_K = 6.0;      // radius spread/sec at full (energy+toxins) f
 // Lipid rise is the INVERSE of the biomass square-cube law: a fresh droplet is nearly all surface area
 // and buoys up fast, while a big pooled slick has so much matter to lift that it crawls. So small
 // batches rise quickly, large batches rise slowest — opposite of a whale-fall biomass plummet.
-const LIPID_RISE_K = 10;          // px/s numerator: rise = K / cbrt(lipids), clamped
-const LIPID_RISE_MIN = 3;         // px/s floor — even a big fat pool still drifts upward
-const LIPID_RISE_MAX = 10;        // px/s ceiling — a fresh droplet's fastest rise (cut from the old flat 13)
+const LIPID_RISE_K = 1.25;        // px/s numerator: rise = K / cbrt(lipids), clamped (cut 8x — fat rises much more lazily)
+const LIPID_RISE_MIN = 0.375;     // px/s floor — even a big fat pool still drifts upward (cut 8x alongside LIPID_RISE_K)
+const LIPID_RISE_MAX = 1.25;      // px/s ceiling — a fresh droplet's fastest rise (cut 8x; still fastest-when-small via the cbrt shape)
 const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patches never teleport
 // ── Whale fall: the biomass carbon pump that feeds the deep ──────────────────────────────────
 // A dead body's biomass sinks nearly UNDECAYED (it is food, not smoke) all the way to the abyss,
@@ -407,14 +407,17 @@ const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patch
 // piles on the floor, so the pump is bounded but the deep stays fed.
 const BIOMASS_SINK_K = 0.085;     // biomass sink speed = K * biomass^1.1 — steeper than square-cube so small AND medium falls DRIFT while only a big whale-fall plummets
 const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
-// CLING-DRAG: a body feeding on a sinking biomass fall (F held) clings to it, and its own heft is ADDED
-// to the fall's mass in the sink-speed law — so a PACK piling onto one morsel makes it plummet, hauling
-// the whole cluster down out of the shallow light-line. A self-correcting physical answer to the top
-// line: the more foragers gather on the falling food, the faster the food (and they) leave the top.
-const CLING_MASS_FACTOR = 0.6;    // fraction of a clinging body's mass that counts toward the fall's sink law
-const CLING_GRAB = 3.2;           // how hard the fall's descent pulls a clinging body's vy toward its own
+// BIOMASS LOCK: a body with a grip (every non-player body innately; the player only via the Pseudopod
+// Anchor organ) latches onto the SINGLE LARGEST biomass mass under its silhouette — a real attachment to
+// one target, not a diffuse sum across every overlapping field (see feedFromFields' BIOMASS LOCK block).
+// Its own heft is ADDED to that one target's mass in the sink-speed law — so a PACK piling onto one
+// morsel makes it plummet, hauling the whole cluster down out of the shallow light-line. A
+// self-correcting physical answer to the top line: the more foragers gather on the falling food, the
+// faster the food (and they) leave the top.
+const CLING_MASS_FACTOR = 0.6;    // fraction of a locked body's mass that counts toward the target's sink law
+const CLING_GRAB = 3.2;           // how hard the locked target's descent pulls a gripping body's vy toward its own
 const FAT_FRICTION = 4.0;         // viscosity of a lipid plume: a body grazing fat is bogged down in it (clingy, slow to cross)
-const CLING_LATERAL = 7.0;        // sideways grip while feeding — bleeds lateral drift hard so a feeder locks onto the patch (stronger than the vertical CLING_GRAB)
+const CLING_LATERAL = 7.0;        // sideways grip on a locked target/food patch — bleeds lateral drift hard (stronger than the vertical CLING_GRAB)
 const BIOMASS_SINK_DECAY = 0;     // NO decay — biomass never remineralizes; only eaten matter leaves the system (closed loop)
 const BIOMASS_FLOOR_DECAY = 0;    // NO decay on the floor either — it auto-combines into piles and waits to be grazed
 const BIOMASS_MAX_AGE = 1e9;      // biomass never ages out — it persists until eaten
@@ -449,7 +452,7 @@ const FIELD_TYPE = Object.freeze({
 // stops widening the band. "start exactly like it is, then it'll only diffuse laterally... eventually, if
 // it meets itself, it should form a band and then the fat should just stack into that band."
 const FAT_BAND_MAX_HALF_WIDTH = 700; // px — roughly a full screen width at rest before lateral growth saturates
-const FAT_BAND_LATERAL_K = 55;       // lateral halfWidth growth rate multiplier once banded (vs the old isotropic spreadRate)
+const FAT_BAND_LATERAL_K = 27.5;     // lateral halfWidth growth rate multiplier once banded (vs the old isotropic spreadRate; cut 2x)
 const FAT_BAND_THICKNESS = 46;       // px — the band's fixed vertical extent for overlap/collision purposes once banded
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
 // exponentially expensive, so a many-layered tank is a serious investment.
@@ -517,7 +520,7 @@ const ORGAN_CATEGORY = {
   jettison_vesicle: 'oxygen', gas_gland: 'oxygen', pressure_bladder: 'oxygen', ballast_siphon: 'oxygen',
   aerocyst: 'oxygen', catalase_vesicle: 'oxygen', photolytic_vacuole: 'oxygen', ballast_stone: 'oxygen',
   waste_compactor: 'oxygen',
-  basal_motility: 'movement', flagella: 'movement', dash_vacuole: 'movement', spore_jet: 'movement', dash_vent: 'movement',
+  basal_motility: 'movement', flagella: 'movement', dash_vacuole: 'movement', spore_jet: 'movement', dash_vent: 'movement', pseudopod_anchor: 'movement',
   lance_bristle: 'weapons', rasping_lamella: 'weapons', toxin_launcher: 'weapons', phagosome: 'weapons',
   velocity_lance: 'weapons', saw_lance: 'weapons', rupture_auger: 'weapons', siphon_rasp: 'weapons',
   leech_rasp: 'weapons', leech_lance: 'weapons', spore_toxin_launcher: 'weapons', toxin_cloud: 'weapons',
@@ -555,7 +558,7 @@ export const ORGAN_GRAPH_ROLE = {
   neuro_barb: 'modify', orbital_spores: 'modify', fission_bud: 'modify', nuclease_vesicle: 'modify',
   spore_jet: 'tune', phagosome: 'modify', crystal_ward: 'modify', enzyme_reserve: 'modify',
   pheromone_gland: 'modify', mitochondrion: 'modify', eucharist_archive: 'modify', companion_cell: 'modify',
-  multicell_chassis: 'modify',
+  multicell_chassis: 'modify', pseudopod_anchor: 'modify',
 };
 // Total organelle instances (every copy) owned in a category, minus the exempt capacity racks.
 function categoryCount(entity, cat) {
@@ -680,6 +683,17 @@ export const ORGANELLES = Object.freeze({
     name: 'Membrane Intake Pore', tier: 1, action: 'feed', stackable: true, max: 6,
     desc: 'The actual feeding function: while held open, overlapping matter fields flow into the body. More pores increase flow without changing the rule.',
     stats: { feedRate: 0.36, feedRadiusFactor: 1.0, vulnerabilityBonus: 0.08 }
+  },
+  // A real attachment, not ambient physics: grown off the intake pore, it identifies the single LARGEST
+  // biomass mass currently under the body's silhouette and locks onto just that one — vertical grip
+  // (ride its sink/rise instead of drifting free of it) and lateral grip (hold position on it instead of
+  // sliding off) both key off this one locked target. Every non-player forager/hunter has this innately
+  // (their pack-pile-onto-a-corpse ecology is load-bearing); the player has no default grip at all and
+  // must grow this organ to gain it — see feedFromFields' BIOMASS LOCK block.
+  pseudopod_anchor: {
+    name: 'Pseudopod Anchor', tier: 1, action: null, stackable: false, max: 1,
+    desc: 'A gripping pseudopod grown from the intake pore: latches onto the single largest biomass mass under your silhouette, letting you ride it down or brace against its pull instead of drifting loose across every overlapping field.',
+    stats: {}
   },
   anaerobic_processor: {
     name: 'Anaerobic Processor', tier: 1, action: null, stackable: true, max: 8,
@@ -1118,6 +1132,7 @@ export const ORGANELLES = Object.freeze({
 // repair/buy_*/detox offerings are gone; repair = buying HP, detox = selling toxins/O2.
 export const OFFERINGS = Object.freeze([
   { id: 'basal_motility', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Basal Motility Motor', desc: 'The starter locomotion organ, buyable like any other — a spare motor for a body that lost one, or a second on top of the one you spawned with.', cost: { biomass: 6, lipids: 3 }, organelle: 'basal_motility', stackLimit: 3 },
+  { id: 'pseudopod_anchor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Pseudopod Anchor', desc: 'Grip the single largest biomass mass under you and lock onto it — ride its fall, brace against its pull. Requires a Membrane Intake Pore.', cost: { biomass: 7, lipids: 3 }, organelle: 'pseudopod_anchor', requiresOrganelle: 'membrane_intake', stackLimit: 1 },
   { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8 }, organelle: 'membrane', stackLimit: 8 },
   { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4 }, organelle: 'membrane_intake', stackLimit: 6 },
   { id: 'anaerobic_processor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anaerobic Processor', desc: 'Add one more biomass-to-ATP organ flow. More processors mean more flow and more toxin waste.', cost: { biomass: 14, lipids: 5, enzymes: 1 }, organelle: 'anaerobic_processor', stackLimit: 8 },
@@ -1976,6 +1991,8 @@ export const ORGAN_GRAPH_EDGES = [
   // here can be organelle ids OR resource/vital ids on either side; the DAG HUD resolves whichever kind
   // each id turns out to be.
   ['membrane_intake', 'biomass'], ['membrane_intake', 'lipids'], ['membrane_intake', 'toxins'], ['membrane_intake', 'energy'],
+  // Pseudopod Anchor grows off the intake pore and grips whatever biomass mass it locks onto.
+  ['membrane_intake', 'pseudopod_anchor'], ['pseudopod_anchor', 'biomass'],
   ['exotic_vacuole', 'storage_vacuole'], ['dna_memory_vesicle', 'storage_vacuole'],
   ['biomass', 'anaerobic_processor'],
   // The two "maw" organs (phagocyte_maw fires free on overlap; phagosome is the manual, enzyme-costed
@@ -2025,7 +2042,7 @@ export const ORGAN_GRAPH_EDGES = [
   ['necrosis_gland', 'membrane'], ['phagocyte_maw', 'membrane'], ['orbital_spores', 'membrane'],
   ['gas_injector', 'membrane'], ['combustion_vesicle', 'membrane'],
   ['basal_motility', 'membrane'], ['flagella', 'membrane'], ['dash_vacuole', 'membrane'],
-  ['spore_jet', 'membrane'], ['dash_vent', 'membrane'],
+  ['spore_jet', 'membrane'], ['dash_vent', 'membrane'], ['pseudopod_anchor', 'membrane'],
   // Leech/siphon resource-gain edges: matches exactly what contactDamage's siphon branch and drainLeech
   // actually move into the attacker's cargo — siphon steals biomass+lipids only, both leech weapons also
   // drain energy.
@@ -5736,8 +5753,13 @@ function spawnScavenger(world, opts = {}) {
   // cleavage_furrow plugs it into the fully generic wild-fission system (wildFissionRate/doFission,
   // already shared by every hunter — no new fission code) for the "self replicate really quickly,
   // creating cleaning waves" behavior. Skips exotic_vacuole (smaller, thinner-armored) and needs
-  // oxygen_tolerance to sit comfortably in the bright shelf water it forages.
-  else if (grazer) { organelles.oxygen_tolerance = 6; organelles.mitochondrion = 1; organelles.lipolytic_vesicle = 2; organelles.cleavage_furrow = 1; delete organelles.exotic_vacuole; }
+  // oxygen_tolerance to sit comfortably in the bright shelf water it forages. oxygen_tolerance alone
+  // maxes out its SAFE FRACTION of the tank (oxygenTolerance() clamps that frac near 0.98) without
+  // growing the tank itself — at the canopy, ambient O2 saturates near ~0.98, so a bare 0.74 tank still
+  // reads as "dangerously oxygenated" to updateScavengerBrain's flee/avoid-field checks and the grazer
+  // gets chased off its own fat band. oxygen_store grows the tank's absolute size so the same safe
+  // FRACTION clears ambient canopy O2 with real margin — the fix is a bigger tank, not more tolerance.
+  else if (grazer) { organelles.oxygen_tolerance = 6; organelles.oxygen_store = 1; organelles.mitochondrion = 1; organelles.lipolytic_vesicle = 2; organelles.cleavage_furrow = 1; delete organelles.exotic_vacuole; }
   else organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 11, 18) * (abyssal ? 2.4 : grazer ? 0.55 : 1), color: abyssal ? '#6f97a8' : grazer ? '#f5c86b' : '#8ef19e', controller: 'scavenger',
@@ -6204,6 +6226,10 @@ function feedFromFields(world, entity, dt) {
     affinity.biomass *= 1 + Math.max(0, -diff) * st.skew;
   }
   let totalFlow = 0;
+  // BIOMASS LOCK: track the single LARGEST biomass mass under the silhouette as we scan fields below —
+  // a real attachment to one target, not a diffuse sum across everything overlapped. Applied once after
+  // the loop (see BIOMASS LOCK block) instead of per-field.
+  let lockTarget = null, lockOverlapFraction = 0;
   for (const f of world.fields) {
     // A BANDED lipid field is a real lateral slab, not a circle — check dx against its wide halfWidth
     // and dy against a fixed thin band thickness separately, instead of one Euclidean distance. Anything
@@ -6227,12 +6253,10 @@ function feedFromFields(world, entity, dt) {
       const flow = Math.min(stock, wantRoom, rate * overlapFraction * f.density * (affinity[r] || 1) * dt);
       if (flow > 0) { f.stock[r] -= flow; entity.cargo[r] += flow; totalFlow += flow; }
     }
-    // CLING-DRAG: gripping a sinking biomass fall adds this body's heft to the fall's mass (updateFields
-    // reads _clingMass into the sink-speed law → a pack plummets it) and the fall's descent tugs the body
-    // down with it. So foragers that swarm falling food get hauled down out of the shallow light-line.
+    // BIOMASS LOCK candidate: remember the LARGEST overlapping biomass mass — applied once after the
+    // loop, not here (see below).
     if (f.resType === 'biomass' && (f.stock.biomass || 0) > 0.5) {
-      f._clingMass = (f._clingMass || 0) + (entity.biomassMass || 0) + (entity.cargo.biomass || 0);
-      if ((f.vy || 0) > 0) entity.vy += ((f.vy || 0) - (entity.vy || 0)) * CLING_GRAB * dt;
+      if (!lockTarget || (f.stock.biomass || 0) > (lockTarget.stock.biomass || 0)) { lockTarget = f; lockOverlapFraction = overlapFraction; }
     }
     // FAT FRICTION: a lipid plume/band is viscous VERTICALLY only — crossing it (sinking in from above,
     // punching up through it from below) is bogged down, but swimming sideways ALONG it is unimpeded.
@@ -6243,12 +6267,24 @@ function feedFromFields(world, entity, dt) {
       const keep = 1 / (1 + stick);
       entity.vy *= keep;
     }
-    // LATERAL FEEDING GRIP: a body locked onto ANY food patch grips it SIDEWAYS — its lateral drift bled
-    // off hard (stronger than the vertical cling) so it holds on the meal in the current instead of
-    // sliding off it. Eating is a commitment.
-    if (f.resType !== 'ballast' && (f.stock[f.resType] || 0) > 0.5) {
+    // LATERAL FEEDING GRIP: a body locked onto a lipid/energy/toxin patch grips it SIDEWAYS — its
+    // lateral drift bled off hard (stronger than the vertical cling) so it holds on the meal in the
+    // current instead of sliding off it. Biomass is excluded here — its lock is the single-target
+    // BIOMASS LOCK below, not this diffuse per-field grip.
+    if (f.resType !== 'ballast' && f.resType !== 'biomass' && (f.stock[f.resType] || 0) > 0.5) {
       entity.vx *= 1 / (1 + clamp(overlapFraction, 0, 1.25) * CLING_LATERAL * dt);
     }
+  }
+  // BIOMASS LOCK: a real attachment to the single largest biomass mass under the silhouette — vertical
+  // grip (ride its sink/rise) and lateral grip (hold position on it) both apply once, keyed to that one
+  // target, instead of the old diffuse sum across every overlapping biomass field. Every non-player body
+  // grips innately (pack-piling-onto-a-corpse is load-bearing NPC ecology — foragers that swarm falling
+  // food get hauled down out of the shallow light-line); the player needs a grown Pseudopod Anchor to
+  // gain this attachment at all — no default clinging.
+  if (lockTarget && (entity.controller !== 'human' || hasOrg(entity, 'pseudopod_anchor'))) {
+    lockTarget._clingMass = (lockTarget._clingMass || 0) + (entity.biomassMass || 0) + (entity.cargo.biomass || 0);
+    if ((lockTarget.vy || 0) > 0) entity.vy += ((lockTarget.vy || 0) - (entity.vy || 0)) * CLING_GRAB * dt;
+    entity.vx *= 1 / (1 + clamp(lockOverlapFraction, 0, 1.25) * CLING_LATERAL * dt);
   }
   if (totalFlow > 0) entity.hunger = Math.max(0, entity.hunger - totalFlow * 0.014);
   return totalFlow;
