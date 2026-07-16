@@ -1099,7 +1099,19 @@ function gaussian(rng, mean = 0, sd = 1) {
 }
 function wrapX(x) { x %= WORLD.w; if (x < 0) x += WORLD.w; return x; }
 function dxWrap(ax, bx) { let dx = bx - ax; if (dx > WORLD.w / 2) dx -= WORLD.w; if (dx < -WORLD.w / 2) dx += WORLD.w; return dx; }
-function dist2Wrap(ax, ay, bx, by) { const dx = dxWrap(ax, bx); const dy = by - ay; return dx * dx + dy * dy; }
+// CONE geometry: the water column is a cone hung from Yuki's tendril — narrow at the surface, wider
+// with depth (we swim through larger slices of the same substrate the deeper we go). x stays an ANGLE
+// around the tendril axis, so wrapX/dxWrap and every spawn are unchanged; only the PHYSICAL horizontal
+// separation of two bodies scales with the local circumference. So the same detection/feeding/
+// separation radius spans MORE angle in the tight nursery (crowded, busy) and LESS on the broad
+// abyssal plain (life and matter spread out and thin) — the roomier floor is emergent, from one factor.
+// Gentle taper: 0.65 of the floor width at the surface -> 1.0 at the floor.
+const CONE_TOP = 0.65;
+function widthScale(y) {
+  const d = clamp((y - WORLD.canopy) / (WORLD.h - WORLD.canopy), 0, 1);
+  return CONE_TOP + (1 - CONE_TOP) * d;
+}
+function dist2Wrap(ax, ay, bx, by) { const s = widthScale((ay + by) * 0.5); const dx = dxWrap(ax, bx) * s; const dy = by - ay; return dx * dx + dy * dy; }
 function distWrap(ax, ay, bx, by) { return Math.sqrt(dist2Wrap(ax, ay, bx, by)); }
 function norm(dx, dy) { const d = Math.hypot(dx, dy) || 1; return { x: dx / d, y: dy / d, d }; }
 function emptyCargo(values = {}) { const c = {}; for (const r of RESOURCES) c[r] = values[r] || 0; return c; }
