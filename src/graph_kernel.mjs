@@ -244,6 +244,12 @@ function verticalGradientMult(entity, dirY) {
 // The one moveCost formula, shared by the player and every NPC brain. Callers apply their OWN
 // accel/speed constants on top (tuned feel is per-caller; the gradient-aware ATP PRICE is not).
 // Returns {ok, cost}; does NOT deduct — caller deducts only after deciding it will actually thrust.
+// How long it takes a bare Basal Motility Motor to spin up from a standing start to full power (and ATP
+// draw) once movement is held — Flagella are a separate, unramped "kick" layered on top in speedOf, so a
+// flagella-only body still gets instant full thrust. Only entities with a tracked `.motorRamp` (currently
+// just the player, set in applyPlayerCommands) ever see this — untracked NPCs keep their existing instant
+// full-power feel unchanged.
+const MOTOR_RAMP_TIME = 0.8;
 function chargeThrustATP(entity, dirX, dirY, dt) {
   const energyRatio = clamp((entity.cargo.energy || 0) / Math.max(1, caps(entity).energy * 0.42), 0, 1);
   const thrustFactor = 0.18 + 0.82 * Math.pow(energyRatio, 0.65);
@@ -252,7 +258,8 @@ function chargeThrustATP(entity, dirX, dirY, dt) {
   const bladdered = hasOrg(entity, BALLAST.requires); // bladdered bodies steer vertically via ballast, not direct thrust
   const gradientMult = bladdered ? 1 : verticalGradientMult(entity, dirY);
   const totalOrgs = Object.values(entity.organelles || {}).reduce((a, b) => a + b, 0);
-  const cost = (0.30 + orgCount(entity, 'flagella') * 0.090 + (entity.cargo.biomass || 0) * 0.016 + totalOrgs * 0.008)
+  const rampMult = entity.motorRamp != null ? (0.3 + 0.7 * entity.motorRamp) : 1; // weaker thrust while ramping = proportionally cheaper base draw
+  const cost = (0.30 * rampMult + orgCount(entity, 'flagella') * 0.090 + (entity.cargo.biomass || 0) * 0.016 + totalOrgs * 0.008)
     * thrustFactor * efficiencyK * preMitoBurden * gradientMult * MOVE_ATP_SCALE * dt;
   return { ok: (entity.cargo.energy || 0) >= cost, cost };
 }
@@ -1108,7 +1115,8 @@ function rand(world, min, max) { return min + (max - min) * world.rng(); }
 // A new player arrives as part of the same shallow forager migration that supplies scavengers:
 // horizontally anywhere in the column, in the nursery band, rather than materializing at Yuki.
 function scavengerImmigrationLocation(world) {
-  return { x: rand(world, 0, WORLD.w), y: WORLD.nurseryTop + rand(world, 0, 580) };
+  // Arrive across a broad slab of the oxic column, not one shallow band.
+  return { x: rand(world, 0, WORLD.w), y: WORLD.nurseryTop - 100 + rand(world, 0, 1600) };
 }
 
 // Player arrivals and reformations use the exact same body plan and migration
@@ -1631,7 +1639,7 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     // the monomorphic hot-loop shape; they are inert unless controller === 'algae'.
     algaeTraits: opts.algaeTraits ? { ...opts.algaeTraits } : null, algaeSeedPhase: opts.algaeSeedPhase ?? 0,
     algaeCyclePeriod: opts.algaeCyclePeriod ?? 0, algaePrevDirection: opts.algaePrevDirection ?? 0,
-    algaeCycleCount: 0, _algaeBoundary: false,
+    algaeCycleCount: 0, _algaeBoundary: false, _workJitter: opts._workJitter ?? 1,
     _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
@@ -1728,16 +1736,20 @@ function capsCompute(entity) {
 // unconnected, since their effect isn't "feeds a resource").
 export const ORGAN_GRAPH_EDGES = [
   ['membrane', 'hp'], ['membrane_hardening', 'hp'], ['multicell_chassis', 'hp'],
-  ['storage_vacuole', 'energy'], ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
+  ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
   ['anaerobic_processor', 'energy'], ['clean_processor', 'energy'], ['virulent_processor', 'energy'],
   ['catalytic_processor', 'energy'], ['hydrogenosome', 'energy'], ['oxidase_vesicle', 'energy'],
   ['chemosynthetic_vesicle', 'energy'],
   ['dna_memory_vesicle', 'dna'],
   ['membrane', 'oxygen'], ['oxygen_store', 'oxygen'], ['countercurrent_gill', 'oxygen'], ['photolytic_vacuole', 'oxygen'],
-  ['storage_vacuole', 'biomass'], ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
+  ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
   ['anabolic_vesicle', 'biomass'], ['lipolytic_vesicle', 'biomass'], ['photosystem', 'biomass'],
+  // Storage Vacuole reads as the lipid ("wealth") reserve on the graph — the Exotic Rack and DNA Rack
+  // connect INTO it (below) rather than it fanning out to every cap it mechanically touches, so the
+  // intake pore (which now carries biomass/lipids/toxins/ATP directly, see pipeline edges) stays the
+  // one legible "here's what feeding actually fills" picture instead of two overlapping fan-outs.
   ['storage_vacuole', 'lipids'], ['lipid_vacuole', 'lipids'], ['mitochondrion', 'lipids'], ['lipogenic_processor', 'lipids'],
-  ['storage_vacuole', 'toxins'], ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
+  ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
   ['anaerobic_processor', 'toxins'], ['clean_processor', 'toxins'], ['virulent_processor', 'toxins'],
   ['catalytic_processor', 'toxins'], ['hydrogenosome', 'toxins'],
   ['exotic_vacuole', 'spores'],
@@ -1746,12 +1758,15 @@ export const ORGAN_GRAPH_EDGES = [
   ['oxygen_vacuole', 'gas'], ['pressure_bladder', 'gas'], ['gas_gland', 'gas'], ['ballast_siphon', 'gas'],
   ['anaerobic_processor', 'gas'], ['clean_processor', 'gas'], ['virulent_processor', 'gas'],
   ['catalytic_processor', 'gas'], ['hydrogenosome', 'gas'],
-  ['storage_vacuole', 'ballast'],
-  // Pipeline edges: not cap fan-in, but the literal flow a resource takes through the body — intake pore
-  // fills the storage tank, the tank's biomass is what the anaerobic processor actually burns. Endpoints
+  // Harm edges: not a flow, but a real causal link — the DAG HUD contracts these live while the
+  // corresponding tick-damage condition is actually true (oxygen > tolerance / toxins > 0.68*cap, see
+  // updateEnvironmentAndMetabolism), replacing a standalone red-flash on the O2/toxin node itself.
+  ['oxygen', 'hp'], ['toxins', 'hp'],
+  // Pipeline edges: not cap fan-in, but the literal flow a resource takes through the body. Endpoints
   // here can be organelle ids OR resource/vital ids on either side; the DAG HUD resolves whichever kind
   // each id turns out to be.
-  ['membrane_intake', 'storage_vacuole'],
+  ['membrane_intake', 'biomass'], ['membrane_intake', 'lipids'], ['membrane_intake', 'toxins'], ['membrane_intake', 'energy'],
+  ['exotic_vacuole', 'storage_vacuole'], ['dna_memory_vesicle', 'storage_vacuole'],
   ['biomass', 'anaerobic_processor'],
   // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
@@ -1820,7 +1835,10 @@ function biomassWeight(entity) {
 function algaeBallastWorkDepth(entity) {
   // Bigger veteran blooms must fall farther before pressure/deep fermentation can reinflate them.
   // This is the amplitude law: size changes the turning depth, while full gas still guarantees return.
-  return WORLD.canopy + clamp(220 + (entity.biomassMass || 0) * 10, 480, 3200);
+  // Per-individual jitter spreads the turning depths (where algae are deepest/most stressed and get
+  // wounded) across the column, so the foragers that track wounded algae don't all pile into one flat
+  // line at the shared bob-bottom — they smear into a cloud.
+  return WORLD.canopy + clamp((220 + (entity.biomassMass || 0) * 10) * (entity._workJitter || 1), 480, 3200);
 }
 
 function algaeTraits(entity) {
@@ -1900,8 +1918,9 @@ function speedOf(entity) {
   if ((entity.cargo.energy || 0) <= 0.01) return 0;
   if (orgCount(entity, 'basal_motility') <= 0 && orgCount(entity, 'flagella') <= 0) return 0;
   let sp = entity.baseSpeed || (entity.controller === 'predator' ? 96 : entity.controller === 'protozoan' ? 82 : entity.controller === 'metazoan' ? 62 : entity.controller === 'brood' ? 66 : entity.controller === 'swarm_agent' ? 122 : entity.controller === 'companion' ? 110 : entity.controller === 'algae' ? 52 : 112);
-  sp *= (0.72 + orgCount(entity, 'basal_motility') * 0.28);
-  sp *= 1 + orgCount(entity, 'flagella') * ORGANELLES.flagella.stats.speedBonus;
+  const basalRamp = entity.motorRamp != null ? entity.motorRamp : 1; // gentle onramp (player only); untracked bodies get instant full power
+  sp *= (0.72 + orgCount(entity, 'basal_motility') * 0.28 * basalRamp);
+  sp *= 1 + orgCount(entity, 'flagella') * ORGANELLES.flagella.stats.speedBonus; // Flagella is the instant "kick" — never ramped
   const c = caps(entity);
   const energyRatio = clamp((entity.cargo.energy || 0) / Math.max(1, c.energy * 0.42), 0, 1);
   sp *= 0.18 + 0.82 * Math.pow(energyRatio, 0.65);
@@ -2110,6 +2129,10 @@ function applyPlayerCommands(world, player, commands, dt) {
   }
   const powered = hasEnergy(player);
   const moving = powered && (orgCount(player, 'basal_motility') > 0 || orgCount(player, 'flagella') > 0) && Math.abs(commands.moveX || 0) + Math.abs(commands.moveY || 0) > 0.02;
+  // Gentle onramp: ramps toward full basal-motor power over MOTOR_RAMP_TIME while held, decays back
+  // down (same rate) once released or unpowered — read by speedOf/chargeThrustATP above.
+  const rampingUp = moving && orgCount(player, 'basal_motility') > 0;
+  player.motorRamp = clamp((player.motorRamp || 0) + (rampingUp ? 1 : -1) * dt / MOTOR_RAMP_TIME, 0, 1);
   player.feedIntent = false;
   player.repairIntent = false;
   player.action = null;
@@ -2965,7 +2988,7 @@ function updateScavengerBrain(world, e, dt) {
       }
     }
   }
-  const toward = norm(dxWrap(e.x, tx) + sepX * 95, (ty - e.y) + comfortSteerY(e) * comfortW + sepY * 95);
+  const toward = norm(dxWrap(e.x, tx) + sepX * 110, (ty - e.y) + comfortSteerY(e) * comfortW + sepY * 110);
   let sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * spMul : 0;
   // Same shared gradient-aware ATP price as the player and every hunter — see chargeThrustATP.
   if (sp > 0 && (Math.abs(toward.x) + Math.abs(toward.y) > 0.02)) {
@@ -5142,6 +5165,9 @@ function spawnAlgae(world, opts = {}) {
   });
   // Seed a starting charge of ballast gas so a fresh bloom is mildly buoyant (mature more so).
   e.deepBloom = deep;
+  // Per-individual bob-depth jitter: spreads algae turning-depths (and thus where they wound and where
+  // their foragers gather) across the column, so wounded-algae grazers smear into a cloud not a line.
+  e._workJitter = clamp(gaussian(world.rng, 1, 0.34), 0.5, 1.8);
   if (deep) e._anchorY = e.y;   // hold this depth (the predators' brawl zone), don't sink to the floor
   e.ballastGas = deep ? 0 : e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
   // Lineage-scale metabolic variation prevents a shared light/depth field from phase-locking the

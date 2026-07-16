@@ -6,7 +6,7 @@
 <title>Eukaryotic Eucharist v1.3.3 - Predator Flow Balance</title>
 <style>
 :root{--bg:#050611;--panel:rgba(7,9,22,.86);--line:rgba(158,240,189,.20);--text:#f7f4ff;--muted:#aeb1c7;--good:#9ef0bd;--bad:#ff7897;--gold:#f5d47a;--blue:#86d2ff;--violet:#d6a2ff}
-*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none;z-index:115}.status{position:absolute;left:12px;right:12px;top:212px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none;z-index:115}.status{position:absolute;left:326px;right:12px;bottom:12px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
 /* Shopping: tradeable HUD bars become tap-zones — tap LEFT half to sell (→lipids, green), RIGHT to buy (lipids→, amber). */
 body.shopping [data-tres]{pointer-events:auto;cursor:pointer;position:relative;overflow:visible;background:linear-gradient(90deg,rgba(143,227,122,.18),transparent 44%,transparent 56%,rgba(255,182,120,.18))}
 body.shopping [data-tres]::before,body.shopping [data-tres]::after{position:absolute;bottom:1px;font-size:9px;font-weight:950;pointer-events:none;text-shadow:0 1px 3px #000;z-index:3}
@@ -184,10 +184,9 @@ function resize(){
   // joystick/action buttons anchored to the bottom on short viewports.
   dagHudH=clamp(Math.round(innerHeight*0.46),260,innerHeight-260);
   dagCanvas.width=Math.floor(innerWidth*dpr);dagCanvas.height=Math.floor(dagHudH*dpr);dagCanvas.style.width=innerWidth+'px';dagCanvas.style.height=dagHudH+'px';dagCtx.setTransform(dpr,0,0,dpr,0,0);
-  // dagHudH is content-driven (varies with organelle count and viewport), so nudge whatever sits right
-  // below the old fixed vitals+chips band to actually clear it, instead of leaving their old hardcoded offsets.
+  // dagHudH is content-driven (varies with organelle count and viewport), so nudge the shop FAB (still
+  // top-anchored) to actually clear it. .status now lives at the bottom of the screen instead (see CSS).
   const bandBottom=50+dagHudH+8;
-  ui.status.style.top=bandBottom+'px';
   ui.shopFab.style.top=bandBottom+'px';
 }
 addEventListener('resize',resize,{passive:true}); resize();
@@ -317,18 +316,20 @@ function updateUI(){
 // body below feeding them" reading still emerges) rather than being placed by hand every frame. Letting
 // it actually settle (and re-settle live as organelles are gained) is the point — an emergent layout
 // instead of a hardcoded one, the same ethos the rest of the sim's ecology already follows.
-const DAG_VITAL_SINKS=['hp','energy','oxygen','dna'];
+const DAG_VITAL_SINKS=['hp','energy','oxygen'];
 const DAG_MINOR_SINKS=['biomass','lipids','toxins','gas','ballast','spores','enzymes','crystals'];
 const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
 // UI-only edges: environmental readouts (ambient pressure, sunlight) aren't real player resources, so
 // they don't belong in the kernel's ORGAN_GRAPH_EDGES — they're purely "what this organ's dial reacts to."
 const DAG_EXTRA_EDGES=[['gas','pressure'],['photosystem','sunlight']];
 const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
-// Resource nodes replace the removed bars, so they carry the same "duress" (red, something's wrong)
-// and "filling" (green pulse, actively gaining) reads the old vitals/chips gave — parity, not just decoration.
+// Resource nodes replace the removed bars, so they carry the same "filling" (green pulse, actively
+// gaining) read the old vitals/chips gave. O2's old standalone red-flash is gone — that harm now reads
+// as a contracting HP<->O2 edge instead (see dagEdgeActiveness); HP keeps its own duress, now ALSO
+// persistent (not just on-hit) once you're down to a quarter health.
 function dagSinkValue(id){
-  if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0};
-  if(id==='oxygen'){ const over=hud.oxygen.value>hud.oxygen.tolerance; return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:over}; }
+  if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0||hud.hp.value<=hud.hp.max*0.25};
+  if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false};
   if(id==='gas'){ const b=hud.ballast||{}; return {value:b.gas||0, max:Math.max(0.05,b.gasCap||0), color:'134,210,255', duress:false, off:!b.hasOrgan}; }
   if(id==='ballast'){ const b=hud.bricks||{value:0,cap:0}; return {value:b.value, max:Math.max(0.05,b.cap), color:hexRgb(K.COLORS.ballast), duress:false, off:!(b.cap>0)}; }
   const r=hud.resources.find(x=>x.id===id);
@@ -336,18 +337,21 @@ function dagSinkValue(id){
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
   return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
 }
-// Special environmental bubbles: only exist once the organ that makes them meaningful is online. Pressure
-// rides in on the gas bladder (Boyle's Law only matters once you have a tank to compress); sunlight is a
-// pure intensity readout, no numbers — the glow itself IS the reading.
+// Special/conditional bubbles: only exist once something is actually connected to them. Pressure rides in
+// on the gas bladder (Boyle's Law only matters once you have a tank to compress); sunlight is a pure
+// intensity readout, no numbers — the glow itself IS the reading; DNA hides until you own a rack (nothing
+// to show otherwise), then behaves like any other vital sink.
 function dagActiveSpecialIds(){
   const ids=[];
   if(hud.ballast&&hud.ballast.hasOrgan) ids.push('pressure');
   if(hud.depth&&hud.depth.photosynthetic) ids.push('sunlight');
+  if(hud.organelles.some(o=>o.id==='dna_memory_vesicle')) ids.push('dna');
   return ids;
 }
 function dagSpecialValue(id){
   if(id==='pressure') return {value:clamp(hud.pressure?.value??0,0,1), max:1, color:'176,140,255', duress:false};
   if(id==='sunlight') return {value:clamp(hud.depth?.light??0,0,1), max:1, color:'245,212,122', duress:false, noNumber:true};
+  if(id==='dna') return dagSinkValue('dna');
   return {value:0,max:1,color:'158,240,189',duress:false};
 }
 function dagEnsureNode(id,kind,w,h,r){
@@ -378,15 +382,30 @@ function dagSinkRadius(id,v){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
     return 90-frac*(90-18); // INVERTED: healthy reads small/calm, near-death balloons up as a warning
   }
+  if(id==='dna') return 38; // conditional, but still reads as a vital-tier node once it exists
   return DAG_VITAL_SINKS.includes(id)?38:26;
 }
-// Which edges are "active draw" edges right now — motor/rasp only pull ATP while actually firing, not
-// passively like a processor, so their spring should visibly snap taut (short + strong) only while held.
-function dagEdgeActive(fromId,toId,cmd){
-  if(!cmd) return false;
-  if(fromId==='basal_motility'&&toId==='energy') return Math.abs(cmd.moveX)>0.05||Math.abs(cmd.moveY)>0.05;
-  if(fromId==='rasping_lamella'&&toId==='energy') return !!cmd.rasp;
-  return false;
+// A stat is "actively filling" when its value is climbing fast right now — reused here (separately from
+// the glow-pulse fillPulse above) to turn the intake pore's springs into a continuous 0..1 throttle: the
+// harder a field is currently feeding a bucket, the tighter that edge contracts, not just an on/off snap.
+const dagFlowPrev=new Map();
+function dagFlowIntensity(id,value){
+  const prev=dagFlowPrev.has(id)?dagFlowPrev.get(id):value;
+  dagFlowPrev.set(id,value);
+  return clamp(Math.max(0,value-prev)/0.35,0,1);
+}
+// Edge "activeness" is continuous 0..1, not boolean — 0 = fully relaxed (DAG_EDGE_LEN/DAG_SPRING_K), 1 =
+// fully contracted (DAG_ACTIVE_LEN/DAG_ACTIVE_K). Motor/rasp are hard on/off (they fire or they don't);
+// the intake pore's flow into biomass/lipids/toxins/ATP is graduated by actual per-frame flow rate; the
+// HP<->O2 and HP<->toxins "harm" edges are on/off matching the kernel's own tick-damage condition exactly
+// (see updateEnvironmentAndMetabolism), replacing what used to be a standalone red flash on those nodes.
+function dagEdgeActiveness(fromId,toId,cmd,flowIntensity){
+  if(fromId==='basal_motility'&&toId==='energy') return (cmd&&(Math.abs(cmd.moveX)>0.05||Math.abs(cmd.moveY)>0.05))?1:0;
+  if(fromId==='rasping_lamella'&&toId==='energy') return (cmd&&cmd.rasp)?1:0;
+  if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
+  if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
+  if(fromId==='membrane_intake'&&flowIntensity[toId]!=null) return flowIntensity[toId];
+  return 0;
 }
 function dagEdgeColor(fromId,toId,vals){
   if(vals[toId]) return vals[toId].color;
@@ -415,7 +434,7 @@ function dagStepPhysics(ids,edges,w,h){
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId);
     if(!a||!b) continue;
-    const target=active?DAG_ACTIVE_LEN:DAG_EDGE_LEN, k=active?DAG_ACTIVE_K:DAG_SPRING_K;
+    const target=DAG_EDGE_LEN-active*(DAG_EDGE_LEN-DAG_ACTIVE_LEN), k=DAG_SPRING_K+active*(DAG_ACTIVE_K-DAG_SPRING_K);
     const dx=b.x-a.x, dy=b.y-a.y, d=Math.max(1,Math.hypot(dx,dy));
     const f=(d-target)*k;
     const ux=dx/d, uy=dy/d;
@@ -509,26 +528,28 @@ function drawDagHud(){
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
-  for(const id of specialIds) dagEnsureNode(id,'sink',w,h,26);
+  for(const id of specialIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
   for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?26:17);
-  // prune organelles no longer owned (sold/lost) and specials whose gating organ is gone — the fixed
+  // prune organelles no longer owned (sold/lost) and specials whose gating organ/rack is gone — the fixed
   // resource sinks are permanent fixtures and are never pruned.
   for(const [id,n] of dagNodes){
     if(n.kind==='org' && !orgList.some(o=>o.id===id)) dagNodes.delete(id);
-    if((id==='pressure'||id==='sunlight') && !specialIds.includes(id)) dagNodes.delete(id);
+    if((id==='pressure'||id==='sunlight'||id==='dna') && !specialIds.includes(id)) dagNodes.delete(id);
   }
   const activeIds=[...dagNodes.keys()];
+  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy']) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
   const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES)
     .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
-    .map(([fromId,toId])=>[fromId,toId,dagEdgeActive(fromId,toId,lastCommand)]);
+    .map(([fromId,toId])=>[fromId,toId,dagEdgeActiveness(fromId,toId,lastCommand,flowIntensity)]);
   dagStepPhysics(activeIds,edges,w,h);
   g.clearRect(0,0,w,h);
   if(!shopOpen) dagBackdrop(g,w,h);
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
-    const a0=active?0.9:dagEdgeBaseAlpha(fromId,toId,orgList);
+    const base=dagEdgeBaseAlpha(fromId,toId,orgList);
+    const a0=base+active*(0.9-base);
     dagEdge(g,a.x,a.y,b.x,b.y,b.r,dagEdgeColor(fromId,toId,vals),a0);
   }
   for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
