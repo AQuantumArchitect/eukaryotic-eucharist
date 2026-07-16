@@ -411,6 +411,7 @@ const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 const CLING_MASS_FACTOR = 0.6;    // fraction of a clinging body's mass that counts toward the fall's sink law
 const CLING_GRAB = 3.2;           // how hard the fall's descent pulls a clinging body's vy toward its own
 const FAT_FRICTION = 4.0;         // viscosity of a lipid plume: a body grazing fat is bogged down in it (clingy, slow to cross)
+const CLING_LATERAL = 7.0;        // sideways grip while feeding — bleeds lateral drift hard so a feeder locks onto the patch (stronger than the vertical CLING_GRAB)
 const BIOMASS_SINK_DECAY = 0;     // NO decay — biomass never remineralizes; only eaten matter leaves the system (closed loop)
 const BIOMASS_FLOOR_DECAY = 0;    // NO decay on the floor either — it auto-combines into piles and waits to be grazed
 const BIOMASS_MAX_AGE = 1e9;      // biomass never ages out — it persists until eaten
@@ -3882,8 +3883,11 @@ function updateFields(world, dt) {
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
     }
-    const massR = Math.sqrt(Math.max(8, total)) * (f.radiusScale || 8.0);
-    f.radius = clamp(massR + (f.spread || 0), 9, f.maxRadius || 180);
+    // Footprint is the ONE mass equation, driven purely by the core amount left in the field: as feeders
+    // pull mass out of f.stock, `total` drops and the radius shrinks through this same sqrt(mass) law — no
+    // separate spread/scale layer stacked on top. So all four feeding liquids visibly scale DOWN as they
+    // are eaten, straight from the core amount removed (no floor propping them up, no faked shrink).
+    f.radius = clamp(Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0), 6, f.maxRadius || 180);
     // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
@@ -5761,6 +5765,12 @@ function feedFromFields(world, entity, dt) {
       const stick = clamp(overlapFraction * (f.stock.lipids || 0) / 90, 0, 1) * FAT_FRICTION * dt;
       const keep = 1 / (1 + stick);
       entity.vx *= keep; entity.vy *= keep;
+    }
+    // LATERAL FEEDING GRIP: a body locked onto ANY food patch grips it SIDEWAYS — its lateral drift bled
+    // off hard (stronger than the vertical cling) so it holds on the meal in the current instead of
+    // sliding off it. Eating is a commitment.
+    if (f.resType !== 'ballast' && (f.stock[f.resType] || 0) > 0.5) {
+      entity.vx *= 1 / (1 + clamp(overlapFraction, 0, 1.25) * CLING_LATERAL * dt);
     }
   }
   if (totalFlow > 0) entity.hunger = Math.max(0, entity.hunger - totalFlow * 0.014);
