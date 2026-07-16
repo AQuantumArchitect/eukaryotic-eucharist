@@ -6,7 +6,7 @@
 <title>Eukaryotic Eucharist v1.3.3 - Predator Flow Balance</title>
 <style>
 :root{--bg:#050611;--panel:rgba(7,9,22,.86);--line:rgba(158,240,189,.20);--text:#f7f4ff;--muted:#aeb1c7;--good:#9ef0bd;--bad:#ff7897;--gold:#f5d47a;--blue:#86d2ff;--violet:#d6a2ff}
-*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none;z-index:115}.status{position:absolute;left:326px;right:12px;bottom:12px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;inset:0;pointer-events:none;z-index:115}.status{position:absolute;left:326px;right:12px;bottom:12px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.graphToggle{position:absolute;right:14px;top:14px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:116;pointer-events:auto}.dagShopChips{position:absolute;left:14px;top:14px;right:100px;display:flex;flex-wrap:wrap;gap:6px;z-index:116;pointer-events:none}.dagChip{pointer-events:auto;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#cfd0e6;padding:6px 11px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}.dagChip.on{border-color:rgba(158,240,189,.6);background:rgba(18,38,30,.85);color:#eaffee}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
 /* Shopping: tradeable HUD bars become tap-zones — tap LEFT half to sell (→lipids, green), RIGHT to buy (lipids→, amber). */
 body.shopping [data-tres]{pointer-events:auto;cursor:pointer;position:relative;overflow:visible;background:linear-gradient(90deg,rgba(143,227,122,.18),transparent 44%,transparent 56%,rgba(255,182,120,.18))}
 body.shopping [data-tres]::before,body.shopping [data-tres]::after{position:absolute;bottom:1px;font-size:9px;font-weight:950;pointer-events:none;text-shadow:0 1px 3px #000;z-index:3}
@@ -108,6 +108,8 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
     <div class="controls card"><h4>Projected controls</h4><div id="controls"></div></div>
     <div class="prompt card" id="prompt"></div>
     <button id="shopFab" class="shopFab">Yuki</button>
+    <button id="graphToggle" class="graphToggle">⊙ Body</button>
+    <div id="dagShopChips" class="dagShopChips"></div>
     <div class="law card">Bodies feed by fields. Bodies attack only through organs. Eucharist asks for one DNA record.</div>
     <div class="touch" id="touch">
       <div class="joy" id="joy"><div class="knob" id="knob"></div></div>
@@ -128,7 +130,7 @@ const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
 const dagCanvas = document.getElementById('dagHud');
 const dagCtx = dagCanvas.getContext('2d');
 const ui = {
-  dagHud: el('dagHud'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
+  dagHud: el('dagHud'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn'), graphToggle: el('graphToggle'), dagShopChips: el('dagShopChips')
 };
 function el(id){return document.getElementById(id)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -176,20 +178,115 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   toast('Reborn from the froth — a fresh genome. Yuki\'s deeper grafts are sealed until you earn them again.');
 }
 
+// dagHudH used to be a dedicated top band (~46% of viewport); the DAG HUD is now a full-viewport overlay
+// (the membrane node locks to the player's actual on-screen position, which sits well below where that old
+// band ended — see drawDagHud's offX/offY) so dagHudH is just innerHeight now. Kept as its own variable
+// (rather than reading innerHeight directly everywhere) to minimize churn in the rest of the DAG code.
 let dagHudH=200;
 function resize(){
   canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0);
-  // The DAG HUD needs real room for the force simulation to spread nodes out instead of crushing them
-  // into a thin strip — give it roughly the top half of the screen, clamped so it never eats the
-  // joystick/action buttons anchored to the bottom on short viewports.
-  dagHudH=clamp(Math.round(innerHeight*0.46),260,innerHeight-260);
+  dagHudH=innerHeight;
   dagCanvas.width=Math.floor(innerWidth*dpr);dagCanvas.height=Math.floor(dagHudH*dpr);dagCanvas.style.width=innerWidth+'px';dagCanvas.style.height=dagHudH+'px';dagCtx.setTransform(dpr,0,0,dpr,0,0);
-  // dagHudH is content-driven (varies with organelle count and viewport), so nudge the shop FAB (still
-  // top-anchored) to actually clear it. .status now lives at the bottom of the screen instead (see CSS).
-  const bandBottom=50+dagHudH+8;
-  ui.shopFab.style.top=bandBottom+'px';
 }
 addEventListener('resize',resize,{passive:true}); resize();
+
+// ── DAG HUD pointer interactions: tap vs long-press against dagNodes ───────────────────────────────
+// #dagHud is pointer-events:none (see CSS), so every click actually lands on the #game canvas underneath
+// it — hit-testing is pure JS math against dagNodes' positions, not DOM event delegation. dagOnTap/
+// dagOnLongPress are indirection points other parts fill in (membrane toggle, shop-on-graph buy/remove) so
+// this block stays pure infrastructure with no shop/toggle logic baked into it.
+let dagPressState=null; // {nodeId, startX, startY, startTime}
+let dagLongPressTimer=null;
+const DAG_TAP_MS=200, DAG_LONGPRESS_MS=650, DAG_MOVE_TOLERANCE=16;
+function dagHitTest(clientX,clientY){
+  const dr=dagCanvas.getBoundingClientRect();
+  const localX=clientX-dr.left-dagOffX, localY=clientY-dr.top-dagOffY;
+  let best=null,bestD=Infinity;
+  // Collapsed: only the membrane dot is actually drawn, so it's the only thing tappable — every other
+  // node still exists in dagNodes (physics keeps running underneath) but is invisible and untouchable.
+  const candidates=graphOpen ? dagNodes : (dagNodes.has('membrane') ? [['membrane',dagNodes.get('membrane')]] : []);
+  for(const [id,n] of candidates){
+    const d=Math.hypot(localX-n.x, localY-n.y);
+    if(d<=n.r && d<bestD){ best=id; bestD=d; }
+  }
+  return best;
+}
+let dagOnTap=(nodeId)=>{};
+let dagOnLongPress=(nodeId)=>{};
+function dagPressCancel(){ dagPressState=null; clearTimeout(dagLongPressTimer); dagLongPressTimer=null; }
+function dagPressProgress(nodeId){
+  if(!dagPressState || dagPressState.nodeId!==nodeId) return 0;
+  return clamp((performance.now()-dagPressState.startTime)/DAG_LONGPRESS_MS,0,1);
+}
+function dagPressStart(e){
+  const hitId=dagHitTest(e.clientX,e.clientY);
+  if(!hitId) return false;
+  dagPressState={nodeId:hitId, startX:e.clientX, startY:e.clientY, startTime:performance.now()};
+  clearTimeout(dagLongPressTimer);
+  dagLongPressTimer=setTimeout(()=>{
+    if(dagPressState && dagPressState.nodeId===hitId){ dagOnLongPress(hitId); dagPressCancel(); }
+  }, DAG_LONGPRESS_MS);
+  return true;
+}
+function dagPressEnd(e){
+  if(!dagPressState) return;
+  const {nodeId,startX,startY,startTime}=dagPressState;
+  const held=performance.now()-startTime;
+  const moved=Math.hypot(e.clientX-startX, e.clientY-startY)>DAG_MOVE_TOLERANCE;
+  dagPressCancel();
+  // Released inside the tap window without drifting off the node = a tap. Anything released mid-hold
+  // (past the tap window but before the long-press threshold fired) or moved off = aborted, no action —
+  // the long-press itself already auto-committed via the timeout above if it ever got that far.
+  if(!moved && held<DAG_TAP_MS) dagOnTap(nodeId);
+}
+canvas.addEventListener('pointermove',e=>{
+  if(dagPressState && Math.hypot(e.clientX-dagPressState.startX, e.clientY-dagPressState.startY)>DAG_MOVE_TOLERANCE) dagPressCancel();
+});
+addEventListener('pointercancel',()=>dagPressCancel());
+
+// Open/closed toggle: collapsed shows only the membrane node (locked to the player, see drawDagHud's
+// offX/offY) as a persistent "tap here to reopen" affordance — tapping it, or the dedicated button, or
+// coming within reach of Yuki, expands it back out.
+let graphOpen=true;
+function dagToggleOpen(){ graphOpen=!graphOpen; }
+ui.graphToggle.onclick=dagToggleOpen;
+
+// Shop-on-graph: which ORGAN_CATEGORY bucket's unlocked-unowned organelles show as shadow nodes right now.
+// null = no category selected = today's owned-only view. Category chips are the single source of scope —
+// there's no separate Yuki-proximity gate here (buy/remove via the graph works anywhere).
+let dagShopCategory=null;
+const DAG_SHOP_CATEGORIES=['feeding','metabolism','structure','oxygen','movement','weapons','swarm'];
+(function buildDagShopChips(){
+  ui.dagShopChips.innerHTML=DAG_SHOP_CATEGORIES.map(c=>`<button class="dagChip" data-cat="${c}">${c}</button>`).join('');
+  for(const b of ui.dagShopChips.querySelectorAll('.dagChip')){
+    b.onclick=()=>{
+      dagShopCategory = dagShopCategory===b.dataset.cat ? null : b.dataset.cat;
+      for(const c of ui.dagShopChips.querySelectorAll('.dagChip')) c.classList.toggle('on', c.dataset.cat===dagShopCategory);
+    };
+  }
+})();
+
+// Tap: shadow or owned-not-maxed organelle -> buy (verbatim reuse of the list panel's own buy flow,
+// cost-check/mutation/toast/refresh all included) — UNLESS Organ Manufacturing is owned and idle and the
+// tapped node is a not-yet-owned shadow, in which case tap grows it in-body instead (biomass+ATP pulse,
+// no lipids) rather than an instant Yuki purchase. Long-press: owned organelle -> remove. Membrane is
+// excluded from both (it's the open/closed toggle target instead). No proximity gate — works anywhere.
+dagOnTap=(nodeId)=>{
+  if(nodeId==='membrane'){ dagToggleOpen(); return; }
+  // A node actively being grown in can't also be instant-bought out from under the build — no-op, the
+  // progress ring is already telling the player it's on its way.
+  if(hud.manufacturing&&hud.manufacturing.organelle===nodeId){ toast('Already growing — '+Math.round(hud.manufacturing.progress*100)+'% done.'); return; }
+  const proj=K.getYukiOfferings(world).find(o=>o.organelle===nodeId);
+  if(!proj) return;
+  const owned=hud.organelles.some(o=>o.id===nodeId);
+  const canManufacture=!owned && !hud.manufacturing && hud.organelles.some(o=>o.id==='organ_manufacturing');
+  if(canManufacture) doManufacture(proj.id);
+  else doBuy(proj.id, proj.kind);
+};
+dagOnLongPress=(nodeId)=>{
+  if(nodeId==='membrane') return;
+  if(hud.organelles.some(o=>o.id===nodeId)) doRemove(nodeId);
+};
 
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
@@ -206,11 +303,11 @@ addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
 canvas.addEventListener('pointermove',e=>{pointer.x=e.clientX;pointer.y=e.clientY});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('auxclick',e=>{ if(e.button===2) e.preventDefault(); });
-canvas.addEventListener('pointerdown',e=>{e.preventDefault(); if(e.button===2)pointer.right=true;else pointer.down=true;pointer.x=e.clientX;pointer.y=e.clientY});
+canvas.addEventListener('pointerdown',e=>{e.preventDefault(); if(dagPressStart(e))return; if(e.button===2)pointer.right=true;else pointer.down=true;pointer.x=e.clientX;pointer.y=e.clientY});
 canvas.addEventListener('mousedown',e=>{ if(e.button===2){e.preventDefault(); pointer.right=true; pointer.x=e.clientX; pointer.y=e.clientY;} });
 addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
-addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
-addEventListener('blur',()=>{pointer.down=false;pointer.right=false});
+addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false; dagPressEnd(e);});
+addEventListener('blur',()=>{pointer.down=false;pointer.right=false; dagPressCancel();});
 ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Reach a Yuki tendril to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
 
 function setupJoy(){
@@ -344,23 +441,29 @@ const DAG_VITAL_SINKS=['hp','energy','oxygen'];
 // MERGED: the old separate "gas" (ballast bladder) sink is gone — oxygen is the single internal-gas pool
 // now (respiration fuel, poison risk, AND lift all draw from it, see graph_kernel.mjs buoyancy()).
 const DAG_MINOR_SINKS=['biomass','lipids','toxins','ballast','spores','enzymes','crystals'];
-const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight',buoyancy:'buoyancy'};
+const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
 // UI-only edges: environmental readouts (ambient pressure, sunlight) aren't real player resources, so
 // they don't belong in the kernel's ORGAN_GRAPH_EDGES — they're purely "what this organ's dial reacts to."
-// buoyancy is the same: not a kernel resource, just a readout of a real kernel computation (see below).
-const DAG_EXTRA_EDGES=[['oxygen','pressure'],['photosystem','sunlight'],['oxygen','buoyancy'],['ballast','buoyancy']];
+const DAG_EXTRA_EDGES=[['oxygen','pressure'],['photosystem','sunlight']];
 const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
+// Draw-time translate locking membrane (and everything else, by extension) to the player's on-screen
+// position — recomputed every frame in drawDagHud, read by the pointer hit-test (dagHitTest) so canvas
+// clicks map back into the physics sim's local coordinate space correctly.
+let dagOffX=0, dagOffY=0;
 // Resource nodes replace the removed bars, so they carry the same "filling" (green pulse, actively
 // gaining) read the old vitals/chips gave. O2's old standalone red-flash is gone — that harm now reads
 // as a contracting HP<->O2 edge instead (see dagEdgeActiveness); HP keeps its own duress, now ALSO
 // persistent (not just on-hit) once you're down to a quarter health.
 function dagSinkValue(id){
   if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0||hud.hp.value<=hud.hp.max*0.25};
-  if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false};
+  if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false, o2:hud.oxygen.o2, n:hud.oxygen.n};
   if(id==='ballast'){ const b=hud.bricks||{value:0}; return {value:b.value, max:1, color:hexRgb(K.COLORS.ballast), duress:false, noMax:true}; }
   const r=hud.resources.find(x=>x.id===id);
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
+  // Toxins shift tint with fill fraction — "sunny yellow" (empty) through a sickly green/red/pink swirl as
+  // it saturates (drawDagSink adds black specks + a swirl distortion on top, both also fill-scaled).
+  if(id==='toxins') return {value:r.value,max:r.max,color:dagToxinTint(r.value/Math.max(1,r.max)),duress};
   return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
 }
 // Special/conditional bubbles: only exist once something is actually connected to them. Pressure rides in
@@ -369,34 +472,28 @@ function dagSinkValue(id){
 // to show otherwise), then behaves like any other vital sink.
 function dagActiveSpecialIds(){
   // MERGED: pressure (Boyle's Law) now compresses the same pool every body's respiration draws from, not
-  // just bladder-owners' lift gas — always relevant, no longer gated on hasOrgan. buoyancy is the same:
-  // every body has weight and lift, so the tug-of-war readout is always on-screen, not conditional.
-  const ids=['pressure','buoyancy'];
+  // just bladder-owners' lift gas — always relevant, no longer gated on hasOrgan.
+  const ids=['pressure'];
   if(hud.depth&&hud.depth.photosynthetic) ids.push('sunlight');
   if(hud.organelles.some(o=>o.id==='dna_memory_vesicle')) ids.push('dna');
   return ids;
 }
-// Direct readout of the kernel's real buoyancy(e)-biomassWeight(e) tug — not a resource, so it has no
-// value/max fill like the others. dagBuoyT (0=lift-dominant/floating, 1=ballast-dominant/sinking) is the
-// single shared signal that both this node's color/duress AND its Y position (set in drawDagHud, bypassing
-// the spring layout entirely — see dagStepPhysics) AND the oxygen/ballast->buoyancy edge tautness all read
-// from, so "the graph strains toward whichever side is winning" and "the node itself sinks/floats" agree.
-let dagBuoyT=0.5;
 function dagLerpRgb(a,b,t){
   const pa=a.split(',').map(Number), pb=b.split(',').map(Number);
   return pa.map((v,i)=>Math.round(v+(pb[i]-v)*t)).join(',');
+}
+// Toxins tint: "sunny yellow" (empty) -> green -> red -> a sickly pink as the tank saturates.
+const DAG_TOXIN_STOPS=['232,226,44','110,200,90','220,60,60','255,110,200'];
+function dagToxinTint(frac){
+  const n=DAG_TOXIN_STOPS.length-1;
+  const t=clamp(frac,0,1)*n;
+  const i=clamp(Math.floor(t),0,n-1);
+  return dagLerpRgb(DAG_TOXIN_STOPS[i],DAG_TOXIN_STOPS[i+1],t-i);
 }
 function dagSpecialValue(id){
   if(id==='pressure') return {value:clamp(hud.pressure?.value??0,0,1), max:1, color:'176,140,255', duress:false};
   if(id==='sunlight') return {value:clamp(hud.depth?.light??0,0,1), max:1, color:'245,212,122', duress:false, noNumber:true};
   if(id==='dna') return dagSinkValue('dna');
-  if(id==='buoyancy'){
-    const player=world.entities.find(e=>e.id===world.playerId);
-    const net=player?(K.__test.buoyancy(player)-K.__test.biomassWeight(player)):0;
-    dagBuoyT=clamp(0.5-0.5*Math.tanh(net/70),0,1);
-    const color=dagLerpRgb(hexRgb(K.COLORS.oxygen),hexRgb(K.COLORS.ballast),dagBuoyT);
-    return {value:net, max:1, color, duress:dagBuoyT>0.85, noMax:true, noNumber:true};
-  }
   return {value:0,max:1,color:'158,240,189',duress:false};
 }
 function dagEnsureNode(id,kind,w,h,r){
@@ -417,8 +514,9 @@ function dagEnsureNode(id,kind,w,h,r){
 function dagSinkRadius(id,v){
   // MERGED: oxygen joins the "literal tank" swell group now that it's both a respiration AND lift
   // resource (previously it was a flat vital-tier size; the separate 'gas' sink that used to swell here
-  // is gone, folded into this one).
-  if(id==='biomass'||id==='lipids'||id==='oxygen'){
+  // is gone, folded into this one). toxins joins too — "start smaller... and then swell like all the
+  // other ones," replacing its old flat DAG_MINOR_SINKS fallback size.
+  if(id==='biomass'||id==='lipids'||id==='oxygen'||id==='toxins'){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
     return 13+frac*(80-13); // literal tanks: empty = old baseline, full = well past the flat 2x standard
   }
@@ -437,11 +535,6 @@ function dagSinkRadius(id,v){
     // off, so it stays on-screen and readable no matter how long a body's been alive.
     const value=(v&&v.value)||0;
     return clamp(13+14*Math.log(1+value),13,95);
-  }
-  if(id==='buoyancy'){
-    // Neutral tug reads as a modest 22px node; the more lopsided the pull, the more visual weight it
-    // carries — a dead-even tug and a body being dragged straight down both look the part.
-    return 22+18*Math.abs(dagBuoyT-0.5)*2;
   }
   return DAG_VITAL_SINKS.includes(id)?38:26;
 }
@@ -479,20 +572,20 @@ function dagEdgeActiveness(fromId,toId,cmd,flowIntensity,outflowIntensity){
   if(fromId==='enzymes'&&toId==='phagosome') return outflowIntensity.enzymes??0;
   if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
   if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
-  if(fromId==='waste_compactor'||toId==='waste_compactor') return (cmd&&cmd.compact)?1:0;
+  // Waste Compactor's spend is now a Gaussian pulse over ~1.2s, not an instant hammer — the edge reads the
+  // kernel's own normalized 0..1 intensity (rate-at-elapsed / the curve's peak rate) instead of a boolean
+  // "is the key held" check, so it smoothly ramps up and back down with the actual drain, not a hard snap.
+  if(fromId==='waste_compactor'||toId==='waste_compactor') return hud.compacting?hud.compacting.intensity:0;
+  // Organ Manufacturing: "should pull pretty heavily when in action" — the biomass/energy input edges AND
+  // the temporary edge to whatever it's currently building all read the same live Gaussian-pulse intensity,
+  // not a boolean, matching the Waste Compactor treatment above.
+  if(toId==='organ_manufacturing'||(fromId==='organ_manufacturing'&&hud.manufacturing&&toId===hud.manufacturing.organelle)) return hud.manufacturing?hud.manufacturing.intensity:0;
   // Damage attribution: a weapon organ's own edges contract in proportion to the damage IT just dealt
   // (dagWeaponPulse, set from the kernel's weapon_hit event); membrane->hp contracts in proportion to
   // damage the player just TOOK, not a fixed pulse — "cell membrane to HP should contract in proportion
   // to damage taken from enemy attacks."
   if(fromId==='membrane'&&toId==='hp') return dagMembraneHitPulse;
   if(dagWeaponPulse.has(fromId)) return dagWeaponPulse.get(fromId);
-  // Buoyancy tug-of-war: whichever side is currently winning (dagBuoyT, computed once per frame in
-  // dagSpecialValue) has the taut edge — you SEE the ballast physically dragging the node down, or the
-  // gas bladder hauling it up, not just a static pair of lines.
-  if(toId==='buoyancy'){
-    if(fromId==='oxygen') return clamp((0.5-dagBuoyT)*2,0,1);
-    if(fromId==='ballast') return clamp((dagBuoyT-0.5)*2,0,1);
-  }
   // Generic fallback (not membrane_intake-specific): ANY edge ending at a resource that's currently
   // rising lights up — this is what makes storage_vacuole/biomass_vacuole/exotic_vacuole/etc actually
   // swell and accrue "grow-with-usage" heat while feeding, without needing a per-organelle special case.
@@ -509,6 +602,15 @@ function dagEdgeBaseAlpha(fromId,toId,orgList){
   return ((fo&&fo.graphRole==='modify')||(to&&to.graphRole==='modify'))?0.45:0.20;
 }
 const DAG_REPEL_K=22000, DAG_SPRING_K=0.018, DAG_EDGE_LEN=150, DAG_ACTIVE_LEN=34, DAG_ACTIVE_K=0.09, DAG_DAMPING=0.86;
+// Basal motility drags the membrane's LOCAL position in the movement direction — it never breaks the
+// player-lock (drawDagHud's offX/offY is derived FROM membrane's own position, so it always cancels back
+// to the player's screen position regardless of where local physics puts it), but every other node — drawn
+// at its own local position plus that same offset — visibly lags behind as its springs catch up to
+// membrane's shifted spot, reading as the whole graph tilting/trailing opposite the direction of travel.
+const DAG_MOTILITY_DRAG_K=3.5;
+// Mass-contribution hang forces (Part G): target hang-distance = base + magnitude*scale, clamped so a
+// featherweight body still shows a legible gap and a heavily-ballasted one doesn't fly off-canvas.
+const DAG_HANG_BASE=20, DAG_HANG_SCALE=3, DAG_HANG_MIN=20, DAG_HANG_MAX=140, DAG_HANG_K=0.05;
 // Per-edge overrides — a t1 body's single starter motor shouldn't visually max out the same spring a
 // late-game combat combo does. ATP-draw edges are softened (longer resting target, weaker pull); harm
 // edges (HP<->O2/toxins) and genuine lump-cost yanks (dash, engulf) stay dramatic.
@@ -559,22 +661,43 @@ function dagStepPhysics(ids,edges,w,h){
     const ux=dx/d, uy=dy/d;
     a.vx+=ux*f; a.vy+=uy*f; b.vx-=ux*f; b.vy-=uy*f;
   }
+  // Mass-contribution hang forces: every resource that actually contributes to the body's real weight or
+  // lift (graph_kernel.mjs massBreakdown — the SAME term functions biomassWeight()/buoyancy() use, so this
+  // can never drift from what the physics sim actually computes) pulls directly on membrane. Weight
+  // (biomass, ballast) hangs BELOW; lift (oxygen, lipids-only-if-lipid_bladder-owned) hangs ABOVE. The
+  // target hang DISTANCE itself scales with the live contribution magnitude — not a fixed rest length — so
+  // both how far a resource hangs and how hard it tugs communicate "how much," not just direction.
+  // Deliberately excludes toxins: they contribute zero weight or lift in the current kernel, full stop.
+  const dagHangPlayer=world.entities.find(e=>e.id===world.playerId);
+  const dagHangMembrane=dagNodes.get('membrane');
+  if(dagHangPlayer&&dagHangMembrane){
+    const mb=K.__test.massBreakdown(dagHangPlayer);
+    for(const [id,magnitude,sign] of [['biomass',mb.biomass,1],['ballast',mb.ballast,1],['oxygen',mb.oxygen,-1],['lipids',mb.lipids,-1]]){
+      const n=dagNodes.get(id);
+      if(!n||magnitude<=0) continue;
+      const targetDist=clamp(DAG_HANG_BASE+magnitude*DAG_HANG_SCALE,DAG_HANG_MIN,DAG_HANG_MAX);
+      const dy=n.y-dagHangMembrane.y;
+      const f=(dy-sign*targetDist)*DAG_HANG_K;
+      n.vy-=f; dagHangMembrane.vy+=f;
+    }
+  }
   for(const id of ids){
     const n=dagNodes.get(id);
-    // buoyancy's Y is set directly in drawDagHud from the real kernel computation, not spring-emergent —
-    // no home-Y pull and no vertical containment here, or they'd fight that override every frame.
-    if(id!=='buoyancy'){
-      const homeY = n.kind==='sink' ? h*0.26 : h*0.66;
-      n.vy+=(homeY-n.y)*0.010;
-    }
+    const homeY = n.kind==='sink' ? h*0.26 : h*0.66;
+    n.vy+=(homeY-n.y)*0.010;
     n.vx+=(w*0.5-n.x)*0.0009;
+    // "the basal mobility should pull the mobility motor to drag the membrane in the direction that the
+    // player is moving... this should somewhat spin the graph during play." Continuous motorRamp (0..1,
+    // the same signal the basal_motility->energy edge already uses), not a boolean key-check.
+    if(id==='membrane' && hud.organelles.some(o=>o.id==='basal_motility')){
+      const drag=DAG_MOTILITY_DRAG_K*(hud.motorRamp||0);
+      n.vx+=(lastCommand?.moveX||0)*drag; n.vy+=(lastCommand?.moveY||0)*drag;
+    }
     const pad=n.r+8;
     if(n.x<pad) n.vx+=(pad-n.x)*0.06;
     if(n.x>w-pad) n.vx-=(n.x-(w-pad))*0.06;
-    if(id!=='buoyancy'){
-      if(n.y<pad) n.vy+=(pad-n.y)*0.06;
-      if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
-    }
+    if(n.y<pad) n.vy+=(pad-n.y)*0.06;
+    if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
     n.vx*=DAG_DAMPING; n.vy*=DAG_DAMPING;
     const sp=Math.hypot(n.vx,n.vy), cap=13;
     if(sp>cap){ n.vx=n.vx/sp*cap; n.vy=n.vy/sp*cap; }
@@ -622,7 +745,44 @@ function drawDagSink(g,s,v){
   g.fillStyle=bk; g.beginPath(); g.arc(s.x,s.y,s.r*2.3,0,Math.PI*2); g.fill();
   g.fillStyle='rgba(6,8,18,.85)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
   g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3.4;
-  g.beginPath(); g.arc(s.x,s.y,s.r-2.4,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  if(s.id==='oxygen'&&!off){
+    // Pie chart, not a single fill-arc: O2 (real, breathable) and N (inert fermentation filler) each get
+    // their own wedge, sized by their actual share of the total — "i'm imagining a pie chart of gas types."
+    // Overall SIZE still follows the same swell-with-total-fill law as biomass/lipids/toxins (dagSinkRadius,
+    // unchanged) — the pie only changes how the FILL itself reads, not how big the node gets.
+    const total=Math.max(1e-6,(v.o2||0)+(v.n||0));
+    const o2Frac=clamp((v.o2||0)/total,0,1);
+    const o2Rgb='168,120,255', nRgb='255,255,255';
+    const startAng=-Math.PI/2, o2End=startAng+Math.PI*2*frac*o2Frac, nEnd=startAng+Math.PI*2*frac;
+    const ringW=2.4+frac*2.4; // thicker ring the fuller the tank — "the line around the edge should be size"
+    g.lineWidth=ringW;
+    if(o2End>startAng){ g.strokeStyle=`rgba(${o2Rgb},.92)`; g.beginPath(); g.arc(s.x,s.y,s.r-2.4,startAng,o2End); g.stroke(); }
+    if(nEnd>o2End){ g.strokeStyle=`rgba(${nRgb},.85)`; g.beginPath(); g.arc(s.x,s.y,s.r-2.4,o2End,nEnd); g.stroke(); }
+  } else if(s.id==='toxins'&&frac>0.02&&!off){
+    // Swirl: the fill-arc's inner edge wobbles instead of tracing a clean line — a "sickly churn" that
+    // grows with fill, not a flat readout.
+    const wobble=s.r*0.14*frac, segs=Math.max(8,Math.round(20*frac));
+    g.beginPath();
+    for(let i=0;i<=segs;i++){
+      const ang=-Math.PI/2+(i/segs)*Math.PI*2*frac;
+      const rr=(s.r-2.4)+Math.sin(ang*5+uiPhase*0.6)*wobble;
+      const px=s.x+Math.cos(ang)*rr, py=s.y+Math.sin(ang)*rr;
+      if(i===0) g.moveTo(px,py); else g.lineTo(px,py);
+    }
+    g.stroke();
+    // Black specks: count and opacity both scale with fill — a clean tank has none, a saturated one is flecked.
+    const seed=dagIdHash('toxins_specks');
+    const speckCount=Math.round(2+frac*7);
+    for(let i=0;i<speckCount;i++){
+      const ang=((seed*0.13+i*2.4)%(Math.PI*2));
+      const dist=(0.5+0.5*Math.sin(seed*0.7+i*7.1))*(s.r-4);
+      const px=s.x+Math.cos(ang)*dist, py=s.y+Math.sin(ang)*dist;
+      g.fillStyle=`rgba(8,6,8,${(0.32+frac*0.5).toFixed(2)})`;
+      g.beginPath(); g.arc(px,py,1.1+frac*1.4,0,Math.PI*2); g.fill();
+    }
+  } else {
+    g.beginPath(); g.arc(s.x,s.y,s.r-2.4,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  }
   g.strokeStyle=`rgba(${rgb},.4)`; g.lineWidth=1; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.stroke();
   g.fillStyle='rgba(255,255,255,.88)'; g.font='700 11px ui-sans-serif,system-ui'; g.textAlign='center';
   g.fillText(s.label, s.x, s.y+s.r+14);
@@ -634,6 +794,13 @@ function drawDagSink(g,s,v){
 // Thematic per-organelle effects — small and explicitly extensible: adding a 4th/5th/Nth effect later is
 // a one-line lookup entry plus a matching branch below, not a restructure. MVP covers the three named
 // examples; everything else just gets the plain circle.
+// Square-cube law: an organelle node's resting radius scales with sqrt(stack count) — doubling count
+// doubles the node's cross-sectional AREA (a x√2 radius change), not a flat x2. Shared by dagEnsureNode's
+// seeding pass and the per-frame activity-swell pass so both always agree on the same floor size.
+function dagOrgBaseSize(o){
+  const roleBase=o.graphRole==='modify'?13:8.5;
+  return roleBase*Math.sqrt(Math.max(1,o.count||1));
+}
 const DAG_ORGAN_FX={
   basal_motility:'wriggle', flagella:'wriggle',
   anaerobic_processor:'bubble', clean_processor:'bubble', virulent_processor:'bubble',
@@ -652,7 +819,41 @@ function dagUsageHeatFor(id,active){
   return next;
 }
 function dagIdHash(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))>>>0; return h; }
+// Shop-on-graph: an unlocked-but-unowned organelle renders as a translucent, dashed ghost — no activity
+// swell/donut/grow-FX (an unowned organ has no usage to show), just its price and a locked/affordable read
+// via organState() (index.html:~1038), the SAME classifier the list panel trusts, not a second copy.
+function drawDagShadowOrg(g,o){
+  const building=o.manufacturing;
+  // "starts as the shadow version and grows in with the timer" — while building, radius swells from a
+  // small fraction of its eventual resting size up to full as progress advances, and opacity climbs with
+  // it, instead of the flat translucent-ghost read a browsing (not-yet-started) shadow gets.
+  const r=building ? o.r*(0.3+0.7*building.progress) : o.r;
+  const rgb='158,240,189';
+  const affordable=organState(o)==='ready';
+  const a=building ? (0.35+0.5*building.progress) : (affordable?0.55:0.22);
+  g.setLineDash([4,4]);
+  g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=1.6;
+  g.beginPath(); g.arc(o.x,o.y,r,0,Math.PI*2); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle=`rgba(255,255,255,${building?(0.5+0.4*building.progress):(affordable?0.72:0.35)})`; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center';
+  g.fillText(o.name, o.x, o.y+r+12);
+  if(building){
+    // Build-progress ring — a distinct signal from the (unrelated) long-press confirmation ring, same
+    // visual language (radial fill from top) so it reads immediately as "in progress."
+    g.strokeStyle='rgba(158,240,189,.85)'; g.lineWidth=2.6;
+    g.beginPath(); g.arc(o.x,o.y,r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*building.progress); g.stroke();
+  } else if(o.offering&&o.offering.costText){
+    g.fillStyle=`rgba(${rgb},${affordable?0.85:0.4})`; g.font='800 8px ui-monospace,monospace'; g.textAlign='center';
+    g.fillText(o.offering.costText, o.x, o.y+3);
+  }
+  const pressT=dagPressProgress(o.id);
+  if(pressT>0){
+    g.strokeStyle='rgba(255,110,120,.92)'; g.lineWidth=3;
+    g.beginPath(); g.arc(o.x,o.y,r+7,-Math.PI/2,-Math.PI/2+Math.PI*2*pressT); g.stroke();
+  }
+}
 function drawDagOrg(g,o){
+  if(o.shadow) return drawDagShadowOrg(g,o);
   const rgb = o.tier==='gate' ? '245,212,122' : '158,240,189';
   const modify = o.graphRole==='modify';
   const activity = o.activity||0;
@@ -708,22 +909,53 @@ function drawDagOrg(g,o){
   }
   if(modify){ g.fillStyle='rgba(255,255,255,.8)'; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center'; g.fillText(o.name, o.x, o.y+r+12); }
   if(o.count>1){ g.fillStyle='rgba(255,255,255,.92)'; g.font='800 9px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+3); }
+  // Long-press confirmation ring: fills clockwise from top as the hold approaches the commit threshold —
+  // the only feedback telling you "keep holding" vs "let go now" before it auto-fires.
+  const pressT=dagPressProgress(o.id);
+  if(pressT>0){
+    g.strokeStyle='rgba(255,110,120,.92)'; g.lineWidth=3;
+    g.beginPath(); g.arc(o.x,o.y,r+7,-Math.PI/2,-Math.PI/2+Math.PI*2*pressT); g.stroke();
+  }
 }
 function drawDagHud(){
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
   dagUpdateWeaponPulses();
+  // "automatically come on while talking to Yuki" — proximity always wins over the last toggle state.
+  if(hud.nearYuki) graphOpen=true;
+  ui.dagShopChips.style.display=graphOpen?'flex':'none';
   const g=dagCtx, w=innerWidth, h=dagHudH;
   const shopOpen=ui.shopOverlay.style.display==='flex';
   const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
   const specialIds=dagActiveSpecialIds();
-  const orgList=hud.organelles;
+  // Shop-on-graph: unlocked-but-unowned organelles in the selected category preview as shadow nodes,
+  // woven into the SAME ORGAN_GRAPH_EDGES topology real organelles use (both are looked up by organelle
+  // id) — no separate layout logic needed, a shadow just settles near what it would connect to once owned.
+  // getYukiOfferings' own `locked` flag folds together TWO different things — a real gate (DNA-undiscovered/
+  // missing prereq/maxed) AND simply being unaffordable right now — so it can't be used directly here.
+  // organState() is the tri-state split the list panel already trusts: 'lock' is the only state that means
+  // "genuinely locked" (matches "locked have no display anymore"); 'ready'/'unaff' both preview as shadows,
+  // just at different brightness (drawDagShadowOrg) — an unaffordable-today organelle is still unlocked.
+  // An active Organ Manufacturing build stays visible as a "growing in" shadow regardless of the selected
+  // category — it's a real in-progress process, not a browsing preview, so it can't be hidden by tapping a
+  // different chip mid-build.
+  const manufacturingTarget = hud.manufacturing ? K.getYukiOfferings(world).find(o=>o.organelle===hud.manufacturing.organelle) : null;
+  const shadowCandidates = (dagShopCategory ? K.getYukiOfferings(world).filter(o=>
+    o.organelle && organState(o)!=='lock' && K.__test.ORGAN_CATEGORY[o.organelle]===dagShopCategory && !hud.organelles.some(x=>x.id===o.organelle)
+  ) : [])
+    .concat(manufacturingTarget && !hud.organelles.some(x=>x.id===manufacturingTarget.organelle) ? [manufacturingTarget] : [])
+    .filter((o,i,arr)=>arr.findIndex(x=>x.organelle===o.organelle)===i)
+    .map(o=>({...o, id:o.organelle, graphRole:K.ORGAN_GRAPH_ROLE[o.organelle]||'tune', count:0, shadow:true, offering:o,
+      manufacturing: hud.manufacturing&&hud.manufacturing.organelle===o.organelle ? hud.manufacturing : null}));
+  const orgList=hud.organelles.concat(shadowCandidates);
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
   for(const id of specialIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
   // Base size is small/subtle by default (back down from an earlier 2x pass) — activity below is what
-  // makes an organelle actually read as "doing something," not a permanently-bloated resting size.
-  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?13:8.5);
+  // makes an organelle actually read as "doing something," not a permanently-bloated resting size. Stack
+  // count scales radius by sqrt(count) — the square-cube law for a 2D dot: doubling count doubles the
+  // node's cross-sectional AREA, which is exactly a x√2 radius change, not a flat x2.
+  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, dagOrgBaseSize(o));
   // prune organelles no longer owned (sold/lost) and specials whose gating organ/rack is gone — the fixed
   // resource sinks are permanent fixtures and are never pruned.
   for(const [id,n] of dagNodes){
@@ -735,7 +967,11 @@ function drawDagHud(){
   const outflowIntensity={}; for(const id of ['enzymes']) outflowIntensity[id]=dagOutflowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
-  const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES)
+  // Organ Manufacturing's link to whatever it's currently building is temporary — added here only while a
+  // build is active, not a permanent ORGAN_GRAPH_EDGES entry — "start connected... when complete that
+  // connection should break."
+  const manufacturingEdge = hud.manufacturing ? [['organ_manufacturing',hud.manufacturing.organelle]] : [];
+  const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES).concat(manufacturingEdge)
     .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
     .map(([fromId,toId])=>[fromId,toId,dagEdgeActiveness(fromId,toId,lastCommand,flowIntensity,outflowIntensity)]);
   // Activity swell: an organelle grows while ANY edge touching it (either direction) is actively
@@ -747,33 +983,44 @@ function drawDagHud(){
   }
   for(const o of orgList){
     const n=dagNodes.get(o.id); if(!n) continue;
-    const base=o.graphRole==='modify'?13:8.5;
-    n.r=base*(1+(orgActivity[o.id]||0)*0.9);
+    n.r=dagOrgBaseSize(o)*(1+(orgActivity[o.id]||0)*0.9);
   }
   dagStepPhysics(activeIds,edges,w,h);
-  // Buoyancy node: Y is placed directly from dagBuoyT (computed above in dagSpecialValue from the real
-  // buoyancy(e)-biomassWeight(e) kernel math), lerped for smoothness — "so we can feel the ballast effect"
-  // means seeing the node itself sink or float, not inferring it from a spring settling.
-  {
-    const bn=dagNodes.get('buoyancy');
-    if(bn){
-      const margin=Math.max(30,bn.r+10);
-      const targetY=margin+dagBuoyT*(h-margin*2);
-      bn.y+=(targetY-bn.y)*0.06;
-      bn.vy=0;
-    }
+  // Player-anchored membrane: the graph's local physics coordinate space is entirely independent of the
+  // player's actual on-screen position — membrane is a completely normal node in that space, subject to
+  // the same repulsion/springs/home-Y bias as everything else. The lock comes purely from this draw-time
+  // translate: since offX/offY are DERIVED from membrane's own current local position, membrane always
+  // draws at exactly (playerScreenX,playerScreenY) no matter where local physics put it — substituting
+  // membrane.x into "membrane.x+offX" always cancels back to playerScreenX. Every other node draws at its
+  // own local position plus this same offset, so the whole graph rigidly follows the player while the
+  // internal spring dynamics keep running unmodified. Exposed on dagOffX/dagOffY for pointer hit-testing.
+  const dagPlayer=world.entities.find(e=>e.id===world.playerId);
+  const membraneNode=dagNodes.get('membrane');
+  if(dagPlayer&&membraneNode){
+    dagOffX=worldToScreenX(dagPlayer.x)-membraneNode.x;
+    dagOffY=(dagPlayer.y-camera.y)-membraneNode.y;
   }
   g.clearRect(0,0,w,h);
+  // Collapsed: draw only membrane (still locked to the player via dagOffX/dagOffY) as the persistent
+  // "tap here to reopen" affordance — everything else (backdrop, sinks, other orgs, edges) is skipped. The
+  // physics sim above still runs every frame regardless, so nothing jumps/pops when it reopens.
+  if(!graphOpen){
+    if(membraneNode){
+      const mo=orgList.find(o=>o.id==='membrane');
+      if(mo) drawDagOrg(g,{...membraneNode,...mo,x:membraneNode.x+dagOffX,y:membraneNode.y+dagOffY,activity:0});
+    }
+    return;
+  }
   if(!shopOpen) dagBackdrop(g,w,h);
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
     const base=dagEdgeBaseAlpha(fromId,toId,orgList);
     const a0=base+active*(0.9-base);
-    dagEdge(g,a.x,a.y,b.x,b.y,b.r,dagEdgeColor(fromId,toId,vals),a0,dagEdgeWidth(fromId,toId,active));
+    dagEdge(g,a.x+dagOffX,a.y+dagOffY,b.x+dagOffX,b.y+dagOffY,b.r,dagEdgeColor(fromId,toId,vals),a0,dagEdgeWidth(fromId,toId,active));
   }
-  for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
-  for(const id of specialIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
-  for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o,activity:orgActivity[o.id]||0}); }
+  for(const id of sinkIds){ const n=dagNodes.get(id); drawDagSink(g,{...n,x:n.x+dagOffX,y:n.y+dagOffY,label:DAG_SINK_LABEL[id]},vals[id]); }
+  for(const id of specialIds){ const n=dagNodes.get(id); drawDagSink(g,{...n,x:n.x+dagOffX,y:n.y+dagOffY,label:DAG_SINK_LABEL[id]},vals[id]); }
+  for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o,x:n.x+dagOffX,y:n.y+dagOffY,activity:orgActivity[o.id]||0}); }
 }
 
 function updateActionButtons(actions){
@@ -899,6 +1146,7 @@ function renderShop(){
 }
 function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
 function doRemove(orgId){const res=K.removeOrganelle(world,orgId);if(res.ok){toast('Graft undone.');renderShop();}else toast(res.reason||'Cannot remove.');}
+function doManufacture(id){const res=K.startManufacturing(world,id);if(res.ok)toast('Growing it in — the body pulls hard on biomass and ATP.');else toast(res.reason||'Cannot manufacture.');}
 // One row of the lipid exchange counter: name · amount · fill bar · ▼ sell (→lipids) · ▲ buy (lipids→).
 // A vertical exchange column per resource: label · ▲ increase (top) · upright fill bar · value ·
 // ▼ reduce (bottom). Each arrow shows its lipid delta — +N (green, Yuki pays you) or −N (amber, you
@@ -1092,11 +1340,16 @@ function drawFields(){
       // crisp edge ring — a defined green footprint that doesn't wash out on a busy background
       ctx.strokeStyle=`rgba(${c},${0.4*Math.min(1,amt/28)})`; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(f.x,f.y,R*0.9,0,Math.PI*2); ctx.stroke();
     } else if(f.resType==='lipids'){
-      // amber fat globules — the whole field rises (fat is light), so they float up with it
-      const c=RES_COLORS.lipids.join(','), n=Math.min(8,1+Math.floor(amt/4)), sz=2.2+Math.min(3.2,amt/8);
+      // amber fat SLICK — diffuses into a horizontal OVAL as it rises; globules ride within it
+      const c=RES_COLORS.lipids.join(','), ov=Math.sqrt(f.oval||1), rx=R*ov, ry=R/ov, amtA=clamp(amt/40,.16,.55);
+      ctx.save(); ctx.translate(f.x,f.y); ctx.scale(ov,1/ov);
+      const rg=ctx.createRadialGradient(0,0,0,0,0,R);
+      rg.addColorStop(0,`rgba(${c},${amtA})`); rg.addColorStop(.7,`rgba(${c},${amtA*.4})`); rg.addColorStop(1,`rgba(${c},0)`);
+      ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill(); ctx.restore();
+      const n=Math.min(8,1+Math.floor(amt/4)), sz=2.2+Math.min(3.2,amt/8);
       for(let k=0;k<n;k++){
-        const a=(k/n)*Math.PI*2+f.x*0.05, rad=R*(0.2+0.6*((k*0.37+f.x*0.003)%1));
-        const lx=f.x+Math.cos(a)*rad, ly=f.y+Math.sin(a)*rad+Math.sin(T*1.2+k+f.x*0.03)*2;
+        const a=(k/n)*Math.PI*2+f.x*0.05, rad=(0.2+0.6*((k*0.37+f.x*0.003)%1));
+        const lx=f.x+Math.cos(a)*rad*rx, ly=f.y+Math.sin(a)*rad*ry+Math.sin(T*1.2+k+f.x*0.03)*2;
         ctx.fillStyle=`rgba(${c},.92)`; ctx.beginPath(); ctx.arc(lx,ly,sz,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='rgba(255,226,155,.6)'; ctx.beginPath(); ctx.arc(lx-sz*0.3,ly-sz*0.32,sz*0.4,0,Math.PI*2); ctx.fill();
       }

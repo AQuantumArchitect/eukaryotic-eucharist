@@ -347,6 +347,42 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
   healthVeteranLoad: 0.025,
   traitSpread: 0.22
 });
+// STEADY-STATE STAMP (burn-in): the OBSERVED equilibrium HP-fill and ATP(energy)-fill per lineage,
+// measured by burnin.mjs over the last half of a player-free run. New arrivals (spawn / immigration)
+// draw their starting HP and charge from these distributions instead of a wild uniform guess, so a
+// fresh body already looks like an equilibrium member and the world barely lurches at t=0. Empty
+// entries fall back to the old uniform random. Re-run `node burnin.mjs` and paste the emitted
+// STEADY_STATE after any dynamics change that moves the equilibrium.
+const STEADY_STATE = Object.freeze({
+  // <lineage>: { hpFill, energyFill, depthMean, depthSd, n } — measured by burnin.mjs (12min × 2 seeds,
+  // sampled over the equilibrium half). n/depth document the steady shape (for seed retuning); the spawn
+  // sampler reads hpFill/energyFill. The physiology is real: photosynthetic algae and scraping-by oxic
+  // scavengers carry almost no ATP, hunters carry real charge, scavengers live wounded.
+  algae:             { hpFill: { mean: 0.761, sd: 0.166 }, energyFill: { mean: 0.105, sd: 0.194 }, depthMean: 411,  depthSd: 133, n: 70 },
+  deep_bloom:        { hpFill: { mean: 0.596, sd: 0.247 }, energyFill: { mean: 0.760, sd: 0.257 }, depthMean: 4053, depthSd: 298, n: 16 },
+  oxic_scavenger:    { hpFill: { mean: 0.479, sd: 0.273 }, energyFill: { mean: 0.084, sd: 0.176 }, depthMean: 2454, depthSd: 472, n: 20 },
+  abyssal_scavenger: { hpFill: { mean: 0.770, sd: 0.208 }, energyFill: { mean: 0.252, sd: 0.198 }, depthMean: 6928, depthSd: 774, n: 6 },
+  predator:          { hpFill: { mean: 0.809, sd: 0.145 }, energyFill: { mean: 0.379, sd: 0.330 }, depthMean: 3342, depthSd: 231, n: 5 },
+  protozoan:         { hpFill: { mean: 0.931, sd: 0.163 }, energyFill: { mean: 0.578, sd: 0.342 }, depthMean: 5403, depthSd: 933, n: 5 },
+  metazoan:          { hpFill: { mean: 0.632, sd: 0.244 }, energyFill: { mean: 0.545, sd: 0.329 }, depthMean: 5351, depthSd: 910, n: 3 },
+  brood:             { hpFill: { mean: 0.677, sd: 0.121 }, energyFill: { mean: 0.083, sd: 0.119 }, depthMean: 6764, depthSd: 723, n: 1 },
+  swarm_agent:       { hpFill: { mean: 0.945, sd: 0.148 }, energyFill: { mean: 0.088, sd: 0.149 }, depthMean: 6826, depthSd: 997, n: 8 },
+});
+// Map a body to its STEADY_STATE lineage key (keyed on controller + trophicRole, both set at makeSoftBody
+// time; deepBloom is not yet set there, so we read trophicRole for the deep mats).
+function lineageKey(entity) {
+  const c = entity.controller, role = entity.trophicRole;
+  if (c === 'algae') return role === 'deep_toxic_bloom' ? 'deep_bloom' : 'algae';
+  if (c === 'scavenger') return role === 'abyssal_scavenger' ? 'abyssal_scavenger' : 'oxic_scavenger';
+  return c;
+}
+// A starting fill (0..1) for a spawning body's HP or ATP, sampled from the burned-in equilibrium
+// distribution for its lineage. Returns null when no observed sample exists (caller keeps its default).
+function steadyFill(world, entity, field) {
+  const dist = STEADY_STATE[lineageKey(entity)]?.[field];
+  if (!dist) return null;
+  return clamp(gaussian(world.rng, dist.mean, dist.sd), 0.05, 1.0);
+}
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
 // buoyant lipids float up toward the canopy, and volatile ATP/toxins diffuse outward into
@@ -375,6 +411,7 @@ const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 const CLING_MASS_FACTOR = 0.6;    // fraction of a clinging body's mass that counts toward the fall's sink law
 const CLING_GRAB = 3.2;           // how hard the fall's descent pulls a clinging body's vy toward its own
 const FAT_FRICTION = 4.0;         // viscosity of a lipid plume: a body grazing fat is bogged down in it (clingy, slow to cross)
+const CLING_LATERAL = 7.0;        // sideways grip while feeding — bleeds lateral drift hard so a feeder locks onto the patch (stronger than the vertical CLING_GRAB)
 const BIOMASS_SINK_DECAY = 0;     // NO decay — biomass never remineralizes; only eaten matter leaves the system (closed loop)
 const BIOMASS_FLOOR_DECAY = 0;    // NO decay on the floor either — it auto-combines into piles and waits to be grazed
 const BIOMASS_MAX_AGE = 1e9;      // biomass never ages out — it persists until eaten
@@ -395,10 +432,10 @@ const BLOOM_ACID_RECOIL = 0.010;  // HP/s per toxin unit that a deep toxic bloom
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
 const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins', 'ballast']);
 const FIELD_TYPE = Object.freeze({
-  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0, maxRadius: 170 }, // NO decay — diffuses a little, auto-combines at the floor; only eaten matter leaves the system
-  lipids:  { vy: -13, spread: 0,   decay: 0, radiusScale: 6.5, maxRadius: 130 }, // NO decay, NO diffusion — a fat plume holds tight until something eats it
-  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5, maxRadius: 260 }, // flashes wide + thins fast
-  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5, maxRadius: 210 }, // slow diffuse, lingers
+  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
+  lipids:  { vy: -13, spread: 1.8, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
+  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
+  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
@@ -420,6 +457,30 @@ const MEMBRANE_COST_RATIO = (1 + Math.sqrt(5)) / 2; // golden ratio φ ≈ 1.618
 // SHOP cost escalate.
 const EXOTIC_KEYS = ['spores', 'enzymes', 'crystals', 'toxins'];
 function fib(n) { let a = 1, b = 1; for (let i = 1; i < n; i++) { const t = a + b; a = b; b = t; } return a; }
+// Shared shape for any "spend a fixed total over a fixed duration as a smooth pulse instead of an
+// instantaneous hammer" mechanic (Waste Compactor, Organ Manufacturing) — returns the instantaneous
+// consumption RATE (amount per second) at `elapsed` seconds into a `duration`-second pulse; the caller
+// multiplies by dt to get this frame's actual drain. ~99.7% of totalAmount lands within [0,duration]
+// (mean=duration/2, sd=duration/6), so integrating the rate over the full duration recovers totalAmount.
+// Gas composition tracking: entity.oxygenO2 is the only extra STORED field — the "N" (inert filler)
+// portion is never separately tracked, always DERIVED as entity.oxygen - entity.oxygenO2 wherever it's
+// needed (getHudProjection, the DAG HUD's pie chart). This means only sites where REAL oxygen specifically
+// enters or leaves (breathing, photosynthesis, photolytic splitting, the Eucharist incubation trickle,
+// metabolic/combustion burns) need to call this; every other site that changes entity.oxygen (fermentation
+// byproduct fill, generic leaks/vents/trades) doesn't touch oxygenO2 at all — the derived N portion just
+// absorbs that change automatically, and clampCargo's safety clamp (oxygenO2 = min(oxygenO2, oxygen))
+// guarantees the invariant 0<=oxygenO2<=oxygen always holds even after an untouched site shrinks the
+// total. Net effect: the inert filler drains/burns off FIRST when something depletes the tank generically,
+// and your hard-won real O2 reserve is protected until the filler's gone — a deliberate, simpler-than-strict-
+// proportional design choice, not an oversight.
+function addOxygenO2(entity, delta) {
+  entity.oxygenO2 = clamp((entity.oxygenO2 || 0) + delta, 0, entity.oxygen);
+}
+function gaussianPulseRate(elapsed, duration, totalAmount) {
+  const mean = duration / 2, sd = duration / 6;
+  const pdf = Math.exp(-0.5 * ((elapsed - mean) / sd) ** 2) / (sd * Math.sqrt(2 * Math.PI));
+  return totalAmount * pdf;
+}
 // Capacity racks are EXEMPT from paying escalation AND from the tally: escalating them would soft-lock
 // the economy (2nd rack costs more of an exotic than a 1-rack body can hold), and counting the 13
 // racks would explode their own category and lock out its exotic organs. Ballast Stone joins them for a
@@ -433,6 +494,7 @@ const ORGAN_CATEGORY = {
   lipolytic_vesicle: 'metabolism', mineralizing_gland: 'metabolism', clean_processor: 'metabolism',
   virulent_processor: 'metabolism', catalytic_processor: 'metabolism', lipogenic_processor: 'metabolism',
   hydrogenosome: 'metabolism', countercurrent_gill: 'metabolism', chemosynthetic_vesicle: 'metabolism',
+  organ_manufacturing: 'metabolism',
   lipid_bladder: 'metabolism', enzyme_reserve: 'metabolism',
   membrane: 'structure', storage_vacuole: 'structure', biomass_vacuole: 'structure', lipid_vacuole: 'structure', toxin_vacuole: 'structure', atp_reservoir: 'structure',
   membrane_hardening: 'structure', lipid_repair_loom: 'structure', thorn_coat: 'structure',
@@ -464,7 +526,7 @@ export const ORGAN_GRAPH_ROLE = {
   lipid_vacuole: 'modify', toxin_vacuole: 'modify', atp_reservoir: 'modify', exotic_vacuole: 'modify',
   dna_memory_vesicle: 'modify', lipid_repair_loom: 'modify', membrane_hardening: 'tune',
   oxygen_tolerance: 'tune', oxygen_vacuole: 'modify', oxygen_store: 'modify', jettison_vesicle: 'modify',
-  waste_compactor: 'modify',
+  waste_compactor: 'modify', organ_manufacturing: 'modify',
   dash_vent: 'tune', gas_gland: 'tune', pressure_bladder: 'tune', ballast_siphon: 'tune',
   aerocyst: 'modify', catalase_vesicle: 'tune', countercurrent_gill: 'tune', hydrogenosome: 'modify',
   photolytic_vacuole: 'tune', ballast_stone: 'modify', lipid_bladder: 'tune', chemosynthetic_vesicle: 'modify',
@@ -632,7 +694,12 @@ export const ORGANELLES = Object.freeze({
     // prey-poor deep of any reproduction; lipids never burn, so a full-fat reserve is the safety net
     // that keeps a food-starved lineage alive. The split always drains ATP to zero and drops both
     // cells lean — so both immediately hunt hard to recharge (the eager-predator pulse).
-    stats: { biomassFrac: 0.85, lipidFrac: 0.90, atpFrac: 0.85, childReserve: 0.15 }
+    // The cleave is EXPENSIVE and CONSERVED (doFission): the daughter's whole body is BUILT from the
+    // parent's gorged belly (never copied/minted), and building it BURNS a heavy toll of biomass
+    // (cleaveWasteBiomass of the spent belly) plus nearly all the parent's charge (only chargeKeep of the
+    // reservoir survives in each lean cell) — the matter SINK that makes replication a real drain on the
+    // system, paid for by how hard the parent fed to gorge.
+    stats: { biomassFrac: 0.85, lipidFrac: 0.90, atpFrac: 0.85, childReserve: 0.15, cleaveWasteBiomass: 0.5, chargeKeep: 0.05 }
   },
   lance_bristle: {
     name: 'Lance Bristle', tier: 2, action: null, stackable: true, max: 6,
@@ -707,7 +774,16 @@ export const ORGANELLES = Object.freeze({
   waste_compactor: {
     name: 'Waste Compactor', tier: 2, action: 'compact', stackable: true, max: 4, category: 'metabolic',
     desc: 'On command, squeezes 70% of your carried toxins into a dense ballast brick, alongside a fixed slug of biomass and ATP. Weight-neutral on the biomass — it just repackages what you already carried — but every brick is permanent: nothing sheds it but jettison or a trip back to Yuki. Ballast has no storage limit; it is the closest thing your body has to an age.',
-    stats: { toxinFrac: 0.7, biomassCost: 6, energyCost: 4, cooldown: 0.6, biomassYield: 1.0, toxinYield: 0.5 }
+    stats: { toxinFrac: 0.7, biomassCost: 6, energyCost: 4, cooldown: 0.6, biomassYield: 1.0, toxinYield: 0.5, pulseDuration: 1.2 }
+  },
+  // Grows new organelles in-body from biomass+ATP instead of buying them from Yuki with lipids — an
+  // alternative acquisition path that coexists with the shop, not a replacement for it. Tap an unlocked
+  // shadow node on the body graph while this is owned to start a build (see startManufacturing/
+  // stepManufacturing); one build at a time, spent as a Gaussian pulse like the Waste Compactor.
+  organ_manufacturing: {
+    name: 'Organ Manufacturing', tier: 2, action: null, stackable: false, max: 1, category: 'metabolic',
+    desc: 'Grow a new organelle in-body instead of buying one from Yuki — tap an unlocked shadow on your body graph to start. Draws heavily on biomass and ATP as a smooth pulse while the build runs; no lipids spent. One build at a time.',
+    stats: {}
   },
   // Dash Vent is jettison's other half: instead of a passive drop, it feeds ejected biomass INTO a
   // dash for extra impulse — the "fighting a gradient costs ATP" thrust case, paid in biomass instead.
@@ -1048,6 +1124,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'ballast_siphon', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Ballast Siphon', desc: 'Dumps ballast gas faster while flooded — a sharper, quicker dive.', cost: { biomass: 12, lipids: 6, spores: 1 }, organelle: 'ballast_siphon', requiresDiscovery: 'ballast_siphon', stackLimit: 4 },
   { id: 'ballast_stone', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Ballast Stone', desc: 'Mineralized weight: sink faster and hold the deep without constantly venting gas — the committed diver\'s anchor. Cheap and buyable from the start.', cost: { biomass: 10, lipids: 2 }, organelle: 'ballast_stone', stackLimit: 4 },
   { id: 'waste_compactor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Waste Compactor', desc: 'On command (see controls), squeezes most of your carried toxins into a permanent ballast brick, alongside a fixed slug of biomass and ATP. Weight-neutral on the biomass; the toxin side is where real, lasting weight comes from.', cost: { biomass: 10, lipids: 6 }, organelle: 'waste_compactor', stackLimit: 4 },
+  { id: 'organ_manufacturing', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Organ Manufacturing', desc: 'Grow new organelles in-body from biomass and ATP instead of buying them from Yuki — tap an unlocked shadow on your body graph to start a build. Draws heavily on both as a smooth pulse while a build runs; no lipids spent on the build itself.', cost: { biomass: 16, lipids: 10 }, organelle: 'organ_manufacturing', stackLimit: 1 },
   { id: 'lipid_bladder', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Lipid Bladder', desc: 'Stored fat is lighter than water: a full lipid reserve gives lift on its own — buoyancy for the fat-burning mitochondrial build without fermenting gas.', cost: { biomass: 12, lipids: 9 }, organelle: 'lipid_bladder', requiresDiscovery: 'lipid_bladder', stackLimit: 5 },
 
   { id: 'rasping_lamella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { lipids: 5 }, organelle: 'rasping_lamella', stackLimit: 5 },
@@ -1419,7 +1496,7 @@ export function createWorld(options = {}) {
   // a fresh start. Default off, so the smoke tests keep their cold t=0 world.
   if (options.warmup > 0) {
     const p = player;
-    const start = p ? { cargo: { ...p.cargo }, oxygen: p.oxygen, hp: p.hp, biomassMass: p.biomassMass, r: p.r, x: p.x, y: p.y } : null;
+    const start = p ? { cargo: { ...p.cargo }, oxygen: p.oxygen, oxygenO2: p.oxygenO2, hp: p.hp, biomassMass: p.biomassMass, r: p.r, x: p.x, y: p.y } : null;
     // Coarse fixed step (the sim's max dt) so warmup is ~3x cheaper — a couple hundred ms of
     // load, not a multi-second freeze — since we only need to reach the steady state, not
     // render it. Gameplay then runs at the fine 1/60 step.
@@ -1527,6 +1604,7 @@ function seedAnalyticAlgaeRegime(world) {
     e.organelles.membrane_hardening = clamp(Math.round(0.6 + structural / 105), 1, 4);
     e.organelles.oxygen_tolerance = clamp(Math.round(2.2 + structural / 90), 3, 6);
     e.oxygen = caps(e).oxygen * gasFill;
+    e.oxygenO2 = e.oxygen; // freshly seeded gas — treat as real O2 by default, same convention as makeSoftBody
     // Analytic derivative of the sampled continuous depth orbit. This is the crucial
     // in-medias-res condition: half the phases rise, half descend, at velocities that
     // agree with their individual amplitude and period instead of beginning nearly still.
@@ -1665,6 +1743,10 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     softness: opts.softness ?? 0.7, color: opts.color || '#8ceaa0', controller: opts.controller || 'scavenger', trophicRole: opts.trophicRole || opts.controller || 'scavenger',
     depthHome: opts.depthHome || y, depthBand: opts.depthBand || 420, cargo, organelles: { ...(opts.organelles || {}) },
     oxygen: opts.oxygen ?? oxygenAt(y), // MERGED: internal gas is one pool now — respiration, poisoning, and lift all draw from this single field (see buoyancy())
+    // Composition tracking within that one pool: oxygenO2 is real, breathable oxygen; the rest (oxygen -
+    // oxygenO2, never separately stored — always DERIVED) is inert filler ("N"), mostly from fermentation
+    // byproduct. A fresh body hasn't fermented yet, so it starts as if its whole tank were real O2.
+    oxygenO2: opts.oxygenO2 ?? (opts.oxygen ?? oxygenAt(y)),
     hunger: rand(world, 0.25, 0.9), targetId: null, feedIntent: false, repairIntent: false, action: null, alive: true, hit: 0,
     phase: rand(world, 0, Math.PI * 2), radiusPulse: rand(world, 0.6, 1.5), friendly: opts.friendly || false,
     fallState: opts.fallState || null, incubating: null, grace: opts.grace ?? 0, cooldowns: {},
@@ -1698,7 +1780,11 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
   body.maxHp = caps(body).hp;
-  body.hp = opts.hp == null ? body.maxHp : Math.min(opts.hp, body.maxHp);
+  // HP: an explicit opts.hp wins; otherwise start at the burned-in equilibrium HP-fill for this lineage
+  // (so the seed and every arrival begin at their steady wound level, not a jarring full bar), or full HP
+  // when no observed sample exists yet.
+  if (opts.hp != null) body.hp = Math.min(opts.hp, body.maxHp);
+  else { const hFill = steadyFill(world, body, 'hpFill'); body.hp = body.maxHp * (hFill != null ? hFill : 1); }
   // Randomized starting charge for every NPC at spawn / immigration / rescue-wall injection — bodies
   // arrive at varied vigour (some flush, some near-dry and desperate to feed) instead of uniformly topped
   // off. Range 0-100% for the abundant, food-driven castes (scavengers, algae). The fission HUNTER guild
@@ -1706,8 +1792,9 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
   // near-zero spawn starves before it can hunt or divide — literal 0% collapses the whole predator layer.
   // The player is exempt entirely (early Yuki refills; a 0-ATP spawn would strand it dead in the water).
   if (body.kind !== 'player') {
+    const eFill = steadyFill(world, body, 'energyFill');
     const floor = HUNTER_GUILD.has(body.controller) ? 0.35 : 0;
-    body.cargo.energy = caps(body).energy * (floor + (1 - floor) * world.rng());
+    body.cargo.energy = caps(body).energy * (eFill != null ? eFill : floor + (1 - floor) * world.rng());
   }
   clampCargo(body);
   return body;
@@ -1846,6 +1933,10 @@ export const ORGAN_GRAPH_EDGES = [
   // Waste Compactor (action:'compact'): drains toxins + a fixed biomass/ATP cost into ballast, on command.
   ['toxins', 'waste_compactor'], ['biomass', 'waste_compactor'], ['energy', 'waste_compactor'],
   ['waste_compactor', 'ballast'],
+  // Organ Manufacturing: pulls biomass+ATP heavily while a build is active (see stepManufacturing) — the
+  // temporary edge to whatever it's currently building is added client-side only while that build runs,
+  // not here (it's not a permanent structural connection to any one organelle).
+  ['biomass', 'organ_manufacturing'], ['energy', 'organ_manufacturing'],
   // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
   ['basal_motility', 'energy'],
@@ -1894,6 +1985,10 @@ function clampCargo(entity) {
   for (const r of RESOURCES) entity.cargo[r] = clamp(entity.cargo[r] || 0, 0, c[r] ?? 999);
   entity.hp = clamp(entity.hp, 0, c.hp);
   entity.oxygen = clamp(entity.oxygen || 0, 0, c.oxygen); // merged: this is the whole internal-gas pool now
+  // Composition safety clamp: catches every site that changes entity.oxygen WITHOUT going through
+  // addOxygenO2 (fermentation fill, generic leaks/vents/trades) — the inert filler ("N", derived as
+  // oxygen-oxygenO2) drains/burns off first, oxygenO2 only gets forced down once N is already exhausted.
+  entity.oxygenO2 = clamp(entity.oxygenO2 || 0, 0, entity.oxygen);
 }
 
 function oxygenTolerance(entity) {
@@ -1920,13 +2015,22 @@ function membranePorosity(entity) {
     - orgCount(entity, 'membrane_hardening') * ORGANELLES.membrane_hardening.stats.porosityReduction, 0.020, 0.32);
 }
 
-function biomassWeight(entity) {
+// Named sub-terms of biomassWeight()/buoyancy(), split out so the DAG HUD's per-resource "hang forces"
+// (massBreakdown, below) read the SAME math the physics sim actually uses — one source of truth, never a
+// second parallel implementation that could quietly drift from what a body's real weight/lift is.
+function biomassCargoWeight(entity) {
   // Biomass is heavy now — accumulating it genuinely sinks you, driving the algae's fatten-and-fall.
   const cargoFactor = entity.controller === 'algae' ? 0.16 : 0.11;
   const structuralFactor = entity.controller === 'algae' ? 0.24 : 0.05;
+  return (entity.cargo.biomass || 0) * cargoFactor + entity.biomassMass * structuralFactor;
+}
+function ballastWeight(entity) {
   const stone = orgCount(entity, 'ballast_stone') * ORGANELLES.ballast_stone.stats.weight; // committed-diver anchor
   const bricks = (entity.cargo.ballast || 0) * BALLAST_BRICK_WEIGHT; // variable, carried drop-weight — the same mechanism as ballast_stone, just a resource instead of a fixed organ
-  return Math.max(0, (entity.cargo.biomass || 0) * cargoFactor + entity.biomassMass * structuralFactor + Math.pow(entity.r, 1.18) * 0.010 + stone + bricks);
+  return stone + bricks;
+}
+function biomassWeight(entity) {
+  return Math.max(0, biomassCargoWeight(entity) + Math.pow(entity.r, 1.18) * 0.010 + ballastWeight(entity));
 }
 
 function algaeBallastWorkDepth(entity) {
@@ -1966,23 +2070,17 @@ function algaeProducerMass(world) {
   return mass;
 }
 
-function buoyancy(entity) {
-  // MERGED: lift is stored internal gas (the same pool respiration and O2 poisoning read/write) in the
-  // bladder — deliberately DOES now have an oxygen term, since they're the same tank. A bladder-less body
-  // has only the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation AND passive
-  // O2 diffusion, same pool either way.
+// Bladder lift only — excludes aerocyst (a rigid, always-full float that never varies with the gas pool's
+// fill level, so it doesn't belong under the "oxygen pulls you up" hang-force; it's baseline, like
+// BASE_BUOYANCY) and lipid-bladder lift (its own separate term, see lipidBladderLift below).
+function gasLift(entity) {
   const bladders = orgCount(entity, 'oxygen_vacuole');
+  if (bladders <= 0) return 0;
   const s = ORGANELLES.oxygen_vacuole.stats;
   // Pressure compresses the gas (Boyle's Law): the same tank buys less lift the deeper you are —
   // universal for every bladder-owning body, not gated behind any one armor organ.
   const liftPerGas = s.liftPerGas / (1 + BOYLE_K * pressureAt(entity.y));
-  // Aerocysts are rigid, always-full floats — a lift floor that never vents.
-  const aero = orgCount(entity, 'aerocyst') * ORGANELLES.aerocyst.stats.fixedLift;
-  // Lipid Bladder: stored fat is lighter than water — buoyancy scaled by how full your lipid tank is.
-  const lb = orgCount(entity, 'lipid_bladder');
-  let lipidLift = 0;
-  if (lb > 0) { const c = caps(entity); lipidLift = lb * ORGANELLES.lipid_bladder.stats.lipidLift * clamp((entity.cargo.lipids || 0) / Math.max(1, c.lipids), 0, 1); }
-  if (entity.controller === 'algae' && bladders > 0) {
+  if (entity.controller === 'algae') {
     // A viable bloom must always be able to return: full gas beats its current weight, while a big
     // bloom needs a larger fraction of the bladder filled and therefore falls farther before turning.
     // The bladder is one organ, but its physical volume grows with the bloom that carries it.
@@ -1996,9 +2094,40 @@ function buoyancy(entity) {
     const recoveryMargin = 0.75 + 0.55 * Math.pow(gasFill, 8);
     const weightScaledLift = biomassWeight(entity) * recoveryMargin;
     const bladderLift = Math.max(gasCap * liftPerGas, weightScaledLift) * gasFill;
-    return BASE_BUOYANCY + aero + lipidLift + bladders * s.baseLift + bladderLift;
+    return bladders * s.baseLift + bladderLift;
   }
-  return BASE_BUOYANCY + aero + lipidLift + bladders * (s.baseLift + (entity.oxygen || 0) * liftPerGas);
+  return bladders * (s.baseLift + (entity.oxygen || 0) * liftPerGas);
+}
+// Lipid Bladder: stored fat is lighter than water — buoyancy scaled by how full your lipid tank is. Zero
+// unless the organ is owned — lipids otherwise contribute no weight or lift at all.
+function lipidBladderLift(entity) {
+  const lb = orgCount(entity, 'lipid_bladder');
+  if (lb <= 0) return 0;
+  const c = caps(entity);
+  return lb * ORGANELLES.lipid_bladder.stats.lipidLift * clamp((entity.cargo.lipids || 0) / Math.max(1, c.lipids), 0, 1);
+}
+function buoyancy(entity) {
+  // MERGED: lift is stored internal gas (the same pool respiration and O2 poisoning read/write) in the
+  // bladder — deliberately DOES now have an oxygen term, since they're the same tank. A bladder-less body
+  // has only the flat BASE_BUOYANCY; a gas-filled bladder floats. Gas comes from fermentation AND passive
+  // O2 diffusion, same pool either way.
+  // Aerocysts are rigid, always-full floats — a lift floor that never vents.
+  const aero = orgCount(entity, 'aerocyst') * ORGANELLES.aerocyst.stats.fixedLift;
+  return BASE_BUOYANCY + aero + lipidBladderLift(entity) + gasLift(entity);
+}
+// Per-resource weight/lift breakdown for the DAG HUD's "hang forces" (mass-contribution forces pulling
+// directly on the membrane node) — reads the SAME term functions the aggregates above use, so the graph
+// can never drift from what the physics sim actually computes. Deliberately excludes the baseline terms
+// (structural size weight, BASE_BUOYANCY, aerocyst lift) that aren't tied to any resource amount shown on
+// the graph — those stay implicit in biomassWeight()/buoyancy(), unchanged. toxins are absent on purpose:
+// they contribute zero weight or lift in the current formulas, full stop.
+function massBreakdown(entity) {
+  return {
+    biomass: biomassCargoWeight(entity),
+    ballast: ballastWeight(entity),
+    oxygen: gasLift(entity),
+    lipids: lipidBladderLift(entity),
+  };
 }
 
 // Adrenal Vesicle: a combat multiplier that ramps as HP falls below the threshold,
@@ -3342,7 +3471,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // living membrane perfectly. Feeding and gills remain much faster paths.
     const membraneFraction = PASSIVE_MEMBRANE.minimumPorosity + (1 - PASSIVE_MEMBRANE.minimumPorosity) * clamp(porosity / 0.32, 0, 1);
     const passiveO2Target = extO2 * caps(e).oxygen;
-    e.oxygen = clamp((e.oxygen || 0) + (passiveO2Target - (e.oxygen || 0)) * PASSIVE_MEMBRANE.oxygenRate * membraneFraction * dt, 0, caps(e).oxygen);
+    { const before = e.oxygen || 0; e.oxygen = clamp(before + (passiveO2Target - before) * PASSIVE_MEMBRANE.oxygenRate * membraneFraction * dt, 0, caps(e).oxygen); addOxygenO2(e, e.oxygen - before); } // always-on baseline breathing — real O2, both directions
     // Toxins are also dissolved small molecules. Their slower passive ingress means
     // poison fields matter even without feeding. Biomass and lipids have no passive
     // path and still require feeding, killing, or metabolic conversion.
@@ -3359,7 +3488,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
     */
     // Countercurrent Gill: active O2 uptake far beyond bare diffusion, when the water is richer.
     const gill = orgCount(e, 'countercurrent_gill');
-    if (gill > 0 && extO2 > e.oxygen) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + (extO2 - e.oxygen) * gill * ORGANELLES.countercurrent_gill.stats.uptake * dt);
+    if (gill > 0 && extO2 > e.oxygen) { const before = e.oxygen; e.oxygen = Math.min(caps(e).oxygen, e.oxygen + (extO2 - e.oxygen) * gill * ORGANELLES.countercurrent_gill.stats.uptake * dt); addOxygenO2(e, e.oxygen - before); } // active real-O2 uptake organ
     // Ballast gas leaks out through the membrane ∝ porosity — a soft cell deflates fast (bobs),
     // a hardened cell holds its dive. This is the passive sink that lets a fat bloom fall.
     // MERGED: gated on actually owning bladder capacity — before the merge this was a natural no-op
@@ -3416,7 +3545,9 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // their surface-organism mechanic). For every other body — the PLAYER included — photosynthesis
       // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
       if (e.controller === 'algae') {
-        e.oxygen += ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
+        // Real photosynthetic O2 — grows the tracked O2 sub-pool by the same amount as the total.
+        const photoGain = ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
+        e.oxygen += photoGain; addOxygenO2(e, photoGain);
         // Venting is real outward diffusion, not a tuned throttle curve: the driving force is the
         // actual gap between what you're holding and what the water already has. Sitting in
         // already-saturated water (the nursery) leaves little gap to push against even at full
@@ -3425,11 +3556,14 @@ function updateEnvironmentAndMetabolism(world, dt) {
         const ventRate = ORGANELLES.photosystem.stats.oxygenVent * photo * light * 1.85;
         const gap = clamp(e.oxygen - extO2 * caps(e).oxygen, 0, caps(e).oxygen);
         const vent = ventRate * (gap / Math.max(1e-6, caps(e).oxygen)) * dt;
-        e.oxygen = Math.max(0, e.oxygen - vent);
+        e.oxygen = Math.max(0, e.oxygen - vent); addOxygenO2(e, -vent); // it's specifically O2 being vented, not the inert filler
       }
       // Photolytic Vacuole: split water in the light to bank extra O2 FUEL (for the mito path). Any body.
       const photol = orgCount(e, 'photolytic_vacuole');
-      if (photol > 0) e.oxygen = Math.min(caps(e).oxygen, e.oxygen + photol * ORGANELLES.photolytic_vacuole.stats.o2PerLight * light * dt);
+      if (photol > 0) {
+        const photolGain = Math.max(0, Math.min(caps(e).oxygen - e.oxygen, photol * ORGANELLES.photolytic_vacuole.stats.o2PerLight * light * dt));
+        e.oxygen += photolGain; addOxygenO2(e, photolGain);
+      }
     }
 
     const mito = orgCount(e, 'mitochondrion');
@@ -3445,7 +3579,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.20);
       if (oxygenBurn > 0.001) {
         e.cargo.lipids -= lipidBurn;
-        e.oxygen -= oxygenBurn;
+        e.oxygen -= oxygenBurn; addOxygenO2(e, -oxygenBurn); // real O2 is the fuel burned here, not the inert filler
         e.cargo.energy += lipidBurn * 2.2 + oxygenBurn * 32;   // leaner ATP yield: the aerobic engine now COSTS more fat+O2 per ATP (drains the fat pool instead of banking a windfall)
         e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - oxygenBurn * 5);
       }
@@ -3591,7 +3725,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const st = ORGANELLES.oxidase_vesicle.stats;
       const room = caps(e).energy - (e.cargo.energy || 0);
       const bioUse = Math.min(e.cargo.biomass, st.rate * oxid * potency(world, e, 'oxidase_vesicle') * dt, (e.oxygen || 0) / st.oxygenPerBiomass, room / st.atpPerBiomass);
-      if (bioUse > 0) { e.cargo.biomass -= bioUse; e.oxygen = Math.max(0, e.oxygen - bioUse * st.oxygenPerBiomass); e.cargo.energy += bioUse * st.atpPerBiomass; }
+      if (bioUse > 0) { e.cargo.biomass -= bioUse; const o2Burn = bioUse * st.oxygenPerBiomass; e.oxygen = Math.max(0, e.oxygen - o2Burn); addOxygenO2(e, -o2Burn); e.cargo.energy += bioUse * st.atpPerBiomass; }
     }
 
     // Anabolic Vesicle: when ATP runs high, spend the SURPLUS above a threshold to build biomass.
@@ -3719,7 +3853,7 @@ function updateEucharistIncubation(world, e, dt) {
   e.incubating.time -= dt;
   e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - 1.3 * dt);
   e.cargo.lipids = Math.max(0, (e.cargo.lipids || 0) - 0.85 * dt);
-  e.oxygen += 0.018 * dt;
+  { const o2Gain = 0.018 * dt; e.oxygen += o2Gain; addOxygenO2(e, o2Gain); } // the body waking its aerobic pathway — real O2, not filler
   if ((e.cargo.energy || 0) <= 0.5 || (e.cargo.lipids || 0) <= 0.5 || e.oxygen > oxygenTolerance(e) + 0.34) {
     e.hp -= 5.0 * dt;
   }
@@ -3841,8 +3975,11 @@ function updateFields(world, dt) {
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
       f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
     }
-    const massR = Math.sqrt(Math.max(8, total)) * (f.radiusScale || 8.0);
-    f.radius = clamp(massR + (f.spread || 0), 9, f.maxRadius || 180);
+    // Footprint = the mass CORE (sqrt of the amount left in f.stock — shrinks straight from the core as
+    // feeders eat it, no floor propping it up) PLUS a per-type diffusion spread layered on top (biomass
+    // slow, toxins moderate, ATP fast, lipids into ovals — see FIELD_TYPE spread). No max cap: a field is
+    // free to diffuse as wide as its age and mass carry it.
+    f.radius = Math.max(6, Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0) + (f.spread || 0));
     // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
@@ -4247,6 +4384,8 @@ function updateStrainSystems(world, dt) {
     if (hasOrg(e, 'seeker_gland')) seekerAutoFire(world, e, living);
     if (hasOrg(e, 'chemotaxis_cilia')) chemotaxisPull(world, e, dt);
     if (hasOrg(e, 'orbital_spores')) orbitalDamage(world, e, living, dt);
+    if (e.compacting) stepWasteCompaction(world, e, dt);
+    if (e.manufacturing) stepManufacturing(world, e, dt);
     // A Pheromone Gland conducts a swarm. The player conducts by raising swarms at
     // Yuki; a wild director (brood) conducts by budding its own escort here.
     if (hasOrg(e, 'pheromone_gland') && e.kind !== 'player' && !e.friendly) conductSwarm(world, e);
@@ -4492,7 +4631,7 @@ function detonateVolatile(world, entity) {
     kind: 'blast', sourceId: entity.id, radius: st.radius * cm.rmult,
     damage: power, maxAge: st.age, color: DNA_CATEGORY_COLORS.execute, hitOnce: true
   });
-  entity.oxygen = (entity.oxygen || 0) * (1 - COMBUSTION.blastO2Burn);
+  { const before = entity.oxygen || 0; entity.oxygen = before * (1 - COMBUSTION.blastO2Burn); addOxygenO2(entity, entity.oxygen - before); } // combustion needs real O2 as fuel
   entity.cargo.lipids = (entity.cargo.lipids || 0) * (1 - COMBUSTION.blastLipidBurn);
   if (entity.kind === 'player') world.events.push({ type: 'detonate', entityId: entity.id });
 }
@@ -4508,7 +4647,7 @@ function flamePulse(world, entity, aimX = null, aimY = null) {
   if ((entity.cooldowns.flame || 0) > 0) return false;
   if ((entity.oxygen || 0) < o.o2Cost || (entity.cargo.lipids || 0) < o.lipidCost
     || (entity.cargo.toxins || 0) < o.toxinCost || !hasEnergy(entity, o.energyCost)) return false;
-  entity.oxygen -= o.o2Cost;
+  entity.oxygen -= o.o2Cost; addOxygenO2(entity, -o.o2Cost); // banked O2 is the fuel the flame ignites
   entity.cargo.lipids -= o.lipidCost;
   entity.cargo.toxins -= o.toxinCost;
   entity.cargo.energy -= o.energyCost;
@@ -4816,20 +4955,110 @@ function ventBiomass(world, e) {
 // "spend biomass/ATP now" against "carry a little more permanent weight forever." The alternative is
 // doing nothing and eating ambient toxin damage instead (see updateEnvironmentAndMetabolism) — conserves
 // biomass, costs HP.
+// Button-activated, but the SPEND is a smooth Gaussian-shaped pulse over pulseDuration seconds (see
+// stepWasteCompaction below) instead of an instantaneous lump — "a gaussian pulse of consumption instead
+// of an instantaneous hammer." Activating starts the pulse; the actual cargo drain happens frame-by-frame
+// while e.compacting is active. One pulse at a time — a new activation while one is already running is a
+// no-op, same as the old cooldown's spirit (spam = queue up the next pulse the instant this one ends).
 function compactWaste(world, e) {
   const st = ORGANELLES.waste_compactor.stats;
   e.cooldowns ||= {};
   if ((e.cooldowns.compact || 0) > 0) return false;
+  if (e.compacting) return false;
   if ((e.cargo.biomass || 0) < st.biomassCost) return false;
   if ((e.cargo.energy || 0) < st.energyCost) return false;
-  const toxinsDrained = (e.cargo.toxins || 0) * st.toxinFrac;
-  e.cargo.toxins -= toxinsDrained;
-  e.cargo.biomass -= st.biomassCost;
-  e.cargo.energy -= st.energyCost;
-  e.cargo.ballast = (e.cargo.ballast || 0) + st.biomassCost * st.biomassYield + toxinsDrained * st.toxinYield;
-  e.cooldowns.compact = st.cooldown;
+  e.compacting = {
+    elapsed: 0, duration: st.pulseDuration,
+    toxinsTarget: (e.cargo.toxins || 0) * st.toxinFrac,
+    biomassTarget: st.biomassCost,
+    atpTarget: st.energyCost,
+  };
   world.events.push({ type: 'compact', entityId: e.id });
   return true;
+}
+// Steps an in-progress waste-compaction pulse: each frame drains gaussianPulseRate(elapsed,duration,target)*dt
+// from each resource (clamped so a single long frame can't over-drain past the target), converting biomass+
+// toxins into ballast at the same rates the old instant version used. Cooldown starts on COMPLETION, not
+// activation — the pulse's own ~1.2s duration already prevents spam mid-pulse.
+function stepWasteCompaction(world, e, dt) {
+  const c = e.compacting;
+  if (!c) return;
+  const st = ORGANELLES.waste_compactor.stats;
+  c.elapsed += dt;
+  const drain = (target) => Math.max(0, Math.min(target, gaussianPulseRate(c.elapsed, c.duration, target) * dt));
+  const toxinsDrained = drain(c.toxinsTarget);
+  const biomassDrained = drain(c.biomassTarget);
+  const atpDrained = drain(c.atpTarget);
+  e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - toxinsDrained);
+  e.cargo.biomass = Math.max(0, (e.cargo.biomass || 0) - biomassDrained);
+  e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - atpDrained);
+  e.cargo.ballast = (e.cargo.ballast || 0) + biomassDrained * st.biomassYield + toxinsDrained * st.toxinYield;
+  if (c.elapsed >= c.duration) {
+    delete e.compacting;
+    e.cooldowns.compact = st.cooldown;
+  }
+}
+
+// Organ Manufacturing: converts the SAME blended cost the Yuki list-panel/shop-on-graph already computes
+// (scaledCost — real category-Fibonacci escalation, membrane's own curve, all of it) into a biomass+ATP
+// price and a build duration, instead of inventing a second pricing model from scratch. `cost.lipids` is
+// the one blended "how expensive is this" number scaledCost always produces; rare offerings that also
+// require a raw exotic (spores/enzymes/crystals) don't get that exotic waived by manufacturing — it's a
+// different currency for the biomass/lipids/ATP portion only, not a way to dodge an exotic requirement.
+const MANUFACTURING = { biomassPerValue: 3.5, atpPerValue: 1.8, baseDuration: 2, durationPerValue: 0.35, minDuration: 2, maxDuration: 14 };
+function manufacturingCost(entity, offering) {
+  const cost = scaledCost(entity, offering);
+  const value = cost.lipids || 1;
+  return {
+    biomassTotal: value * MANUFACTURING.biomassPerValue,
+    atpTotal: value * MANUFACTURING.atpPerValue,
+    duration: clamp(MANUFACTURING.baseDuration + value * MANUFACTURING.durationPerValue, MANUFACTURING.minDuration, MANUFACTURING.maxDuration),
+  };
+}
+// Starts an in-body build (one at a time — a second call while one is already running is a no-op, same as
+// Waste Compactor). Re-validates the offering server-side rather than trusting the client: genuinely
+// LOCKED (DNA-undiscovered/missing prereq/mito/host-ready/companion-cap/maxed) blocks a build the same way
+// it blocks a Yuki purchase, but being merely unaffordable-in-LIPIDS does NOT block manufacturing — that's
+// the whole point of a second currency. Mirrors organState()'s client-side 'lock' vs 'unaff' split.
+export function startManufacturing(world, offeringId, entityId = world.playerId) {
+  const e = world.entities.find(x => x.id === entityId);
+  if (!e) return { ok: false, reason: 'missing entity' };
+  if (!hasOrg(e, 'organ_manufacturing')) return { ok: false, reason: 'no manufacturing organ' };
+  if (e.manufacturing) return { ok: false, reason: 'already building' };
+  const offering = OFFERINGS.find(o => o.id === offeringId);
+  if (!offering || !offering.organelle) return { ok: false, reason: 'missing offering' };
+  const proj = getYukiOfferings(world, entityId).find(o => o.id === offeringId);
+  if (!proj) return { ok: false, reason: 'missing offering' };
+  if (proj.maxed) return { ok: false, reason: 'already grafted or maxed' };
+  const genuinelyLocked = proj.locked && !(proj.reasons && proj.reasons.length && proj.reasons.every(r => r.startsWith('needs ')));
+  if (genuinelyLocked) return { ok: false, reason: (proj.reasons || []).join('; ') || 'locked' };
+  const { biomassTotal, atpTotal, duration } = manufacturingCost(e, proj);
+  e.manufacturing = { organelle: offering.organelle, offeringId, elapsed: 0, duration, biomassTotal, atpTotal };
+  world.events.push({ type: 'manufacture_start', entityId: e.id, organelle: offering.organelle });
+  return { ok: true };
+}
+// Steps an in-progress build: drains biomass+ATP as the same Gaussian pulse shape Waste Compactor uses
+// (gaussianPulseRate), capped at what's actually on hand each frame (a body that runs dry mid-build just
+// gets a smaller bite that frame, not a negative cargo value — the timer itself is NOT gated on
+// affordability, so a build always completes on schedule). On completion: grant the organelle for real,
+// deliberately WITHOUT the graft-trauma HP tax buyOffering applies for Yuki purchases — a body growing
+// itself gradually over several seconds already paid a real, felt resource cost; it shouldn't ALSO take
+// the instant-graft shock a lump-sum Yuki purchase does.
+function stepManufacturing(world, e, dt) {
+  const m = e.manufacturing;
+  if (!m) return;
+  m.elapsed += dt;
+  const drain = (target) => Math.max(0, Math.min(target, gaussianPulseRate(m.elapsed, m.duration, target) * dt));
+  const biomassDrained = Math.min(drain(m.biomassTotal), e.cargo.biomass || 0);
+  const atpDrained = Math.min(drain(m.atpTotal), e.cargo.energy || 0);
+  e.cargo.biomass = Math.max(0, (e.cargo.biomass || 0) - biomassDrained);
+  e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - atpDrained);
+  if (m.elapsed >= m.duration) {
+    e.organelles[m.organelle] = (e.organelles[m.organelle] || 0) + 1;
+    e._capsEpoch = -1;
+    delete e.manufacturing;
+    world.events.push({ type: 'manufacture_complete', entityId: e.id, organelle: m.organelle });
+  }
 }
 
 function bloomDeath(world, e) {
@@ -4953,23 +5182,38 @@ function wildFissionRate(entity) {
 // leaves BOTH the parent and the new daughter at childReserve (15%) biomass/lipids — the rest is
 // spent building the second body. Both daughters roll genetic drift (mutateOnFission).
 function doFission(world, e) {
-  const cap = caps(e), res = ORGANELLES.cleavage_furrow.stats.childReserve;
+  const cap = caps(e), st = ORGANELLES.cleavage_furrow.stats, res = st.childReserve;
   const fissionFuel = {
     energy: (e.cargo.energy || 0) / Math.max(1, cap.energy),
     biomass: (e.cargo.biomass || 0) / Math.max(1, cap.biomass),
     lipids: (e.cargo.lipids || 0) / Math.max(1, cap.lipids)
   };
+  // CONSERVED, EXPENSIVE cleave — nothing is fabricated:
+  //  * the daughter's whole structural body is BUILT from the parent's gorged belly (cargo biomass), not
+  //    copied from the parent's biomassMass (the old mint);
+  //  * building it BURNS a heavy toll of that belly (cleaveWasteBiomass) plus ~all the parent's charge —
+  //    the matter SINK ("output through cleaving"), scaling with how much the parent fed to gorge;
+  //  * the parent keeps its own body; leftover belly + fat + a swim-spark of charge split between the two.
+  const pResB = cap.biomass * res;                              // cargo-biomass reserve each lean cell keeps
+  const spentB = Math.max(0, (e.cargo.biomass || 0) - pResB);   // belly freed to build the daughter
+  const tollB = spentB * (st.cleaveWasteBiomass || 0.5);        // burned building the second body (SINK)
+  const buildB = spentB - tollB;
+  const dBody = Math.max(1, buildB - pResB);                    // daughter structural mass, from the belly
+  const freeL = Math.max(0, (e.cargo.lipids || 0) - cap.lipids * res);
+  const dLip = freeL * 0.5;                                     // split the freed fat with the daughter
+  const chargeKeep = cap.energy * (st.chargeKeep || 0.05);      // a swim-spark each cell keeps; the rest of the reservoir is BURNED (SINK)
   const daughter = makeSoftBody(world, e.kind, wrapX(e.x + rand(world, -e.r - 6, e.r + 6)), e.y + rand(world, -8, 8), {
-    r: e.r, baseR: e.baseR, biomassMass: e.biomassMass, mass: e.mass,
+    r: e.r, baseR: e.baseR, biomassMass: dBody, mass: e.mass,   // BUILT from the belly, never copied
     controller: e.controller, color: e.color, depthHome: e.depthHome, trophicRole: e.trophicRole,
     organelles: { ...e.organelles }, strain: e.strain, strainPotency: e.strainPotency,
     bodyPlan: e.bodyPlan, photophobic: e.photophobic, friendly: e.friendly, ownerId: e.ownerId,
-    ruptureThreshold: e.ruptureThreshold, oxygen: (e.oxygen || 0) * 0.5, reproHeat: (e.reproHeat || 0) * 0.35,
-    cargo: { biomass: cap.biomass * res, lipids: cap.lipids * res, energy: 0 }, grace: 1.6
+    ruptureThreshold: e.ruptureThreshold, oxygen: (e.oxygen || 0) * 0.5, oxygenO2: (e.oxygenO2 || 0) * 0.5, reproHeat: (e.reproHeat || 0) * 0.35,
+    cargo: { biomass: pResB, lipids: dLip, energy: chargeKeep }, grace: 1.6
   });
-  e.cargo.biomass = cap.biomass * res;
-  e.cargo.lipids = cap.lipids * res;
-  e.cargo.energy = 0;
+  daughter.cargo.energy = chargeKeep;   // override makeSoftBody's steady-state energy sampling: fission sets charge explicitly (conserved, not minted)
+  e.cargo.biomass = pResB;
+  e.cargo.lipids = cap.lipids * res + (freeL - dLip);   // parent keeps its reserve + the fat half it didn't give away
+  e.cargo.energy = chargeKeep;
   e.reproHeat = (e.reproHeat || 0) * 0.25;
   // Wild fission is a real reproductive cycle, not an attack cooldown. A longer refractory
   // window lets a successful lineage bloom in visible generations while preventing a rich algae
@@ -5154,7 +5398,7 @@ function spawnTick(world, dt) {
   const producerMass = algaeProducerMass(world);
   const algaeHazard = algaeBirthHazard(world, algaeN, producerMass);
   if (algaeN < ALGAE_EMERGENCY_CAP && world.rng() < 1 - Math.exp(-algaeHazard * dt)) {
-    { const at = yukiTendrilSpawn(world); const born = spawnAlgae(world, { mature: false, x: at.x, y: at.y }); born.hp = caps(born).hp * rand(world, 0.40, 1.0); }  // bud off Yuki's tendrils at varied vigour (40-100% HP)
+    { const at = yukiTendrilSpawn(world); spawnAlgae(world, { mature: false, x: at.x, y: at.y }); }  // bud off Yuki's tendrils at burned-in vigour (HP-fill sampled in makeSoftBody)
     world.stats.algaeBirths += 1;
     world.events.push({ type: 'algae_birth', controller: 'algae' });
   }
@@ -5205,7 +5449,7 @@ function spawnTick(world, dt) {
     // hungry scavenger target hogs every immigration slot and the deep hunters (proto/meta, thin fission
     // base) go extinct before the floor ever fires; (3) oxic scavengers top off toward their soft target.
     if (abyssalScavN < abyssalTarget) {
-      { const s = spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true }); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
+      spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true }); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -5218,7 +5462,7 @@ function spawnTick(world, dt) {
       world.events.push({ type: 'immigrate', controller: want });
     }
     else if (scavN < scavengerTarget(world)) {
-      { const s = spawnScavenger(world, entrySpawn(world, 'scavenger')); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
+      spawnScavenger(world, entrySpawn(world, 'scavenger')); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -5330,6 +5574,7 @@ function spawnAlgae(world, opts = {}) {
   e._workJitter = clamp(gaussian(world.rng, 1, 0.34), 0.5, 1.8);
   if (deep) e._anchorY = e.y;   // hold this depth (the predators' brawl zone), don't sink to the floor
   e.oxygen = deep ? 0 : e.organelles.oxygen_vacuole * ORGANELLES.oxygen_vacuole.stats.gasCapBonus * 0.65;
+  e.oxygenO2 = e.oxygen; // freshly seeded gas — treat as real O2 by default, same convention as makeSoftBody
   // Lineage-scale metabolic variation prevents a shared light/depth field from phase-locking the
   // whole crop into one global bob. It changes period, not the guarantee that full gas can return.
   e.ecologyRate = opts.ecologyRate ?? traits.cycle;
@@ -5672,7 +5917,11 @@ function feedFromFields(world, entity, dt) {
   // passive O2 flow — otherwise your reserve just sits (until respiration burns it). Generic (NPCs too).
   const cap = caps(entity).oxygen;
   const targetO2 = oxygenAt(entity.y) * cap;   // env saturation (0..1) × your capacity = the volume you equilibrate toward
-  entity.oxygen = clamp((entity.oxygen || 0) + (targetO2 - (entity.oxygen || 0)) * FEED_INHALE_RATE * dt, 0, cap);
+  // Both directions of this exchange (inhale shallow, exhale deep) are specifically about real O2
+  // equilibrating with the water — the tracked O2 sub-pool moves by the exact same delta as the total.
+  const before = entity.oxygen || 0;
+  entity.oxygen = clamp(before + (targetO2 - before) * FEED_INHALE_RATE * dt, 0, cap);
+  addOxygenO2(entity, entity.oxygen - before);
   const affinity = {
     biomass: 1.0,
     lipids: hasMito(entity) ? 0.95 : 0.55,
@@ -5720,6 +5969,12 @@ function feedFromFields(world, entity, dt) {
       const stick = clamp(overlapFraction * (f.stock.lipids || 0) / 90, 0, 1) * FAT_FRICTION * dt;
       const keep = 1 / (1 + stick);
       entity.vx *= keep; entity.vy *= keep;
+    }
+    // LATERAL FEEDING GRIP: a body locked onto ANY food patch grips it SIDEWAYS — its lateral drift bled
+    // off hard (stronger than the vertical cling) so it holds on the meal in the current instead of
+    // sliding off it. Eating is a commitment.
+    if (f.resType !== 'ballast' && (f.stock[f.resType] || 0) > 0.5) {
+      entity.vx *= 1 / (1 + clamp(overlapFraction, 0, 1.25) * CLING_LATERAL * dt);
     }
   }
   if (totalFlow > 0) entity.hunger = Math.max(0, entity.hunger - totalFlow * 0.014);
@@ -5809,7 +6064,8 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       id: id('field'), resType: r, x: wrapX(x), y: yy, radius: opts.radius || 42,
       stock: single, density: opts.density || 1, sourceKind: opts.sourceKind || 'slurry', age: 0,
       maxAge: opts.maxAge || 24, decayRate: tp.decay, radiusScale: tp.radiusScale,
-      maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
+      maxRadius: opts.maxRadius || 1e9,   // no cap — fields diffuse freely (kept as a field for shape stability)
+      oval: tp.oval || 1,                 // horizontal stretch for the rendered footprint (lipids diffuse into ovals)
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
       vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0
@@ -6010,7 +6266,7 @@ export function tradeAtYuki(world, res, dir, entityId = world.playerId) {
   if (leg.lip > 0 && lip >= lipCap - 1e-6) return { ok: false, reason: 'lipid wallet full' };
   const nv = leg.flush ? 0 : clamp(cur + leg.d, 0, cap);       // flush empties the whole tank
   if (res === 'hp') e.hp = nv;
-  else if (res === 'oxygen') e.oxygen = nv;
+  else if (res === 'oxygen') { const before = e.oxygen; e.oxygen = nv; addOxygenO2(e, nv - before); } // a Yuki trade delivers/vents clean O2, not fermentation filler
   else e.cargo[res] = nv;
   e.cargo.lipids = clamp((e.cargo.lipids || 0) + leg.lip, 0, lipCap);
   clampCargo(e);
@@ -6271,7 +6527,11 @@ export function getHudProjection(world, entityId = world.playerId) {
   return {
     hp: { value: e.hp, max: c.hp, label: 'HP', layers: orgCount(e, 'membrane') },
     motorRamp: e.motorRamp || 0, // 0..1 basal-motor onramp (see applyPlayerCommands) — the DAG HUD reads this for a proportional, not boolean, active-draw spring
-    oxygen: { value: e.oxygen, max: c.oxygen, external: env.oxygen, tolerance: oxygenTolerance(e), label: 'O2' },
+    // o2/n: the tracked composition split within the one merged gas pool — o2 is real, breathable oxygen
+    // (breathing, photosynthesis, photolytic splitting, metabolic burns all move this specifically); n is
+    // never separately stored, always DERIVED as the rest (mostly fermentation offgas). The DAG HUD reads
+    // both directly for its pie chart instead of re-deriving the split client-side.
+    oxygen: { value: e.oxygen, max: c.oxygen, external: env.oxygen, tolerance: oxygenTolerance(e), label: 'O2', o2: clamp(e.oxygenO2 || 0, 0, e.oxygen), n: clamp(e.oxygen - (e.oxygenO2 || 0), 0, e.oxygen) },
     depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen, photosynthetic: orgCount(e, 'photosystem') > 0 },
     pressure: { value: env.pressure, label: 'Pressure' },
     resources: RESOURCES.map(r => ({ id: r, label: r === 'energy' ? 'ATP' : r, value: e.cargo[r] || 0, max: c[r] ?? 99, color: COLORS[r] || '#fff' })),
@@ -6299,6 +6559,18 @@ export function getHudProjection(world, entityId = world.playerId) {
     // Waste Compactor, real cargo distinct from the gas bladder above. Uncapped by design (see
     // capsCompute) — no cap/fill to report, just the raw count. Jettison (T) drops these first.
     bricks: { value: e.cargo.ballast || 0 },
+    // An in-progress waste-compaction pulse, normalized to a 0..1 "how hard is it pulling right now"
+    // intensity (rate-at-elapsed divided by the curve's own peak rate) — the DAG HUD reads this directly
+    // instead of re-deriving the Gaussian shape client-side.
+    compacting: e.compacting ? { intensity: clamp(gaussianPulseRate(e.compacting.elapsed, e.compacting.duration, 1) / gaussianPulseRate(e.compacting.duration / 2, e.compacting.duration, 1), 0, 1) } : null,
+    // An in-progress in-body build (Organ Manufacturing) — organelle is the target being grown, progress
+    // is 0..1 elapsed/duration (drives the shadow node's "under construction" grow-in), intensity is the
+    // same normalized Gaussian-pulse-rate signal compacting uses (drives the biomass/energy edge pull).
+    manufacturing: e.manufacturing ? {
+      organelle: e.manufacturing.organelle,
+      progress: clamp(e.manufacturing.elapsed / e.manufacturing.duration, 0, 1),
+      intensity: clamp(gaussianPulseRate(e.manufacturing.elapsed, e.manufacturing.duration, 1) / gaussianPulseRate(e.manufacturing.duration / 2, e.manufacturing.duration, 1), 0, 1),
+    } : null,
     tier: hasMito(e) ? 3 : 2,
     hostReadiness: readiness,
     incubating: e.incubating ? { ...e.incubating } : null,
@@ -6389,7 +6661,7 @@ export function getRenderProjection(world) {
     t: world.t,
     environment: { oxygenSurface: oxygenAt(WORLD.canopy + 30), oxygenNursery: oxygenAt(WORLD.nurseryTop + 100), lightSurface: lightAt(WORLD.canopy + 30) },
     entities: [...entityProjection, ...colonyRender, ...orbitalRender],
-    fields: world.fields.map(f => ({ id: f.id, resType: f.resType, x: f.x, y: f.y, radius: f.radius, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
+    fields: world.fields.map(f => ({ id: f.id, resType: f.resType, x: f.x, y: f.y, radius: f.radius, oval: f.oval || 1, stock: { ...f.stock }, density: f.density, sourceKind: f.sourceKind, age: f.age, maxAge: f.maxAge })),
     hazards: world.hazards.map(h => ({ id: h.id, kind: h.kind, x: h.x, y: h.y, vx: h.vx, vy: h.vy, radius: h.radius, age: h.age, maxAge: h.maxAge, color: h.color })),
     particles: world.particles.map(p => ({ id: p.id, kind: p.kind, x: p.x, y: p.y, value: p.value, color: p.color, source: p.source || null, potency: p.potency || null, age: p.age, maxAge: p.maxAge })),
     events: world.events.slice()
@@ -6409,4 +6681,4 @@ export function getDebugProjection(world) {
   return { version: VERSION, escalation: world.escalation || 0, entityCount: world.entities.length, fieldCount: world.fields.length, hazardCount: world.hazards.length, particleCount: world.particles.length, playerCargo: p ? { ...p.cargo } : null, playerOrgans: p ? { ...p.organelles } : null, playerOxygen: p ? p.oxygen : null, readiness: p ? hostReadiness(p, world) : null, stats: { ...world.stats } };
 }
 
-export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, compactWaste, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation, verticalGradientMult, chargeThrustATP, netWeightPressure };
+export const __test = { clamp, wrapX, dxWrap, distWrap, feedFromFields, repairFromLipids, caps, fmtStock, hasStock, spawnScavenger, spawnAlgae, spawnPredator, spawnProtozoan, speedOf, feedRadius, feedRate, feedingOrgCount, totalMatter, oxygenTolerance, membraneHardness, membranePorosity, hostReadiness, biomassWeight, buoyancy, massBreakdown, algaeBallastWorkDepth, classifyBlueprint, snapshotCell, attachColonyCell, colonyOrgs, applyStrain, sporePulse, lanceDamage, contactDamage, hasRasp, STRAINS, potency, drainLeech, YUKI_SPAWN, adrenalFactor, areHostile, overlapAura, updateStrainSystems, harpoonPulse, gaussian, budFriendly, spawnCompanion, spawnMetazoan, companionCount, hasWeapon, assignBody, COMPANION_CAP, spawnBrood, spawnSwarmAgent, markPulse, swarmCap, conductSwarm, deliverToOwner, vulnerability, engulfPulse, wardPulse, membraneHardness, CONSUMABLES, GRAFT_INITIATION, BALLAST, LIGHT_BURN, COLORS, hurt, ventBiomass, compactWaste, stepWasteCompaction, gaussianPulseRate, stepManufacturing, manufacturingCost, resolveContacts, spawnResourceField, flamePulse, combustionMult, detonateVolatile, COMBUSTION, scaledCost, fib, categoryCount, categoryMult, ORGAN_CATEGORY, updateNpcBrain, updateScavengerBrain, initBrain, huntDrive, bestBodyTarget, bestFieldFor, hunterThreatPressure, hunterPolicy, wildFissionRate, BRAIN, FREE_HUNTERS, HUNTER_GUILD, fissionReady, doFission, mutateOnFission, populationTick, playerFission, POP_FLOOR, SCAV_TARGET, scavengerTarget, ALGAE_CAP, POP_CAP, escalationLevel, applyEscalation, verticalGradientMult, chargeThrustATP, netWeightPressure };
