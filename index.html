@@ -6,7 +6,7 @@
 <title>Eukaryotic Eucharist v1.3.3 - Predator Flow Balance</title>
 <style>
 :root{--bg:#050611;--panel:rgba(7,9,22,.86);--line:rgba(158,240,189,.20);--text:#f7f4ff;--muted:#aeb1c7;--good:#9ef0bd;--bad:#ff7897;--gold:#f5d47a;--blue:#86d2ff;--violet:#d6a2ff}
-*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none}.status{position:absolute;left:12px;right:12px;top:212px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none;z-index:115}.status{position:absolute;left:12px;right:12px;top:212px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
 /* Shopping: tradeable HUD bars become tap-zones — tap LEFT half to sell (→lipids, green), RIGHT to buy (lipids→, amber). */
 body.shopping [data-tres]{pointer-events:auto;cursor:pointer;position:relative;overflow:visible;background:linear-gradient(90deg,rgba(143,227,122,.18),transparent 44%,transparent 56%,rgba(255,182,120,.18))}
 body.shopping [data-tres]::before,body.shopping [data-tres]::after{position:absolute;bottom:1px;font-size:9px;font-weight:950;pointer-events:none;text-shadow:0 1px 3px #000;z-index:3}
@@ -239,10 +239,12 @@ function command(){
   return {moveX:n.x,moveY:n.y,feed:keys.has('f')||pointer.right||buttons.feed,repair:keys.has('q')||buttons.repair,rasp:fire||buttons.rasp,dash:keys.has('shift')||buttons.dash,acid:fire||keys.has('r')||keys.has('x')||buttons.acid,sporeshot:fire||keys.has('c')||buttons.sporeshot,harpoon:fire||keys.has('z')||buttons.harpoon,cloud:fire||keys.has('v')||buttons.cloud,mark:keys.has('g')||buttons.mark,engulf:keys.has('b')||buttons.engulf,ward:keys.has('h')||buttons.ward,jettison:keys.has('t')||buttons.jettison,flame:fire||keys.has('j')||buttons.flame,divide:keys.has('m')||buttons.divide,aimX:an.x,aimY:an.y};
 }
 
+let lastCommand=null;
 function loop(now){
   const dt=Math.min(.05,(now-last)/1000||1/60); last=now;
   const sheltered=ui.shopOverlay.style.display==='flex';
-  K.step(world, command(), dt, sheltered); // sheltered: tucked inside Yuki (no pause) — she heals/eases you, the world keeps running
+  lastCommand=command();
+  K.step(world, lastCommand, dt, sheltered); // sheltered: tucked inside Yuki (no pause) — she heals/eases you, the world keeps running
   projection=K.getRenderProjection(world); hud=K.getHudProjection(world);
   const player=projection.entities.find(e=>e.id===world.playerId);
   if(player){camera.x=player.x-innerWidth*.5;camera.y=clamp(player.y-innerHeight*.53,0,K.WORLD.h-innerHeight);}
@@ -343,7 +345,34 @@ function dagEnsureNode(id,kind,w,h,r){
   n.kind=kind; n.r=r; n._seen=true;
   return n;
 }
-const DAG_REPEL_K=14000, DAG_SPRING_K=0.018, DAG_EDGE_LEN=105, DAG_DAMPING=0.86;
+// Storage/reserve resources (biomass, lipids, gas) are literal volumetric tanks — they read empty at the
+// old pre-2x baseline size and swell dramatically past the flat 2x standard as they fill, so "how full am
+// I" is legible from across the room, not just from the fill-arc. Everything else gets a flat 2x bump.
+function dagSinkRadius(id,v){
+  if(id==='biomass'||id==='lipids'||id==='gas'){
+    const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
+    return 13+frac*(80-13);
+  }
+  return DAG_VITAL_SINKS.includes(id)?38:26;
+}
+// Which edges are "active draw" edges right now — motor/rasp only pull ATP while actually firing, not
+// passively like a processor, so their spring should visibly snap taut (short + strong) only while held.
+function dagEdgeActive(fromId,toId,cmd){
+  if(!cmd) return false;
+  if(fromId==='basal_motility'&&toId==='energy') return Math.abs(cmd.moveX)>0.05||Math.abs(cmd.moveY)>0.05;
+  if(fromId==='rasping_lamella'&&toId==='energy') return !!cmd.rasp;
+  return false;
+}
+function dagEdgeColor(fromId,toId,vals){
+  if(vals[toId]) return vals[toId].color;
+  if(vals[fromId]) return vals[fromId].color;
+  return '158,240,189';
+}
+function dagEdgeBaseAlpha(fromId,toId,orgList){
+  const fo=orgList.find(x=>x.id===fromId), to=orgList.find(x=>x.id===toId);
+  return ((fo&&fo.graphRole==='modify')||(to&&to.graphRole==='modify'))?0.45:0.20;
+}
+const DAG_REPEL_K=22000, DAG_SPRING_K=0.018, DAG_EDGE_LEN=150, DAG_ACTIVE_LEN=34, DAG_ACTIVE_K=0.09, DAG_DAMPING=0.86;
 function dagStepPhysics(ids,edges,w,h){
   for(let i=0;i<ids.length;i++){
     const a=dagNodes.get(ids[i]);
@@ -352,17 +381,18 @@ function dagStepPhysics(ids,edges,w,h){
       let dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy;
       if(d2<0.5){ dx=(Math.random()-0.5)||0.1; dy=(Math.random()-0.5)||0.1; d2=dx*dx+dy*dy; }
       const d=Math.sqrt(d2);
-      if(d>260) continue; // repulsion is short-range only — distant nodes shouldn't fight the springs
+      if(d>340) continue; // repulsion is short-range only — distant nodes shouldn't fight the springs
       const f=DAG_REPEL_K/d2;
       const ux=dx/d, uy=dy/d;
       a.vx-=ux*f; a.vy-=uy*f; b.vx+=ux*f; b.vy+=uy*f;
     }
   }
-  for(const [fromId,toId] of edges){
+  for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId);
     if(!a||!b) continue;
+    const target=active?DAG_ACTIVE_LEN:DAG_EDGE_LEN, k=active?DAG_ACTIVE_K:DAG_SPRING_K;
     const dx=b.x-a.x, dy=b.y-a.y, d=Math.max(1,Math.hypot(dx,dy));
-    const f=(d-DAG_EDGE_LEN)*DAG_SPRING_K;
+    const f=(d-target)*k;
     const ux=dx/d, uy=dy/d;
     a.vx+=ux*f; a.vy+=uy*f; b.vx-=ux*f; b.vy-=uy*f;
   }
@@ -377,7 +407,7 @@ function dagStepPhysics(ids,edges,w,h){
     if(n.y<pad) n.vy+=(pad-n.y)*0.06;
     if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
     n.vx*=DAG_DAMPING; n.vy*=DAG_DAMPING;
-    const sp=Math.hypot(n.vx,n.vy), cap=9;
+    const sp=Math.hypot(n.vx,n.vy), cap=13;
     if(sp>cap){ n.vx=n.vx/sp*cap; n.vy=n.vy/sp*cap; }
     n.x+=n.vx; n.y+=n.vy;
   }
@@ -385,6 +415,18 @@ function dagStepPhysics(ids,edges,w,h){
 function dagEdge(g,x1,y1,x2,y2,rgb,a){
   g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=4.2; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
   g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1.1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+}
+// The ovoid backdrop is purely a "here's where the graph lives" ground — dropped while the shop is open
+// so the graph can float visibly on top of the shop instead of hiding it behind a solid panel.
+function dagBackdrop(g,w,h){
+  const cx=w/2, cy=h/2, rx=Math.max(20,w/2-18), ry=Math.max(20,h/2-14);
+  g.save();
+  g.beginPath(); g.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+  const grad=g.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
+  grad.addColorStop(0,'rgba(10,14,26,.58)'); grad.addColorStop(0.75,'rgba(8,11,20,.38)'); grad.addColorStop(1,'rgba(6,8,16,.08)');
+  g.fillStyle=grad; g.fill();
+  g.strokeStyle='rgba(158,240,189,.20)'; g.lineWidth=1.4; g.stroke();
+  g.restore();
 }
 function drawDagSink(g,s,v){
   const frac=clamp(v.value/(v.max||1),0,1);
@@ -423,21 +465,27 @@ function drawDagOrg(g,o){
 function drawDagHud(){
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
   const g=dagCtx, w=innerWidth, h=dagHudH;
+  const shopOpen=ui.shopOverlay.style.display==='flex';
   const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
   const orgList=hud.organelles;
-  for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, DAG_VITAL_SINKS.includes(id)?19:13);
-  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?13:8.5);
+  const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
+  for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
+  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?26:17);
   // prune organelles no longer owned (sold/lost) — sinks are permanent fixtures, never pruned
   for(const [id,n] of dagNodes){ if(n.kind==='org' && !orgList.some(o=>o.id===id)) dagNodes.delete(id); }
   const activeIds=[...dagNodes.keys()];
-  const edges=K.ORGAN_GRAPH_EDGES.filter(([fromId])=>orgList.some(o=>o.id===fromId));
+  // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
+  // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
+  const edges=K.ORGAN_GRAPH_EDGES
+    .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
+    .map(([fromId,toId])=>[fromId,toId,dagEdgeActive(fromId,toId,lastCommand)]);
   dagStepPhysics(activeIds,edges,w,h);
   g.clearRect(0,0,w,h);
-  const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
-  for(const [fromId,toId] of edges){
+  if(!shopOpen) dagBackdrop(g,w,h);
+  for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
-    const o=orgList.find(x=>x.id===fromId);
-    dagEdge(g,a.x,a.y,b.x,b.y,vals[toId].color,o.graphRole==='modify'?0.5:0.22);
+    const a0=active?0.9:dagEdgeBaseAlpha(fromId,toId,orgList);
+    dagEdge(g,a.x,a.y,b.x,b.y,dagEdgeColor(fromId,toId,vals),a0);
   }
   for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
   for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o}); }

@@ -1746,6 +1746,16 @@ export const ORGAN_GRAPH_EDGES = [
   ['anaerobic_processor', 'gas'], ['clean_processor', 'gas'], ['virulent_processor', 'gas'],
   ['catalytic_processor', 'gas'], ['hydrogenosome', 'gas'],
   ['storage_vacuole', 'ballast'],
+  // Pipeline edges: not cap fan-in, but the literal flow a resource takes through the body — intake pore
+  // fills the storage tank, the tank's biomass is what the anaerobic processor actually burns. Endpoints
+  // here can be organelle ids OR resource/vital ids on either side; the DAG HUD resolves whichever kind
+  // each id turns out to be.
+  ['membrane_intake', 'storage_vacuole'],
+  ['biomass', 'anaerobic_processor'],
+  // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
+  // held), not passively like a processor — the DAG HUD contracts these springs live while active.
+  ['basal_motility', 'energy'],
+  ['rasping_lamella', 'energy'],
 ];
 
 function clampCargo(entity) {
