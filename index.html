@@ -277,6 +277,30 @@ function checkDeathEvent(){
 }
 
 let prevHp=null, hpFlash=0;
+// Damage attribution: the kernel's weapon_hit event ({attackerId,targetId,organelle,amount}, see hurt()
+// in graph_kernel.mjs) names the specific organelle that dealt a hit. dagWeaponPulse tracks a per-organelle
+// decaying 0..1 pulse (own weapon fired) and dagMembraneHitPulse tracks the same for damage TAKEN — both
+// read by dagEdgeActiveness so "damage dealt to others" and "damage taken" are felt as spring contraction,
+// not just a number ticking down. sqrt (not linear) so a sustained graze (~0.05-1 dmg/frame) still reads as
+// a visible pulse while a one-shot lump hit (discharge ~20, an engulf kill ~999) saturates at 1, not blows past it.
+const dagWeaponPulse=new Map();
+let dagMembraneHitPulse=0;
+function dagWeaponHitScale(amount){ return clamp(Math.sqrt(Math.max(0,amount))/4,0,1); }
+function dagUpdateWeaponPulses(){
+  for(const [id,v] of dagWeaponPulse){ const nv=v*0.85; if(nv<0.01) dagWeaponPulse.delete(id); else dagWeaponPulse.set(id,nv); }
+  dagMembraneHitPulse*=0.85; if(dagMembraneHitPulse<0.01) dagMembraneHitPulse=0;
+  const pid=world.playerId;
+  for(const ev of projection.events){
+    if(ev.type!=='weapon_hit') continue;
+    if(ev.attackerId===pid && ev.organelle){
+      const p=dagWeaponHitScale(ev.amount);
+      dagWeaponPulse.set(ev.organelle, Math.max(dagWeaponPulse.get(ev.organelle)||0, p));
+    }
+    if(ev.targetId===pid){
+      dagMembraneHitPulse=Math.max(dagMembraneHitPulse, dagWeaponHitScale(ev.amount));
+    }
+  }
+}
 let fillPrev={}, fillTimer={}, uiPhase=0;
 // A stat is "filling" when its value is climbing. A short decay keeps the glow steady between
 // per-frame gain ticks, so a steady feed reads as a steady glow rather than a stutter.
@@ -317,11 +341,14 @@ function updateUI(){
 // it actually settle (and re-settle live as organelles are gained) is the point — an emergent layout
 // instead of a hardcoded one, the same ethos the rest of the sim's ecology already follows.
 const DAG_VITAL_SINKS=['hp','energy','oxygen'];
-const DAG_MINOR_SINKS=['biomass','lipids','toxins','gas','ballast','spores','enzymes','crystals'];
-const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
+// MERGED: the old separate "gas" (ballast bladder) sink is gone — oxygen is the single internal-gas pool
+// now (respiration fuel, poison risk, AND lift all draw from it, see graph_kernel.mjs buoyancy()).
+const DAG_MINOR_SINKS=['biomass','lipids','toxins','ballast','spores','enzymes','crystals'];
+const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight',buoyancy:'buoyancy'};
 // UI-only edges: environmental readouts (ambient pressure, sunlight) aren't real player resources, so
 // they don't belong in the kernel's ORGAN_GRAPH_EDGES — they're purely "what this organ's dial reacts to."
-const DAG_EXTRA_EDGES=[['gas','pressure'],['photosystem','sunlight']];
+// buoyancy is the same: not a kernel resource, just a readout of a real kernel computation (see below).
+const DAG_EXTRA_EDGES=[['oxygen','pressure'],['photosystem','sunlight'],['oxygen','buoyancy'],['ballast','buoyancy']];
 const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
 // Resource nodes replace the removed bars, so they carry the same "filling" (green pulse, actively
 // gaining) read the old vitals/chips gave. O2's old standalone red-flash is gone — that harm now reads
@@ -330,7 +357,6 @@ const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
 function dagSinkValue(id){
   if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0||hud.hp.value<=hud.hp.max*0.25};
   if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false};
-  if(id==='gas'){ const b=hud.ballast||{}; return {value:b.gas||0, max:Math.max(0.05,b.gasCap||0), color:'134,210,255', duress:false, off:!b.hasOrgan}; }
   if(id==='ballast'){ const b=hud.bricks||{value:0}; return {value:b.value, max:1, color:hexRgb(K.COLORS.ballast), duress:false, noMax:true}; }
   const r=hud.resources.find(x=>x.id===id);
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
@@ -342,16 +368,35 @@ function dagSinkValue(id){
 // intensity readout, no numbers — the glow itself IS the reading; DNA hides until you own a rack (nothing
 // to show otherwise), then behaves like any other vital sink.
 function dagActiveSpecialIds(){
-  const ids=[];
-  if(hud.ballast&&hud.ballast.hasOrgan) ids.push('pressure');
+  // MERGED: pressure (Boyle's Law) now compresses the same pool every body's respiration draws from, not
+  // just bladder-owners' lift gas — always relevant, no longer gated on hasOrgan. buoyancy is the same:
+  // every body has weight and lift, so the tug-of-war readout is always on-screen, not conditional.
+  const ids=['pressure','buoyancy'];
   if(hud.depth&&hud.depth.photosynthetic) ids.push('sunlight');
   if(hud.organelles.some(o=>o.id==='dna_memory_vesicle')) ids.push('dna');
   return ids;
+}
+// Direct readout of the kernel's real buoyancy(e)-biomassWeight(e) tug — not a resource, so it has no
+// value/max fill like the others. dagBuoyT (0=lift-dominant/floating, 1=ballast-dominant/sinking) is the
+// single shared signal that both this node's color/duress AND its Y position (set in drawDagHud, bypassing
+// the spring layout entirely — see dagStepPhysics) AND the oxygen/ballast->buoyancy edge tautness all read
+// from, so "the graph strains toward whichever side is winning" and "the node itself sinks/floats" agree.
+let dagBuoyT=0.5;
+function dagLerpRgb(a,b,t){
+  const pa=a.split(',').map(Number), pb=b.split(',').map(Number);
+  return pa.map((v,i)=>Math.round(v+(pb[i]-v)*t)).join(',');
 }
 function dagSpecialValue(id){
   if(id==='pressure') return {value:clamp(hud.pressure?.value??0,0,1), max:1, color:'176,140,255', duress:false};
   if(id==='sunlight') return {value:clamp(hud.depth?.light??0,0,1), max:1, color:'245,212,122', duress:false, noNumber:true};
   if(id==='dna') return dagSinkValue('dna');
+  if(id==='buoyancy'){
+    const player=world.entities.find(e=>e.id===world.playerId);
+    const net=player?(K.__test.buoyancy(player)-K.__test.biomassWeight(player)):0;
+    dagBuoyT=clamp(0.5-0.5*Math.tanh(net/70),0,1);
+    const color=dagLerpRgb(hexRgb(K.COLORS.oxygen),hexRgb(K.COLORS.ballast),dagBuoyT);
+    return {value:net, max:1, color, duress:dagBuoyT>0.85, noMax:true, noNumber:true};
+  }
   return {value:0,max:1,color:'158,240,189',duress:false};
 }
 function dagEnsureNode(id,kind,w,h,r){
@@ -370,7 +415,10 @@ function dagEnsureNode(id,kind,w,h,r){
 // old pre-2x baseline size and swell dramatically past the flat 2x standard as they fill, so "how full am
 // I" is legible from across the room, not just from the fill-arc. Everything else gets a flat 2x bump.
 function dagSinkRadius(id,v){
-  if(id==='biomass'||id==='lipids'||id==='gas'){
+  // MERGED: oxygen joins the "literal tank" swell group now that it's both a respiration AND lift
+  // resource (previously it was a flat vital-tier size; the separate 'gas' sink that used to swell here
+  // is gone, folded into this one).
+  if(id==='biomass'||id==='lipids'||id==='oxygen'){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
     return 13+frac*(80-13); // literal tanks: empty = old baseline, full = well past the flat 2x standard
   }
@@ -389,6 +437,11 @@ function dagSinkRadius(id,v){
     // off, so it stays on-screen and readable no matter how long a body's been alive.
     const value=(v&&v.value)||0;
     return clamp(13+14*Math.log(1+value),13,95);
+  }
+  if(id==='buoyancy'){
+    // Neutral tug reads as a modest 22px node; the more lopsided the pull, the more visual weight it
+    // carries — a dead-even tug and a body being dragged straight down both look the part.
+    return 22+18*Math.abs(dagBuoyT-0.5)*2;
   }
   return DAG_VITAL_SINKS.includes(id)?38:26;
 }
@@ -427,6 +480,19 @@ function dagEdgeActiveness(fromId,toId,cmd,flowIntensity,outflowIntensity){
   if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
   if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
   if(fromId==='waste_compactor'||toId==='waste_compactor') return (cmd&&cmd.compact)?1:0;
+  // Damage attribution: a weapon organ's own edges contract in proportion to the damage IT just dealt
+  // (dagWeaponPulse, set from the kernel's weapon_hit event); membrane->hp contracts in proportion to
+  // damage the player just TOOK, not a fixed pulse — "cell membrane to HP should contract in proportion
+  // to damage taken from enemy attacks."
+  if(fromId==='membrane'&&toId==='hp') return dagMembraneHitPulse;
+  if(dagWeaponPulse.has(fromId)) return dagWeaponPulse.get(fromId);
+  // Buoyancy tug-of-war: whichever side is currently winning (dagBuoyT, computed once per frame in
+  // dagSpecialValue) has the taut edge — you SEE the ballast physically dragging the node down, or the
+  // gas bladder hauling it up, not just a static pair of lines.
+  if(toId==='buoyancy'){
+    if(fromId==='oxygen') return clamp((0.5-dagBuoyT)*2,0,1);
+    if(fromId==='ballast') return clamp((dagBuoyT-0.5)*2,0,1);
+  }
   // Generic fallback (not membrane_intake-specific): ANY edge ending at a resource that's currently
   // rising lights up — this is what makes storage_vacuole/biomass_vacuole/exotic_vacuole/etc actually
   // swell and accrue "grow-with-usage" heat while feeding, without needing a per-organelle special case.
@@ -495,14 +561,20 @@ function dagStepPhysics(ids,edges,w,h){
   }
   for(const id of ids){
     const n=dagNodes.get(id);
-    const homeY = n.kind==='sink' ? h*0.26 : h*0.66;
-    n.vy+=(homeY-n.y)*0.010;
+    // buoyancy's Y is set directly in drawDagHud from the real kernel computation, not spring-emergent —
+    // no home-Y pull and no vertical containment here, or they'd fight that override every frame.
+    if(id!=='buoyancy'){
+      const homeY = n.kind==='sink' ? h*0.26 : h*0.66;
+      n.vy+=(homeY-n.y)*0.010;
+    }
     n.vx+=(w*0.5-n.x)*0.0009;
     const pad=n.r+8;
     if(n.x<pad) n.vx+=(pad-n.x)*0.06;
     if(n.x>w-pad) n.vx-=(n.x-(w-pad))*0.06;
-    if(n.y<pad) n.vy+=(pad-n.y)*0.06;
-    if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
+    if(id!=='buoyancy'){
+      if(n.y<pad) n.vy+=(pad-n.y)*0.06;
+      if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
+    }
     n.vx*=DAG_DAMPING; n.vy*=DAG_DAMPING;
     const sp=Math.hypot(n.vx,n.vy), cap=13;
     if(sp>cap){ n.vx=n.vx/sp*cap; n.vy=n.vy/sp*cap; }
@@ -639,6 +711,7 @@ function drawDagOrg(g,o){
 }
 function drawDagHud(){
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
+  dagUpdateWeaponPulses();
   const g=dagCtx, w=innerWidth, h=dagHudH;
   const shopOpen=ui.shopOverlay.style.display==='flex';
   const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
@@ -658,7 +731,7 @@ function drawDagHud(){
     if((id==='pressure'||id==='sunlight'||id==='dna') && !specialIds.includes(id)) dagNodes.delete(id);
   }
   const activeIds=[...dagNodes.keys()];
-  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','gas']) if(vals[id]) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
+  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','oxygen']) if(vals[id]) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
   const outflowIntensity={}; for(const id of ['enzymes']) outflowIntensity[id]=dagOutflowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
@@ -678,6 +751,18 @@ function drawDagHud(){
     n.r=base*(1+(orgActivity[o.id]||0)*0.9);
   }
   dagStepPhysics(activeIds,edges,w,h);
+  // Buoyancy node: Y is placed directly from dagBuoyT (computed above in dagSpecialValue from the real
+  // buoyancy(e)-biomassWeight(e) kernel math), lerped for smoothness — "so we can feel the ballast effect"
+  // means seeing the node itself sink or float, not inferring it from a spring settling.
+  {
+    const bn=dagNodes.get('buoyancy');
+    if(bn){
+      const margin=Math.max(30,bn.r+10);
+      const targetY=margin+dagBuoyT*(h-margin*2);
+      bn.y+=(targetY-bn.y)*0.06;
+      bn.vy=0;
+    }
+  }
   g.clearRect(0,0,w,h);
   if(!shopOpen) dagBackdrop(g,w,h);
   for(const [fromId,toId,active] of edges){
