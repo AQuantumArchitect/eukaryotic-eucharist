@@ -362,6 +362,12 @@ const FIELD_TERMINAL_VY = 30;     // px/s cap on lipid/ATP/toxin drift, so patch
 // piles on the floor, so the pump is bounded but the deep stays fed.
 const BIOMASS_SINK_K = 0.085;     // biomass sink speed = K * biomass^1.1 — steeper than square-cube so small AND medium falls DRIFT while only a big whale-fall plummets
 const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
+// CLING-DRAG: a body feeding on a sinking biomass fall (F held) clings to it, and its own heft is ADDED
+// to the fall's mass in the sink-speed law — so a PACK piling onto one morsel makes it plummet, hauling
+// the whole cluster down out of the shallow light-line. A self-correcting physical answer to the top
+// line: the more foragers gather on the falling food, the faster the food (and they) leave the top.
+const CLING_MASS_FACTOR = 0.6;    // fraction of a clinging body's mass that counts toward the fall's sink law
+const CLING_GRAB = 3.2;           // how hard the fall's descent pulls a clinging body's vy toward its own
 const BIOMASS_SINK_DECAY = 0;     // NO decay — biomass never remineralizes; only eaten matter leaves the system (closed loop)
 const BIOMASS_FLOOR_DECAY = 0;    // NO decay on the floor either — it auto-combines into piles and waits to be grazed
 const BIOMASS_MAX_AGE = 1e9;      // biomass never ages out — it persists until eaten
@@ -1166,44 +1172,35 @@ function depthTempo(y) {
 function dist2Wrap(ax, ay, bx, by) { const s = widthScale((ay + by) * 0.5); const dx = dxWrap(ax, bx) * s; const dy = by - ay; return dx * dx + dy * dy; }
 function distWrap(ax, ay, bx, by) { return Math.sqrt(dist2Wrap(ax, ay, bx, by)); }
 
-// TURBULENCE — the one piece of physics a depth-only world is missing. Light, O2, tempo and width all
-// vary with depth ALONE, so every comfort gradient balances on a razor-thin horizontal contour and each
-// guild parks on its own line (the lines of predators, the lines of scavengers). Real water columns
-// don't stratify into lines because they are STIRRED. This is a divergence-free eddy field — a sum of
-// stream-function modes, so it advects bodies around in rolling gyres WITHOUT piling them into a new
-// convergence line — periodic in x so it crosses the wrap seam seamlessly, and drifting slowly in time
-// via world.t so the cells pulse and migrate. Intensity is high in the wind-mixed shallows and fades to
-// near-calm on the abyssal floor (the deep larder should stay put). Applied as passive advection (it
-// adds to POSITION and fights nothing), it smears the razor contours into broad, roiling scattering
-// layers — the connected froth. Not a game state, not a band: honest continuous physics.
-const EDDY_MODES = [
-  // nx = horizontal cells around the column; Ly = vertical wavelength (px); vPeak = vertical speed (px/s);
-  // wx, wy = slow time-drift rates (rad/s). Three overlapping scales give a non-repeating roil.
-  { nx: 2, Ly: 2000, vPeak: 14, wx: 0.061, wy: 0.043 },
-  { nx: 3, Ly: 1200, vPeak: 10, wx: -0.049, wy: 0.077 },
-  { nx: 5, Ly: 750, vPeak: 7, wx: 0.103, wy: -0.067 }
+// CIRCULAR CURRENTS — the water column swirls around the cone in horizontal BANDS (zonal jets, like a
+// gas giant's stripes): at each depth a current runs around the ring, and adjacent depths run at
+// different speeds and directions, reversing slowly in time (world.t). Purely horizontal (vy=0) — the
+// simple, cheap form of turbulence. It does no vertical mixing itself; instead the vertical SHEAR between
+// bands tosses ripening algae (and sinking debris) sideways as they bob up and down through the stack, so
+// the crop spreads around the cone and its wounded/falling matter scatters into more scavenger reach
+// rather than dropping in one column. Stronger in the wind-mixed shallows, calm on the abyssal floor.
+const EDDY_BANDS = [
+  // Ly = vertical wavelength of the band stack (px); vPeak = horizontal current speed (px/s);
+  // w = slow time-drift/reversal rate (rad/s); ph = phase offset. Overlapping scales => non-repeating shear.
+  { Ly: 1500, vPeak: 26, w: 0.055, ph: 0.0 },
+  { Ly: 850, vPeak: 18, w: -0.083, ph: 2.1 },
+  { Ly: 480, vPeak: 11, w: 0.121, ph: 4.3 }
 ];
-const EDDY_SURFACE = 1.0, EDDY_FLOOR = 0.35; // turbulence intensity, shallow -> deep
+const EDDY_SURFACE = 1.0, EDDY_FLOOR = 0.35; // current intensity, shallow -> deep
 function eddyIntensity(y) {
   const d = clamp((y - WORLD.canopy) / (WORLD.h - WORLD.canopy), 0, 1);
   return EDDY_FLOOR + (EDDY_SURFACE - EDDY_FLOOR) * (1 - d);
 }
-// The eddy current velocity (px/s) at a point and time. Divergence-free by construction (curl of a
-// stream function), so it stirs without creating sinks that would breed a fresh line.
+// The band current velocity (px/s) at a depth and time. Horizontal only; the same around the whole ring
+// at a given depth (a circular current), varying with depth and drifting in time.
 function eddyFlow(x, y, t) {
   const yy = y - WORLD.canopy;
-  let vx = 0, vy = 0;
-  for (const m of EDDY_MODES) {
-    const kx = (2 * Math.PI * m.nx) / WORLD.w;
-    const ky = (2 * Math.PI) / m.Ly;
-    const A = m.vPeak / kx;                 // scales the vertical (line-breaking) component to vPeak
-    const px = kx * x + m.wx * t;
-    const py = ky * yy + m.wy * t;
-    vx += -A * ky * Math.sin(px) * Math.sin(py);
-    vy += -A * kx * Math.cos(px) * Math.cos(py);
+  let vx = 0;
+  for (const b of EDDY_BANDS) {
+    const ky = (2 * Math.PI) / b.Ly;
+    vx += b.vPeak * Math.sin(ky * yy + b.ph + b.w * t);
   }
-  const env = eddyIntensity(y);
-  return { vx: vx * env, vy: vy * env };
+  return { vx: vx * eddyIntensity(y), vy: 0 };
 }
 function norm(dx, dy) { const d = Math.hypot(dx, dy) || 1; return { x: dx / d, y: dy / d, d }; }
 function emptyCargo(values = {}) { const c = {}; for (const r of RESOURCES) c[r] = values[r] || 0; return c; }
@@ -1558,8 +1555,11 @@ function seedMatureEcosystem(world) {
     const e = spawnScavenger(world, { abyssal: true, y: WORLD.h - 400, x: rand(world, 0, WORLD.w) });
     seedAt(e, 6686, 873, O2_ZONE_BOTTOM + 400, WORLD.h - 150);
   }
-  // Oxic forager cloud in the oxygenated upper column (settles ~33; the comfort field + food spread it).
-  for (let i = 0; i < 32; i++) spawnScavenger(world, {
+  // Oxic forager cloud in the oxygenated upper column. Seeded LEAN (near the demand-target floor) so the
+  // world starts close to carrying capacity and grows into its equilibrium, rather than seeding a big
+  // crowd that violently crashes as it sheds down to what the twilight can actually feed. Demand-driven
+  // immigration (scavengerTarget) tops it up from here as detritus accumulates.
+  for (let i = 0; i < 8; i++) spawnScavenger(world, {
     y: WORLD.nurseryTop + rand(world, 120, 1100),
     x: rand(world, 0, WORLD.w)
   });
@@ -1685,6 +1685,16 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
   // Graph-strict initialization: HP and capacities are derived from organelles.
   body.maxHp = caps(body).hp;
   body.hp = opts.hp == null ? body.maxHp : Math.min(opts.hp, body.maxHp);
+  // Randomized starting charge for every NPC at spawn / immigration / rescue-wall injection — bodies
+  // arrive at varied vigour (some flush, some near-dry and desperate to feed) instead of uniformly topped
+  // off. Range 0-100% for the abundant, food-driven castes (scavengers, algae). The fission HUNTER guild
+  // is floored at 35%: it immigrates only at a thin trickle and grows by ATP-fuelled binary fission, so a
+  // near-zero spawn starves before it can hunt or divide — literal 0% collapses the whole predator layer.
+  // The player is exempt entirely (early Yuki refills; a 0-ATP spawn would strand it dead in the water).
+  if (body.kind !== 'player') {
+    const floor = HUNTER_GUILD.has(body.controller) ? 0.35 : 0;
+    body.cargo.energy = caps(body).energy * (floor + (1 - floor) * world.rng());
+  }
   clampCargo(body);
   return body;
 }
@@ -1776,20 +1786,20 @@ function capsCompute(entity) {
 // unconnected, since their effect isn't "feeds a resource").
 export const ORGAN_GRAPH_EDGES = [
   ['membrane', 'hp'], ['membrane_hardening', 'hp'], ['multicell_chassis', 'hp'],
-  ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
+  ['storage_vacuole', 'energy'], ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
   ['anaerobic_processor', 'energy'], ['clean_processor', 'energy'], ['virulent_processor', 'energy'],
   ['catalytic_processor', 'energy'], ['hydrogenosome', 'energy'], ['oxidase_vesicle', 'energy'],
   ['chemosynthetic_vesicle', 'energy'],
   ['dna_memory_vesicle', 'dna'],
   ['membrane', 'oxygen'], ['oxygen_store', 'oxygen'], ['countercurrent_gill', 'oxygen'], ['photolytic_vacuole', 'oxygen'],
-  ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
+  ['storage_vacuole', 'biomass'], ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
   ['anabolic_vesicle', 'biomass'], ['lipolytic_vesicle', 'biomass'], ['photosystem', 'biomass'],
-  // Storage Vacuole reads as the lipid ("wealth") reserve on the graph — the Exotic Rack and DNA Rack
-  // connect INTO it (below) rather than it fanning out to every cap it mechanically touches, so the
-  // intake pore (which now carries biomass/lipids/toxins/ATP directly, see pipeline edges) stays the
-  // one legible "here's what feeding actually fills" picture instead of two overlapping fan-outs.
+  // The Exotic Rack and DNA Rack also connect INTO Storage Vacuole (below) even though Storage Vacuole
+  // itself fans out to every general cap it mechanically touches — the intake pore (which carries
+  // biomass/lipids/toxins/ATP directly, see pipeline edges) and Storage Vacuole's own fan-out are meant
+  // to read as two views of the same picture, not a contradiction.
   ['storage_vacuole', 'lipids'], ['lipid_vacuole', 'lipids'], ['mitochondrion', 'lipids'], ['lipogenic_processor', 'lipids'],
-  ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
+  ['storage_vacuole', 'toxins'], ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
   ['anaerobic_processor', 'toxins'], ['clean_processor', 'toxins'], ['virulent_processor', 'toxins'],
   ['catalytic_processor', 'toxins'], ['hydrogenosome', 'toxins'],
   ['exotic_vacuole', 'spores'],
@@ -1808,6 +1818,11 @@ export const ORGAN_GRAPH_EDGES = [
   ['membrane_intake', 'biomass'], ['membrane_intake', 'lipids'], ['membrane_intake', 'toxins'], ['membrane_intake', 'energy'],
   ['exotic_vacuole', 'storage_vacuole'], ['dna_memory_vesicle', 'storage_vacuole'],
   ['biomass', 'anaerobic_processor'],
+  // The two "maw" organs (phagocyte_maw fires free on overlap; phagosome is the manual, enzyme-costed
+  // engulf) both render whole overlapping bodies straight into biomass — same feeding apparatus as the
+  // intake pore, just a different mouth.
+  ['phagocyte_maw', 'membrane_intake'], ['phagocyte_maw', 'biomass'],
+  ['phagosome', 'membrane_intake'], ['phagosome', 'biomass'],
   // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
   ['basal_motility', 'energy'],
@@ -2137,14 +2152,10 @@ function finishWorldStep(world, player, dt) {
       e.alive = false;
       continue;
     }
-    // Turbulent advection: the eddy current carries every body (the single chokepoint every entity
-    // passes each step). Motile creatures and the player feel the full field — this is what breaks their
-    // comfort-contour lines into froth. Algae feel only the HORIZONTAL stir: their vertical placement is
-    // buoyancy-governed (the bob cycle + size-sorted settling), which resists the eddy anyway and is
-    // load-bearing structure we don't want smeared.
-    const flow = eddyFlow(e.x, e.y, world.t);
-    e.x += flow.vx * dt;
-    if (e.controller !== 'algae') e.y += flow.vy * dt;
+    // Band-current advection: the circular current carries every body sideways around the cone (the
+    // single chokepoint every entity passes each step). Horizontal only, so it needs no per-controller
+    // guard — algae included, tossed by the depth shear as they ripen and sink.
+    e.x += eddyFlow(e.x, e.y, world.t).vx * dt;
     e.x = wrapX(e.x); e.y = clamp(e.y, WORLD.canopy + 2, WORLD.h - 30);
     // Horizontal water drag is stronger on the starter player, preventing zero-upgrade lateral
     // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
@@ -3015,10 +3026,17 @@ function updateScavengerBrain(world, e, dt) {
     }
   }
 
+  // Self-mend: a wounded scavenger stitches its membrane from the fat it has grazed (lipid_repair_loom).
+  // Self-gates on wound + lipids + ATP, so it's free when whole or empty — the payoff for chasing lipids.
+  if (powered) repairFromLipids(world, e, dt);
+
   // Vertical steer = pull toward the forage/flee point PLUS the comfort gradient (comfortSteerY≈0
-  // across the caste's comfortable column, strong at its light/O2 edge). Fleeing/mobbing damp comfort
-  // so a scavenger can briefly bolt through its edge, but it always drifts back into comfortable water.
-  const comfortW = (mode === 'flee' || mode === 'mob') ? 0.35 : 1.0;
+  // across the caste's comfortable column, strong at its light/O2 edge). FOOD OVERRIDES COMFORT: a
+  // scavenger locked onto falling debris or a wounded bloom PUSHES UP through its light discomfort to
+  // snatch it, then rides the catch back down into the comfortable twilight (comfort returns to full when
+  // it's resting/roaming, so it settles in the middle). Fleeing/mobbing damp comfort hardest of all.
+  const comfortW = (mode === 'flee' || mode === 'mob') ? 0.35
+    : (mode === 'wounded_algae' || mode === 'field') ? 0.45 : 1.0;
   // Anti-line separation: scavengers converging on the same food concentration shove apart — biased
   // VERTICALLY — so they spread into a cloud around the patch instead of stacking into one flat line at
   // a single depth (the "line at the ridge"). Cheap distance-gated neighbour scan.
@@ -3775,8 +3793,11 @@ function updateFields(world, dt) {
       // the rare deep whale-fall "fat plume" geyser keeps its own fixed fast climb out of the abyss.
       const isLipidSlick = f.resType === 'lipids' && f.sourceKind !== 'abyssal_fat_plume';
       const upCap = f.sourceKind === 'abyssal_fat_plume' ? FAT_PLUME_RISE : FIELD_TERMINAL_VY; // buoyant fat climbs faster than ordinary drift
+      // Clinging bodies add their heft to the fall's effective mass, so a swarmed morsel sinks like a
+      // whale-fall (accumulated in feedFromFields this step; consumed and cleared just below).
+      const effBiomass = Math.max(0, (f.stock.biomass || 0) + (f._clingMass || 0) * CLING_MASS_FACTOR);
       const targetVy = isBiomass
-        ? clamp(BIOMASS_SINK_K * Math.pow(Math.max(0, f.stock.biomass || 0), 1.1), 0, WHALE_FALL_TERMINAL)
+        ? clamp(BIOMASS_SINK_K * Math.pow(effBiomass, 1.1), 0, WHALE_FALL_TERMINAL)
         : isLipidSlick
         ? -clamp(LIPID_RISE_K / Math.cbrt(Math.max(1, f.stock.lipids || 0)), LIPID_RISE_MIN, LIPID_RISE_MAX)
         : f.resType === 'ballast'
@@ -3792,6 +3813,7 @@ function updateFields(world, dt) {
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
     const maxAge = isBiomass ? Math.max(f.maxAge, BIOMASS_MAX_AGE) : f.resType === 'lipids' ? Math.max(f.maxAge, LIPID_MAX_AGE) : f.maxAge;
+    f._clingMass = 0; // consumed above; re-accumulated by feedFromFields next step
     if (total <= 0.35 || f.age > maxAge) world.fields.splice(i, 1);
   }
   mergeNearbyFields(world);
@@ -4960,7 +4982,10 @@ function populationTick(world, dt) {
       // drifting off the map carrying that biomass OUT of the column. This is the demand-driven matter
       // SINK for biomass surplus: they immigrate when the floor piles up, leave once full, and what they
       // carry is gone (no corpse). The relief valve that keeps the closed loop from silting up.
-      const gorged = e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > cap.biomass * 0.80;
+      // ANY scavenger with a super-full belly hauls its catch OUT of the column (a matter sink): the big
+      // abyssal bottom-feeder draining the floor pile, and now the oxic forager that gorged on a finished-
+      // off bloom and swims off to digest it elsewhere.
+      const gorged = (e.cargo.biomass || 0) > cap.biomass * (e.trophicRole === 'abyssal_scavenger' ? 0.80 : 0.86);
       const overPressure = Math.max(0, (scavN - scavTarget) / Math.max(1, scavTarget));
       if (starved || gorged) {
         e._emigrate += dt;
@@ -5060,7 +5085,7 @@ function spawnTick(world, dt) {
   const producerMass = algaeProducerMass(world);
   const algaeHazard = algaeBirthHazard(world, algaeN, producerMass);
   if (algaeN < ALGAE_EMERGENCY_CAP && world.rng() < 1 - Math.exp(-algaeHazard * dt)) {
-    { const born = spawnAlgae(world, { mature: false, y: WORLD.canopy + rand(world, 40, 170) }); born.hp = caps(born).hp * rand(world, 0.25, 1.0); }  // random HP: minted algae feed the nursery at varied vigour
+    { const at = yukiTendrilSpawn(world); const born = spawnAlgae(world, { mature: false, x: at.x, y: at.y }); born.hp = caps(born).hp * rand(world, 0.40, 1.0); }  // bud off Yuki's tendrils at varied vigour (40-100% HP)
     world.stats.algaeBirths += 1;
     world.events.push({ type: 'algae_birth', controller: 'algae' });
   }
@@ -5092,39 +5117,41 @@ function spawnTick(world, dt) {
     let deepMatter = 0;
     for (const f of world.fields) if (f.y > WORLD.deepTop + 1500) deepMatter += (f._matter || 0);
     const abyssalTarget = clamp(Math.round(deepMatter / 1400), 0, 14);
+    // The deep floor GROWS with escalation, and its mix tilts toward the monstrous castes: at low esc
+    // it's mostly lone predators/protozoans; as it climbs, metazoan colonies and swarm-directors become a
+    // standing presence. Newly spawned deep bodies also come in stronger (opts.escalation).
+    const esc = escalationLevel(world);
+    const dynFloor = {
+      predator: POP_FLOOR.predator,   // dormant rescue only — standing predators come from fission
+      protozoan: POP_FLOOR.protozoan + Math.round(esc * 0.7),
+      metazoan: POP_FLOOR.metazoan + Math.round(Math.max(0, esc - 2) * 0.5),
+      brood: POP_FLOOR.brood + Math.round(Math.max(0, esc - 3) * 0.4),
+    };
+    const counts = {};
+    for (const e of world.entities) if (e.alive) counts[e.controller] = (counts[e.controller] || 0) + 1;
+    let want = null, worst = 0;
+    for (const ctrl in dynFloor) { const d = dynFloor[ctrl] - (counts[ctrl] || 0); if (d > worst) { worst = d; want = ctrl; } }
+    // Priority order: (1) abyssal scavengers track the deep larder; (2) the fission hunter guild's
+    // near-extinction FLOOR — a small, critical rescue that MUST outrank bulk scavenger demand, or a
+    // hungry scavenger target hogs every immigration slot and the deep hunters (proto/meta, thin fission
+    // base) go extinct before the floor ever fires; (3) oxic scavengers top off toward their soft target.
     if (abyssalScavN < abyssalTarget) {
       { const s = spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true }); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
-    else if (scavN < scavengerTarget(world)) {
-      { const s = spawnScavenger(world, entrySpawn(world, 'scavenger')); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
-      world.stats.immigrations += 1;
-      world.events.push({ type: 'immigrate', controller: 'scavenger' });
-    }
-    else {
-      const esc = escalationLevel(world);
-      // The deep floor GROWS with escalation, and its mix tilts toward the monstrous castes: at low
-      // esc it's mostly lone predators/protozoans; as it climbs, metazoan colonies and swarm-directors
-      // become a standing presence. Newly spawned deep bodies also come in stronger (opts.escalation).
-      const dynFloor = {
-        predator: POP_FLOOR.predator,   // dormant rescue only — standing predators come from fission
-        protozoan: POP_FLOOR.protozoan + Math.round(esc * 0.7),
-        metazoan: POP_FLOOR.metazoan + Math.round(Math.max(0, esc - 2) * 0.5),
-        brood: POP_FLOOR.brood + Math.round(Math.max(0, esc - 3) * 0.4),
-      };
-      const counts = {};
-      for (const e of world.entities) if (e.alive) counts[e.controller] = (counts[e.controller] || 0) + 1;
-      let want = null, worst = 0;
-      for (const ctrl in dynFloor) { const d = dynFloor[ctrl] - (counts[ctrl] || 0); if (d > worst) { worst = d; want = ctrl; } }
+    else if (want) {   // hunter-guild near-extinction rescue OUTRANKS scavenger top-off
       if (want === 'predator') spawnPredator(world, { ...entrySpawn(world, 'predator'), escalation: esc });
       else if (want === 'protozoan') spawnProtozoan(world, { ...entrySpawn(world, 'protozoan'), escalation: esc });
       else if (want === 'metazoan') spawnMetazoan(world, { ...entrySpawn(world, 'metazoan'), escalation: esc });
       else if (want === 'brood') spawnBrood(world, { ...entrySpawn(world, 'brood'), escalation: esc });
-      if (want) {
-        world.stats.immigrations += 1;
-        world.events.push({ type: 'immigrate', controller: want });
-      }
+      world.stats.immigrations += 1;
+      world.events.push({ type: 'immigrate', controller: want });
+    }
+    else if (scavN < scavengerTarget(world)) {
+      { const s = spawnScavenger(world, entrySpawn(world, 'scavenger')); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
+      world.stats.immigrations += 1;
+      world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
   }
   if (world.spawn.exotic <= 0) {
@@ -5186,6 +5213,16 @@ function applyStrain(world, e) {
   clampCargo(e);
 }
 
+// A birth site hanging off one of Yuki's tendrils: pick a strand, a depth somewhere along its length,
+// and the swaying x of that strand at that depth. Young blooms therefore bud ALONG the tendril curtain
+// (spread down its length) instead of all at the canopy lip — seeding the nursery across a depth range.
+function yukiTendrilSpawn(world) {
+  const i = Math.floor(world.rng() * YUKI_TEND.count);
+  const len = yukiTendrilLen(world, i);
+  const y = WORLD.canopy + rand(world, 20, Math.max(60, len));
+  return { x: yukiStrandX(world, i, y), y };
+}
+
 function spawnAlgae(world, opts = {}) {
   const mature = !!opts.mature;
   const regime = world.ecologyRegime || DEFAULT_ALGAE_REGIME;
@@ -5242,7 +5279,9 @@ function spawnScavenger(world, opts = {}) {
   // "ancient" — a double-sized clone with its oxygen_tolerance stripped, so the same niche rule confines
   // it to the anaerobic deep where it eats the sinking whale-fall.
   const abyssal = !!opts.abyssal;
-  const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 };
+  // lipid_repair_loom on EVERY scavenger (both castes) gives the fat they nibble a purpose: they stitch
+  // their own wounds with it (repairFromLipids in the brain), so grazed lipids become durability.
+  const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, lipid_repair_loom: 1 };
   if (!abyssal) organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   // The abyssal caste is a BIG bottom-feeder: a wide mouth and a huge belly to swallow the whale-fall
   // pile and haul it OUT of the column. It immigrates when the floor biomass piles up (deepMatter, see
@@ -5253,6 +5292,17 @@ function spawnScavenger(world, opts = {}) {
     trophicRole: abyssal ? 'abyssal_scavenger' : 'anaerobic_scavenger', depthHome: y,
     organelles, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
+  // MILD light-sensitivity for the oxic caste: photophobic with a HIGH light tolerance, so only the
+  // bright top of the column (above the light sigmoid's knee) hurts. That keeps them out of the shallow
+  // line and settles their comfort minimum in the twilight MIDDLE — from where they push up to catch
+  // falling debris early or wait for it to sink to them. Continuous per-body variance (no wall); the
+  // abyssal caste stays light-indifferent (it's dark down there — O2 confines it instead).
+  if (!abyssal) {
+    e.photophobic = true;
+    // High tolerance = only the BRIGHT shelf (top ~z1000) stings; comfort settles just under it, in the
+    // wounded-algae fall stream. Per-body variance spreads that home into a BAND, not one razor line.
+    e.lightTolerance = clamp(gaussian(world.rng, 0.82, 0.09), 0.62, 0.96);
+  }
   if (!opts.noStrain) { applyStrain(world, e); assignBody(e); }
   e.brainState = 'forage';
   world.entities.push(e); return e;
@@ -5424,7 +5474,7 @@ function bestFieldFor(entity, world) {
     const toxinPenalty = (f.stock.toxins || 0) * (hasOrg(entity, 'toxin_launcher') ? 0.01 : 0.09);
     // FAT is the mid predators' day-to-day food: a rising fat plume is calorie-dense and strongly
     // preferred by the hunter guild (which grazes it for upkeep between kills). Others value it mildly.
-    const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : 0.018);
+    const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : entity.controller === 'scavenger' ? 0.045 : 0.018); // scavengers prize rising fat — grazed on the ascent, spent on repair
     const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus;
     if (score > bestScore) { best = f; bestScore = score; }
   }
@@ -5584,6 +5634,13 @@ function feedFromFields(world, entity, dt) {
       const flow = Math.min(stock, wantRoom, rate * overlapFraction * f.density * (affinity[r] || 1) * dt);
       if (flow > 0) { f.stock[r] -= flow; entity.cargo[r] += flow; totalFlow += flow; }
     }
+    // CLING-DRAG: gripping a sinking biomass fall adds this body's heft to the fall's mass (updateFields
+    // reads _clingMass into the sink-speed law → a pack plummets it) and the fall's descent tugs the body
+    // down with it. So foragers that swarm falling food get hauled down out of the shallow light-line.
+    if (f.resType === 'biomass' && (f.stock.biomass || 0) > 0.5) {
+      f._clingMass = (f._clingMass || 0) + (entity.biomassMass || 0) + (entity.cargo.biomass || 0);
+      if ((f.vy || 0) > 0) entity.vy += ((f.vy || 0) - (entity.vy || 0)) * CLING_GRAB * dt;
+    }
   }
   if (totalFlow > 0) entity.hunger = Math.max(0, entity.hunger - totalFlow * 0.014);
   return totalFlow;
@@ -5675,7 +5732,7 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       maxRadius: Math.min(opts.maxRadius || 180, tp.maxRadius),
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
-      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0
     };
     world.fields.push(f);
     if (!ret) ret = f;
