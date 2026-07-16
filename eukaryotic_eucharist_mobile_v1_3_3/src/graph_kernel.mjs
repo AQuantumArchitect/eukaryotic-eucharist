@@ -438,6 +438,16 @@ const FIELD_TYPE = Object.freeze({
   toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
+// FAT BAND: once a lipid slick reaches the canopy ceiling (see updateFields' `atSurface`), it stops
+// growing an isotropic radius and instead grows f.halfWidth — a real LATERAL-only footprint, not the
+// purely cosmetic oval the renderer used to fake. Two banded patches merge the instant their edges touch
+// (mergeNearbyFields), and once a band's halfWidth nears the cap, further growth saturates toward zero —
+// new lipid matter still raises stock.lipids (thickness/light-blocking, see computeFatShade), it just
+// stops widening the band. "start exactly like it is, then it'll only diffuse laterally... eventually, if
+// it meets itself, it should form a band and then the fat should just stack into that band."
+const FAT_BAND_MAX_HALF_WIDTH = 700; // px — roughly a full screen width at rest before lateral growth saturates
+const FAT_BAND_LATERAL_K = 55;       // lateral halfWidth growth rate multiplier once banded (vs the old isotropic spreadRate)
+const FAT_BAND_THICKNESS = 46;       // px — the band's fixed vertical extent for overlap/collision purposes once banded
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
 // exponentially expensive, so a many-layered tank is a serious investment.
 const MEMBRANE_COST_RATIO = (1 + Math.sqrt(5)) / 2; // golden ratio φ ≈ 1.618 per added layer
@@ -4011,13 +4021,27 @@ function updateFields(world, dt) {
         : clamp(f.vyTarget || 0, -upCap, FIELD_TERMINAL_VY);
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
-      f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
+      // FAT BAND: once a rising lipid slick actually rests at the canopy ceiling, it stops growing an
+      // isotropic radius and instead grows f.halfWidth — real lateral-only reach (see FAT_BAND_MAX_HALF_WIDTH
+      // above). Everything else (and lipids still mid-rise) keeps the normal isotropic spread.
+      const nowBanded = isLipidSlick && f.y <= WORLD.canopy + 2;
+      if (nowBanded) {
+        const room = clamp(1 - (f.halfWidth || 0) / FAT_BAND_MAX_HALF_WIDTH, 0, 1);
+        f.halfWidth = (f.halfWidth || 0) + (f.spreadRate || 0) * FAT_BAND_LATERAL_K * room * dt;
+        f.banded = true;
+      } else {
+        f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
+        f.banded = false; f.halfWidth = 0;
+      }
     }
     // Footprint = the mass CORE (sqrt of the amount left in f.stock — shrinks straight from the core as
     // feeders eat it, no floor propping it up) PLUS a per-type diffusion spread layered on top (biomass
-    // slow, toxins moderate, ATP fast, lipids into ovals — see FIELD_TYPE spread). No max cap: a field is
-    // free to diffuse as wide as its age and mass carry it.
-    f.radius = Math.max(6, Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0) + (f.spread || 0));
+    // slow, toxins moderate, ATP fast — see FIELD_TYPE spread). A banded lipid field's footprint instead
+    // comes from its lateral halfWidth (Part A) — "the fat should just stack into that band" once matter
+    // keeps arriving past the width cap. No max cap on the non-banded case: a field is free to diffuse as
+    // wide as its age and mass carry it.
+    const coreRadius = Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0);
+    f.radius = f.banded ? Math.max(6, coreRadius, f.halfWidth) : Math.max(6, coreRadius + (f.spread || 0));
     // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
@@ -6123,10 +6147,21 @@ function feedFromFields(world, entity, dt) {
   }
   let totalFlow = 0;
   for (const f of world.fields) {
-    const d = distWrap(entity.x, entity.y, f.x, f.y);
-    const overlap = radius + f.radius - d;
+    // A BANDED lipid field is a real lateral slab, not a circle — check dx against its wide halfWidth
+    // and dy against a fixed thin band thickness separately, instead of one Euclidean distance. Anything
+    // else (including a lipid field still mid-rise) keeps the plain circular overlap test.
+    let overlap, overlapFraction;
+    if (f.resType === 'lipids' && f.banded) {
+      const dx = Math.abs(dxWrap(entity.x, f.x)), dy = Math.abs(entity.y - f.y);
+      const ox = radius + (f.halfWidth || 0) - dx, oy = radius + FAT_BAND_THICKNESS - dy;
+      overlap = Math.min(ox, oy);
+      overlapFraction = overlap > 0 ? clamp(Math.min(ox / Math.min(radius, f.halfWidth || 1), oy / Math.min(radius, FAT_BAND_THICKNESS)), 0, 1.25) : 0;
+    } else {
+      const d = distWrap(entity.x, entity.y, f.x, f.y);
+      overlap = radius + f.radius - d;
+      overlapFraction = overlap > 0 ? clamp(overlap / Math.min(radius, f.radius), 0, 1.25) : 0;
+    }
     if (overlap <= 0) continue;
-    const overlapFraction = clamp(overlap / Math.min(radius, f.radius), 0, 1.25);
     for (const r of MATTER_RESOURCES) {
       if (r === 'ballast') continue; // processed waste, not food — a dropped brick sinks and despawns, nothing grazes it
       const stock = f.stock[r] || 0; if (stock <= 0) continue;
@@ -6246,7 +6281,8 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       oval: tp.oval || 1,                 // horizontal stretch for the rendered footprint (lipids diffuse into ovals)
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
-      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0,
+      banded: false, halfWidth: 0 // fat-band state (Part A) — a lipid field flips banded once it rests at the canopy
     };
     world.fields.push(f);
     if (!ret) ret = f;
@@ -6273,9 +6309,13 @@ function mergeNearbyFields(world) {
       const d = distWrap(a.x, a.y, b.x, b.y);
       // Biomass AUTO-COMBINES aggressively (it holds together and, with no decay, must pool into a few
       // big piles instead of hundreds of persistent flecks) — merge distance scales with the piles' own
-      // radii. Other resources keep the tight window.
+      // radii. Two BANDED lipid patches merge the instant their lateral edges touch — "if it meets itself
+      // it should form a band" (see FAT_BAND_MAX_HALF_WIDTH). Other resources keep the tight window.
+      const bothBanded = a.resType === 'lipids' && a.banded && b.banded;
       const mergeDist = a.resType === 'biomass'
         ? Math.max(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.9)
+        : bothBanded
+        ? Math.max(FIELD_MERGE_WINDOW, ((a.halfWidth || 0) + (b.halfWidth || 0)) * 0.98)
         : Math.min(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.35);
       if (d > mergeDist) continue;
       const ta = totalMatter(a.stock), tb = totalMatter(b.stock), total = Math.max(1, ta + tb);
@@ -6285,6 +6325,7 @@ function mergeNearbyFields(world) {
       a.age = Math.min(a.age, b.age);
       a.maxAge = Math.max(a.maxAge, b.maxAge);
       a.maxRadius = Math.max(a.maxRadius, b.maxRadius);
+      if (bothBanded) a.halfWidth = Math.min(FAT_BAND_MAX_HALF_WIDTH * 1.5, (a.halfWidth || 0) + (b.halfWidth || 0));
       b._merged = true;
       world.stats.fieldsMerged += 1;
       merged = true;
@@ -6805,7 +6846,7 @@ function objectiveText(world, e) {
 
 export function getRenderProjection(world) {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, sheltered: !!e.sheltered, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, cellCount: e.cellCount || 0, marchDir: e._marchDir || 0, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, sheltered: !!e.sheltered, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;
