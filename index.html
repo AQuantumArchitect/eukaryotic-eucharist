@@ -394,17 +394,35 @@ function dagFlowIntensity(id,value){
   dagFlowPrev.set(id,value);
   return clamp(Math.max(0,value-prev)/0.35,0,1);
 }
-// Edge "activeness" is continuous 0..1, not boolean — 0 = fully relaxed (DAG_EDGE_LEN/DAG_SPRING_K), 1 =
-// fully contracted (DAG_ACTIVE_LEN/DAG_ACTIVE_K). Motor/rasp are hard on/off (they fire or they don't);
-// the intake pore's flow into biomass/lipids/toxins/ATP is graduated by actual per-frame flow rate; the
+// Outflow is the mirror of dagFlowIntensity — a resource DROPPING fast, for edges representing a discrete
+// spend (e.g. an engulf that actually landed and paid its enzyme) rather than a held action. Reusing the
+// same per-frame-delta trick avoids needing to know internal kernel cooldown state client-side.
+const dagOutflowPrev=new Map();
+function dagOutflowIntensity(id,value){
+  const prev=dagOutflowPrev.has(id)?dagOutflowPrev.get(id):value;
+  dagOutflowPrev.set(id,value);
+  return clamp(Math.max(0,prev-value)/0.35,0,1);
+}
+// Edge "activeness" is continuous 0..1, not boolean — 0 = fully relaxed, 1 = fully contracted (see
+// DAG_EDGE_TUNING below for the actual per-edge target/strength). Motor uses the kernel's own
+// player.motorRamp (0..1, ramps over MOTOR_RAMP_TIME — graph_kernel.mjs) instead of a boolean "is a key
+// held" check, so a brief tap barely nudges the spring instead of snapping it fully taut. Dash genuinely
+// re-fires (and re-pays) every single held frame in the kernel (no cooldown there), so it stays a boolean
+// hold-check; engulf DOES have a real cooldown, so its edge instead watches enzymes actually draining.
+// The intake pore's flow into biomass/lipids/toxins/ATP is graduated by actual per-frame flow rate; the
 // HP<->O2 and HP<->toxins "harm" edges are on/off matching the kernel's own tick-damage condition exactly
 // (see updateEnvironmentAndMetabolism), replacing what used to be a standalone red flash on those nodes.
-function dagEdgeActiveness(fromId,toId,cmd,flowIntensity){
-  if(fromId==='basal_motility'&&toId==='energy') return (cmd&&(Math.abs(cmd.moveX)>0.05||Math.abs(cmd.moveY)>0.05))?1:0;
+function dagEdgeActiveness(fromId,toId,cmd,flowIntensity,outflowIntensity){
+  if(fromId==='basal_motility'&&toId==='energy') return hud.motorRamp??0;
   if(fromId==='rasping_lamella'&&toId==='energy') return (cmd&&cmd.rasp)?1:0;
+  if(fromId==='energy'&&toId==='dash_vacuole') return (cmd&&cmd.dash)?1:0;
+  if(fromId==='enzymes'&&toId==='phagosome') return outflowIntensity.enzymes??0;
   if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
   if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
-  if(fromId==='membrane_intake'&&flowIntensity[toId]!=null) return flowIntensity[toId];
+  // Generic fallback (not membrane_intake-specific): ANY edge ending at a resource that's currently
+  // rising lights up — this is what makes storage_vacuole/biomass_vacuole/exotic_vacuole/etc actually
+  // swell and accrue "grow-with-usage" heat while feeding, without needing a per-organelle special case.
+  if(flowIntensity[toId]!=null) return flowIntensity[toId];
   return 0;
 }
 function dagEdgeColor(fromId,toId,vals){
@@ -417,6 +435,28 @@ function dagEdgeBaseAlpha(fromId,toId,orgList){
   return ((fo&&fo.graphRole==='modify')||(to&&to.graphRole==='modify'))?0.45:0.20;
 }
 const DAG_REPEL_K=22000, DAG_SPRING_K=0.018, DAG_EDGE_LEN=150, DAG_ACTIVE_LEN=34, DAG_ACTIVE_K=0.09, DAG_DAMPING=0.86;
+// Per-edge overrides — a t1 body's single starter motor shouldn't visually max out the same spring a
+// late-game combat combo does. ATP-draw edges are softened (longer resting target, weaker pull); harm
+// edges (HP<->O2/toxins) and genuine lump-cost yanks (dash, engulf) stay dramatic.
+const DAG_EDGE_TUNING={
+  'basal_motility>energy': {len:80, k:0.030},
+  'rasping_lamella>energy': {len:40, k:0.06},
+  'energy>dash_vacuole': {len:26, k:0.13},
+  'enzymes>phagosome': {len:30, k:0.12},
+  'oxygen>hp': {len:34, k:0.11},
+  'toxins>hp': {len:34, k:0.11},
+};
+function dagEdgeTuning(fromId,toId){
+  return DAG_EDGE_TUNING[fromId+'>'+toId] || {len:DAG_ACTIVE_LEN, k:DAG_ACTIVE_K};
+}
+// Line thickness: a per-toId baseline (ATP reads as a thicker, sturdier line that a small tug doesn't
+// visibly stress) plus a boost from how hard the edge is currently flowing — "arrows get fatter when
+// they're flowing more things."
+const DAG_EDGE_BASE_WIDTH={energy:2.1};
+function dagEdgeWidth(fromId,toId,active){
+  const base=DAG_EDGE_BASE_WIDTH[toId]||DAG_EDGE_BASE_WIDTH[fromId]||1.1;
+  return base*(1+active*1.6);
+}
 function dagStepPhysics(ids,edges,w,h){
   for(let i=0;i<ids.length;i++){
     const a=dagNodes.get(ids[i]);
@@ -434,7 +474,8 @@ function dagStepPhysics(ids,edges,w,h){
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId);
     if(!a||!b) continue;
-    const target=DAG_EDGE_LEN-active*(DAG_EDGE_LEN-DAG_ACTIVE_LEN), k=DAG_SPRING_K+active*(DAG_ACTIVE_K-DAG_SPRING_K);
+    const tune=dagEdgeTuning(fromId,toId);
+    const target=DAG_EDGE_LEN-active*(DAG_EDGE_LEN-tune.len), k=DAG_SPRING_K+active*(tune.k-DAG_SPRING_K);
     const dx=b.x-a.x, dy=b.y-a.y, d=Math.max(1,Math.hypot(dx,dy));
     const f=(d-target)*k;
     const ux=dx/d, uy=dy/d;
@@ -456,14 +497,15 @@ function dagStepPhysics(ids,edges,w,h){
     n.x+=n.vx; n.y+=n.vy;
   }
 }
-function dagEdge(g,x1,y1,x2,y2,r2,rgb,a){
-  g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=4.2; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
-  g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1.1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+function dagEdge(g,x1,y1,x2,y2,r2,rgb,a,width){
+  const w0=width||1.1;
+  g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=w0*3.8; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=w0; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
   // Arrowhead at the destination end shows flow direction — push (organelle -> resource it produces) or
   // pull (resource -> organelle consuming it) both read the same way: the arrow points where the matter goes.
   const ang=Math.atan2(y2-y1,x2-x1);
   const tipx=x2-Math.cos(ang)*(r2+3), tipy=y2-Math.sin(ang)*(r2+3);
-  const back=9;
+  const back=8+w0*1.2;
   const bx=tipx-Math.cos(ang)*back, by=tipy-Math.sin(ang)*back;
   const lx=bx+Math.cos(ang+Math.PI/2)*back*0.42, ly=by+Math.sin(ang+Math.PI/2)*back*0.42;
   const rx=bx+Math.cos(ang-Math.PI/2)*back*0.42, ry=by+Math.sin(ang-Math.PI/2)*back*0.42;
@@ -503,19 +545,82 @@ function drawDagSink(g,s,v){
     g.fillText(off?'—':fmt(v.value), s.x, s.y+4);
   }
 }
+// Thematic per-organelle effects — small and explicitly extensible: adding a 4th/5th/Nth effect later is
+// a one-line lookup entry plus a matching branch below, not a restructure. MVP covers the three named
+// examples; everything else just gets the plain circle.
+const DAG_ORGAN_FX={
+  basal_motility:'wriggle', flagella:'wriggle',
+  anaerobic_processor:'bubble', clean_processor:'bubble', virulent_processor:'bubble',
+  catalytic_processor:'bubble', hydrogenosome:'bubble',
+  storage_vacuole:'grow', biomass_vacuole:'grow', lipid_vacuole:'grow', toxin_vacuole:'grow',
+  atp_reservoir:'grow', exotic_vacuole:'grow', dna_memory_vesicle:'grow',
+};
+// "grow-with-usage" is a slow-decaying heat, distinct from the instant per-frame activity swell — it
+// persists for a few seconds after use, reading as "this tank has been getting exercised" rather than
+// just "flowing right now."
+const dagUsageHeat=new Map();
+function dagUsageHeatFor(id,active){
+  const prev=dagUsageHeat.get(id)||0;
+  const next=clamp(prev+(active>0.1?0.03:-0.006),0,1);
+  dagUsageHeat.set(id,next);
+  return next;
+}
+function dagIdHash(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))>>>0; return h; }
 function drawDagOrg(g,o){
   const rgb = o.tier==='gate' ? '245,212,122' : '158,240,189';
   const modify = o.graphRole==='modify';
+  const activity = o.activity||0;
+  const fx = DAG_ORGAN_FX[o.id];
+  const heat = fx==='grow' ? dagUsageHeatFor(o.id,activity) : 0;
+  // The intake pore opens up into a literal donut while actively feeding — a mouth pulling matter in,
+  // not just another dot getting brighter.
+  const feeding = o.id==='membrane_intake' && !!(lastCommand&&lastCommand.feed);
+  const r = (feeding ? o.r*1.6 : o.r) * (fx==='grow' ? (1+heat*0.6) : 1);
   const a = modify?0.85:0.42;
-  const bk=g.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r*2.0);
+  const bk=g.createRadialGradient(o.x,o.y,0,o.x,o.y,r*2.0);
   bk.addColorStop(0,`rgba(${rgb},${(a*0.4).toFixed(2)})`); bk.addColorStop(1,`rgba(${rgb},0)`);
-  g.fillStyle=bk; g.beginPath(); g.arc(o.x,o.y,o.r*2.0,0,Math.PI*2); g.fill();
-  g.fillStyle=`rgba(${rgb},${(a*0.30).toFixed(2)})`; g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.fill();
+  g.fillStyle=bk; g.beginPath(); g.arc(o.x,o.y,r*2.0,0,Math.PI*2); g.fill();
+  if(feeding){
+    g.beginPath();
+    g.arc(o.x,o.y,r,0,Math.PI*2);
+    g.arc(o.x,o.y,r*0.42,0,Math.PI*2,true);
+    g.fillStyle=`rgba(${rgb},${(a*0.55).toFixed(2)})`;
+    g.fill('evenodd');
+    g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=1.2;
+    g.beginPath(); g.arc(o.x,o.y,r*0.42,0,Math.PI*2); g.stroke();
+  } else {
+    g.fillStyle=`rgba(${rgb},${(a*0.30).toFixed(2)})`; g.beginPath(); g.arc(o.x,o.y,r,0,Math.PI*2); g.fill();
+  }
   g.setLineDash(modify?[]:[3,3]);
   g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=modify?1.8:1.2;
-  g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.stroke();
+  if(fx==='wriggle'&&activity>0.02){
+    // Perturbed outline instead of a perfect circle — amplitude tracks how hard it's actually working.
+    const wobble=r*0.22*activity, segs=14;
+    g.beginPath();
+    for(let i=0;i<=segs;i++){
+      const ang=(i/segs)*Math.PI*2;
+      const rr=r+Math.sin(ang*3+uiPhase*0.5)*wobble;
+      const px=o.x+Math.cos(ang)*rr, py=o.y+Math.sin(ang)*rr;
+      if(i===0) g.moveTo(px,py); else g.lineTo(px,py);
+    }
+    g.closePath(); g.stroke();
+  } else {
+    g.beginPath(); g.arc(o.x,o.y,r,0,Math.PI*2); g.stroke();
+  }
   g.setLineDash([]);
-  if(modify){ g.fillStyle='rgba(255,255,255,.8)'; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center'; g.fillText(o.name, o.x, o.y+o.r+12); }
+  if(fx==='bubble'&&activity>0.05){
+    const seed=dagIdHash(o.id);
+    for(let i=0;i<3;i++){
+      const phase=(uiPhase*1.6+seed*0.13+i*13)%26;
+      const bx=o.x+Math.sin(seed*0.7+i*2.1)*r*0.4;
+      const by=o.y+r*0.6-phase*1.4;
+      const ba=clamp((1-phase/26)*activity,0,1);
+      if(ba<=0.02) continue;
+      g.fillStyle=`rgba(${rgb},${(ba*0.7).toFixed(2)})`;
+      g.beginPath(); g.arc(bx,by,1.6+phase*0.03,0,Math.PI*2); g.fill();
+    }
+  }
+  if(modify){ g.fillStyle='rgba(255,255,255,.8)'; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center'; g.fillText(o.name, o.x, o.y+r+12); }
   if(o.count>1){ g.fillStyle='rgba(255,255,255,.92)'; g.font='800 9px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+3); }
 }
 function drawDagHud(){
@@ -529,7 +634,9 @@ function drawDagHud(){
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
   for(const id of specialIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
-  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?26:17);
+  // Base size is small/subtle by default (back down from an earlier 2x pass) — activity below is what
+  // makes an organelle actually read as "doing something," not a permanently-bloated resting size.
+  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?13:8.5);
   // prune organelles no longer owned (sold/lost) and specials whose gating organ/rack is gone — the fixed
   // resource sinks are permanent fixtures and are never pruned.
   for(const [id,n] of dagNodes){
@@ -537,12 +644,25 @@ function drawDagHud(){
     if((id==='pressure'||id==='sunlight'||id==='dna') && !specialIds.includes(id)) dagNodes.delete(id);
   }
   const activeIds=[...dagNodes.keys()];
-  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy']) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
+  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','gas']) if(vals[id]) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
+  const outflowIntensity={}; for(const id of ['enzymes']) outflowIntensity[id]=dagOutflowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
   const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES)
     .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
-    .map(([fromId,toId])=>[fromId,toId,dagEdgeActiveness(fromId,toId,lastCommand,flowIntensity)]);
+    .map(([fromId,toId])=>[fromId,toId,dagEdgeActiveness(fromId,toId,lastCommand,flowIntensity,outflowIntensity)]);
+  // Activity swell: an organelle grows while ANY edge touching it (either direction) is actively
+  // flowing, decaying back to its base size the instant nothing's moving through it.
+  const orgActivity={};
+  for(const [fromId,toId,active] of edges){
+    if(active>(orgActivity[fromId]||0)) orgActivity[fromId]=active;
+    if(active>(orgActivity[toId]||0)) orgActivity[toId]=active;
+  }
+  for(const o of orgList){
+    const n=dagNodes.get(o.id); if(!n) continue;
+    const base=o.graphRole==='modify'?13:8.5;
+    n.r=base*(1+(orgActivity[o.id]||0)*0.9);
+  }
   dagStepPhysics(activeIds,edges,w,h);
   g.clearRect(0,0,w,h);
   if(!shopOpen) dagBackdrop(g,w,h);
@@ -550,11 +670,11 @@ function drawDagHud(){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
     const base=dagEdgeBaseAlpha(fromId,toId,orgList);
     const a0=base+active*(0.9-base);
-    dagEdge(g,a.x,a.y,b.x,b.y,b.r,dagEdgeColor(fromId,toId,vals),a0);
+    dagEdge(g,a.x,a.y,b.x,b.y,b.r,dagEdgeColor(fromId,toId,vals),a0,dagEdgeWidth(fromId,toId,active));
   }
   for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
   for(const id of specialIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
-  for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o}); }
+  for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o,activity:orgActivity[o.id]||0}); }
 }
 
 function updateActionButtons(actions){

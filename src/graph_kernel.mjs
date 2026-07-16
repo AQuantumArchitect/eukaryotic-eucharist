@@ -1165,6 +1165,46 @@ function depthTempo(y) {
 }
 function dist2Wrap(ax, ay, bx, by) { const s = widthScale((ay + by) * 0.5); const dx = dxWrap(ax, bx) * s; const dy = by - ay; return dx * dx + dy * dy; }
 function distWrap(ax, ay, bx, by) { return Math.sqrt(dist2Wrap(ax, ay, bx, by)); }
+
+// TURBULENCE — the one piece of physics a depth-only world is missing. Light, O2, tempo and width all
+// vary with depth ALONE, so every comfort gradient balances on a razor-thin horizontal contour and each
+// guild parks on its own line (the lines of predators, the lines of scavengers). Real water columns
+// don't stratify into lines because they are STIRRED. This is a divergence-free eddy field — a sum of
+// stream-function modes, so it advects bodies around in rolling gyres WITHOUT piling them into a new
+// convergence line — periodic in x so it crosses the wrap seam seamlessly, and drifting slowly in time
+// via world.t so the cells pulse and migrate. Intensity is high in the wind-mixed shallows and fades to
+// near-calm on the abyssal floor (the deep larder should stay put). Applied as passive advection (it
+// adds to POSITION and fights nothing), it smears the razor contours into broad, roiling scattering
+// layers — the connected froth. Not a game state, not a band: honest continuous physics.
+const EDDY_MODES = [
+  // nx = horizontal cells around the column; Ly = vertical wavelength (px); vPeak = vertical speed (px/s);
+  // wx, wy = slow time-drift rates (rad/s). Three overlapping scales give a non-repeating roil.
+  { nx: 2, Ly: 2000, vPeak: 14, wx: 0.061, wy: 0.043 },
+  { nx: 3, Ly: 1200, vPeak: 10, wx: -0.049, wy: 0.077 },
+  { nx: 5, Ly: 750, vPeak: 7, wx: 0.103, wy: -0.067 }
+];
+const EDDY_SURFACE = 1.0, EDDY_FLOOR = 0.35; // turbulence intensity, shallow -> deep
+function eddyIntensity(y) {
+  const d = clamp((y - WORLD.canopy) / (WORLD.h - WORLD.canopy), 0, 1);
+  return EDDY_FLOOR + (EDDY_SURFACE - EDDY_FLOOR) * (1 - d);
+}
+// The eddy current velocity (px/s) at a point and time. Divergence-free by construction (curl of a
+// stream function), so it stirs without creating sinks that would breed a fresh line.
+function eddyFlow(x, y, t) {
+  const yy = y - WORLD.canopy;
+  let vx = 0, vy = 0;
+  for (const m of EDDY_MODES) {
+    const kx = (2 * Math.PI * m.nx) / WORLD.w;
+    const ky = (2 * Math.PI) / m.Ly;
+    const A = m.vPeak / kx;                 // scales the vertical (line-breaking) component to vPeak
+    const px = kx * x + m.wx * t;
+    const py = ky * yy + m.wy * t;
+    vx += -A * ky * Math.sin(px) * Math.sin(py);
+    vy += -A * kx * Math.cos(px) * Math.cos(py);
+  }
+  const env = eddyIntensity(y);
+  return { vx: vx * env, vy: vy * env };
+}
 function norm(dx, dy) { const d = Math.hypot(dx, dy) || 1; return { x: dx / d, y: dy / d, d }; }
 function emptyCargo(values = {}) { const c = {}; for (const r of RESOURCES) c[r] = values[r] || 0; return c; }
 function addStock(dst, stock, mult = 1) { for (const k of RESOURCES) if (stock[k]) dst[k] = (dst[k] || 0) + stock[k] * mult; }
@@ -1736,20 +1776,20 @@ function capsCompute(entity) {
 // unconnected, since their effect isn't "feeds a resource").
 export const ORGAN_GRAPH_EDGES = [
   ['membrane', 'hp'], ['membrane_hardening', 'hp'], ['multicell_chassis', 'hp'],
-  ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
+  ['storage_vacuole', 'energy'], ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
   ['anaerobic_processor', 'energy'], ['clean_processor', 'energy'], ['virulent_processor', 'energy'],
   ['catalytic_processor', 'energy'], ['hydrogenosome', 'energy'], ['oxidase_vesicle', 'energy'],
   ['chemosynthetic_vesicle', 'energy'],
   ['dna_memory_vesicle', 'dna'],
   ['membrane', 'oxygen'], ['oxygen_store', 'oxygen'], ['countercurrent_gill', 'oxygen'], ['photolytic_vacuole', 'oxygen'],
-  ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
+  ['storage_vacuole', 'biomass'], ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
   ['anabolic_vesicle', 'biomass'], ['lipolytic_vesicle', 'biomass'], ['photosystem', 'biomass'],
-  // Storage Vacuole reads as the lipid ("wealth") reserve on the graph — the Exotic Rack and DNA Rack
-  // connect INTO it (below) rather than it fanning out to every cap it mechanically touches, so the
-  // intake pore (which now carries biomass/lipids/toxins/ATP directly, see pipeline edges) stays the
-  // one legible "here's what feeding actually fills" picture instead of two overlapping fan-outs.
+  // The Exotic Rack and DNA Rack also connect INTO Storage Vacuole (below) even though Storage Vacuole
+  // itself fans out to every general cap it mechanically touches — the intake pore (which carries
+  // biomass/lipids/toxins/ATP directly, see pipeline edges) and Storage Vacuole's own fan-out are meant
+  // to read as two views of the same picture, not a contradiction.
   ['storage_vacuole', 'lipids'], ['lipid_vacuole', 'lipids'], ['mitochondrion', 'lipids'], ['lipogenic_processor', 'lipids'],
-  ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
+  ['storage_vacuole', 'toxins'], ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
   ['anaerobic_processor', 'toxins'], ['clean_processor', 'toxins'], ['virulent_processor', 'toxins'],
   ['catalytic_processor', 'toxins'], ['hydrogenosome', 'toxins'],
   ['exotic_vacuole', 'spores'],
@@ -1768,6 +1808,11 @@ export const ORGAN_GRAPH_EDGES = [
   ['membrane_intake', 'biomass'], ['membrane_intake', 'lipids'], ['membrane_intake', 'toxins'], ['membrane_intake', 'energy'],
   ['exotic_vacuole', 'storage_vacuole'], ['dna_memory_vesicle', 'storage_vacuole'],
   ['biomass', 'anaerobic_processor'],
+  // The two "maw" organs (phagocyte_maw fires free on overlap; phagosome is the manual, enzyme-costed
+  // engulf) both render whole overlapping bodies straight into biomass — same feeding apparatus as the
+  // intake pore, just a different mouth.
+  ['phagocyte_maw', 'membrane_intake'], ['phagocyte_maw', 'biomass'],
+  ['phagosome', 'membrane_intake'], ['phagosome', 'biomass'],
   // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
   ['basal_motility', 'energy'],
@@ -2097,6 +2142,14 @@ function finishWorldStep(world, player, dt) {
       e.alive = false;
       continue;
     }
+    // Turbulent advection: the eddy current carries every body (the single chokepoint every entity
+    // passes each step). Motile creatures and the player feel the full field — this is what breaks their
+    // comfort-contour lines into froth. Algae feel only the HORIZONTAL stir: their vertical placement is
+    // buoyancy-governed (the bob cycle + size-sorted settling), which resists the eddy anyway and is
+    // load-bearing structure we don't want smeared.
+    const flow = eddyFlow(e.x, e.y, world.t);
+    e.x += flow.vx * dt;
+    if (e.controller !== 'algae') e.y += flow.vy * dt;
     e.x = wrapX(e.x); e.y = clamp(e.y, WORLD.canopy + 2, WORLD.h - 30);
     // Horizontal water drag is stronger on the starter player, preventing zero-upgrade lateral
     // skating. Algae retain vertical momentum so a physical 1000px excursion takes about a minute,
@@ -3250,8 +3303,14 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // SOLID BALLAST: pressure passively compacts a trickle of stored biomass into dense waste bricks —
     // deeper is more efficient compaction. Real weight (biomassWeight), the emergency drop-weight
     // jettison ejects first (see ventBiomass). Bounded by caps().ballast so it doesn't run away.
+    // Skipped while sheltered: compaction is a >5x weight amplifier per unit converted (WASTE_YIELD *
+    // BALLAST_BRICK_WEIGHT vs the raw cargoFactor biomassWeight already charges), and buying a
+    // storage_vacuole mid-shop instantly raises caps().ballast — un-stalling a compactor that had
+    // saturated at the old cap and silently converting a still-full biomass tank into a fatal amount of
+    // extra weight the player never sees coming out of the shop. The rest of the sim keeps running while
+    // sheltered (per step()'s own framing); this one passive drain shouldn't.
     const ballastCap = caps(e).ballast;
-    if (ballastCap > 0 && (e.cargo.biomass || 0) > 0.1 && (e.cargo.ballast || 0) < ballastCap) {
+    if (!e.sheltered && ballastCap > 0 && (e.cargo.biomass || 0) > 0.1 && (e.cargo.ballast || 0) < ballastCap) {
       const compactRate = WASTE_BASE_RATE * (1 + pressureAt(e.y) * WASTE_PRESSURE_GAIN);
       const compacted = Math.min(e.cargo.biomass, compactRate * dt);
       e.cargo.biomass -= compacted;
@@ -6057,6 +6116,7 @@ export function getHudProjection(world, entityId = world.playerId) {
   const readiness = hostReadiness(e, world);
   return {
     hp: { value: e.hp, max: c.hp, label: 'HP', layers: orgCount(e, 'membrane') },
+    motorRamp: e.motorRamp || 0, // 0..1 basal-motor onramp (see applyPlayerCommands) — the DAG HUD reads this for a proportional, not boolean, active-draw spring
     oxygen: { value: e.oxygen, max: c.oxygen, external: env.oxygen, tolerance: oxygenTolerance(e), label: 'O2' },
     depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen, photosynthetic: orgCount(e, 'photosystem') > 0 },
     pressure: { value: env.pressure, label: 'Pressure' },
