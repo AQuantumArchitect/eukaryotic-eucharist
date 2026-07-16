@@ -267,12 +267,21 @@ const DAG_SHOP_CATEGORIES=['feeding','metabolism','structure','oxygen','movement
 })();
 
 // Tap: shadow or owned-not-maxed organelle -> buy (verbatim reuse of the list panel's own buy flow,
-// cost-check/mutation/toast/refresh all included). Long-press: owned organelle -> remove. Membrane is
+// cost-check/mutation/toast/refresh all included) — UNLESS Organ Manufacturing is owned and idle and the
+// tapped node is a not-yet-owned shadow, in which case tap grows it in-body instead (biomass+ATP pulse,
+// no lipids) rather than an instant Yuki purchase. Long-press: owned organelle -> remove. Membrane is
 // excluded from both (it's the open/closed toggle target instead). No proximity gate — works anywhere.
 dagOnTap=(nodeId)=>{
   if(nodeId==='membrane'){ dagToggleOpen(); return; }
+  // A node actively being grown in can't also be instant-bought out from under the build — no-op, the
+  // progress ring is already telling the player it's on its way.
+  if(hud.manufacturing&&hud.manufacturing.organelle===nodeId){ toast('Already growing — '+Math.round(hud.manufacturing.progress*100)+'% done.'); return; }
   const proj=K.getYukiOfferings(world).find(o=>o.organelle===nodeId);
-  if(proj) doBuy(proj.id, proj.kind);
+  if(!proj) return;
+  const owned=hud.organelles.some(o=>o.id===nodeId);
+  const canManufacture=!owned && !hud.manufacturing && hud.organelles.some(o=>o.id==='organ_manufacturing');
+  if(canManufacture) doManufacture(proj.id);
+  else doBuy(proj.id, proj.kind);
 };
 dagOnLongPress=(nodeId)=>{
   if(nodeId==='membrane') return;
@@ -452,6 +461,9 @@ function dagSinkValue(id){
   const r=hud.resources.find(x=>x.id===id);
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
+  // Toxins shift tint with fill fraction — "sunny yellow" (empty) through a sickly green/red/pink swirl as
+  // it saturates (drawDagSink adds black specks + a swirl distortion on top, both also fill-scaled).
+  if(id==='toxins') return {value:r.value,max:r.max,color:dagToxinTint(r.value/Math.max(1,r.max)),duress};
   return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
 }
 // Special/conditional bubbles: only exist once something is actually connected to them. Pressure rides in
@@ -466,11 +478,17 @@ function dagActiveSpecialIds(){
   if(hud.organelles.some(o=>o.id==='dna_memory_vesicle')) ids.push('dna');
   return ids;
 }
-// Kept for Part H (toxin tint) — the standalone buoyancy node that used to be this helper's only caller
-// was removed this round in favor of direct per-resource hang-forces on membrane (see dagStepPhysics).
 function dagLerpRgb(a,b,t){
   const pa=a.split(',').map(Number), pb=b.split(',').map(Number);
   return pa.map((v,i)=>Math.round(v+(pb[i]-v)*t)).join(',');
+}
+// Toxins tint: "sunny yellow" (empty) -> green -> red -> a sickly pink as the tank saturates.
+const DAG_TOXIN_STOPS=['232,226,44','110,200,90','220,60,60','255,110,200'];
+function dagToxinTint(frac){
+  const n=DAG_TOXIN_STOPS.length-1;
+  const t=clamp(frac,0,1)*n;
+  const i=clamp(Math.floor(t),0,n-1);
+  return dagLerpRgb(DAG_TOXIN_STOPS[i],DAG_TOXIN_STOPS[i+1],t-i);
 }
 function dagSpecialValue(id){
   if(id==='pressure') return {value:clamp(hud.pressure?.value??0,0,1), max:1, color:'176,140,255', duress:false};
@@ -496,8 +514,9 @@ function dagEnsureNode(id,kind,w,h,r){
 function dagSinkRadius(id,v){
   // MERGED: oxygen joins the "literal tank" swell group now that it's both a respiration AND lift
   // resource (previously it was a flat vital-tier size; the separate 'gas' sink that used to swell here
-  // is gone, folded into this one).
-  if(id==='biomass'||id==='lipids'||id==='oxygen'){
+  // is gone, folded into this one). toxins joins too — "start smaller... and then swell like all the
+  // other ones," replacing its old flat DAG_MINOR_SINKS fallback size.
+  if(id==='biomass'||id==='lipids'||id==='oxygen'||id==='toxins'){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
     return 13+frac*(80-13); // literal tanks: empty = old baseline, full = well past the flat 2x standard
   }
@@ -553,7 +572,14 @@ function dagEdgeActiveness(fromId,toId,cmd,flowIntensity,outflowIntensity){
   if(fromId==='enzymes'&&toId==='phagosome') return outflowIntensity.enzymes??0;
   if(fromId==='oxygen'&&toId==='hp') return hud.oxygen.value>hud.oxygen.tolerance?1:0;
   if(fromId==='toxins'&&toId==='hp'){ const r=hud.resources.find(x=>x.id==='toxins'); return (r&&r.value>r.max*0.68)?1:0; }
-  if(fromId==='waste_compactor'||toId==='waste_compactor') return (cmd&&cmd.compact)?1:0;
+  // Waste Compactor's spend is now a Gaussian pulse over ~1.2s, not an instant hammer — the edge reads the
+  // kernel's own normalized 0..1 intensity (rate-at-elapsed / the curve's peak rate) instead of a boolean
+  // "is the key held" check, so it smoothly ramps up and back down with the actual drain, not a hard snap.
+  if(fromId==='waste_compactor'||toId==='waste_compactor') return hud.compacting?hud.compacting.intensity:0;
+  // Organ Manufacturing: "should pull pretty heavily when in action" — the biomass/energy input edges AND
+  // the temporary edge to whatever it's currently building all read the same live Gaussian-pulse intensity,
+  // not a boolean, matching the Waste Compactor treatment above.
+  if(toId==='organ_manufacturing'||(fromId==='organ_manufacturing'&&hud.manufacturing&&toId===hud.manufacturing.organelle)) return hud.manufacturing?hud.manufacturing.intensity:0;
   // Damage attribution: a weapon organ's own edges contract in proportion to the damage IT just dealt
   // (dagWeaponPulse, set from the kernel's weapon_hit event); membrane->hp contracts in proportion to
   // damage the player just TOOK, not a fixed pulse — "cell membrane to HP should contract in proportion
@@ -719,7 +745,31 @@ function drawDagSink(g,s,v){
   g.fillStyle=bk; g.beginPath(); g.arc(s.x,s.y,s.r*2.3,0,Math.PI*2); g.fill();
   g.fillStyle='rgba(6,8,18,.85)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
   g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3.4;
-  g.beginPath(); g.arc(s.x,s.y,s.r-2.4,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  if(s.id==='toxins'&&frac>0.02&&!off){
+    // Swirl: the fill-arc's inner edge wobbles instead of tracing a clean line — a "sickly churn" that
+    // grows with fill, not a flat readout.
+    const wobble=s.r*0.14*frac, segs=Math.max(8,Math.round(20*frac));
+    g.beginPath();
+    for(let i=0;i<=segs;i++){
+      const ang=-Math.PI/2+(i/segs)*Math.PI*2*frac;
+      const rr=(s.r-2.4)+Math.sin(ang*5+uiPhase*0.6)*wobble;
+      const px=s.x+Math.cos(ang)*rr, py=s.y+Math.sin(ang)*rr;
+      if(i===0) g.moveTo(px,py); else g.lineTo(px,py);
+    }
+    g.stroke();
+    // Black specks: count and opacity both scale with fill — a clean tank has none, a saturated one is flecked.
+    const seed=dagIdHash('toxins_specks');
+    const speckCount=Math.round(2+frac*7);
+    for(let i=0;i<speckCount;i++){
+      const ang=((seed*0.13+i*2.4)%(Math.PI*2));
+      const dist=(0.5+0.5*Math.sin(seed*0.7+i*7.1))*(s.r-4);
+      const px=s.x+Math.cos(ang)*dist, py=s.y+Math.sin(ang)*dist;
+      g.fillStyle=`rgba(8,6,8,${(0.32+frac*0.5).toFixed(2)})`;
+      g.beginPath(); g.arc(px,py,1.1+frac*1.4,0,Math.PI*2); g.fill();
+    }
+  } else {
+    g.beginPath(); g.arc(s.x,s.y,s.r-2.4,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  }
   g.strokeStyle=`rgba(${rgb},.4)`; g.lineWidth=1; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.stroke();
   g.fillStyle='rgba(255,255,255,.88)'; g.font='700 11px ui-sans-serif,system-ui'; g.textAlign='center';
   g.fillText(s.label, s.x, s.y+s.r+14);
@@ -760,16 +810,26 @@ function dagIdHash(id){ let h=0; for(let i=0;i<id.length;i++) h=(h*31+id.charCod
 // swell/donut/grow-FX (an unowned organ has no usage to show), just its price and a locked/affordable read
 // via organState() (index.html:~1038), the SAME classifier the list panel trusts, not a second copy.
 function drawDagShadowOrg(g,o){
-  const r=o.r, rgb='158,240,189';
+  const building=o.manufacturing;
+  // "starts as the shadow version and grows in with the timer" — while building, radius swells from a
+  // small fraction of its eventual resting size up to full as progress advances, and opacity climbs with
+  // it, instead of the flat translucent-ghost read a browsing (not-yet-started) shadow gets.
+  const r=building ? o.r*(0.3+0.7*building.progress) : o.r;
+  const rgb='158,240,189';
   const affordable=organState(o)==='ready';
-  const a=affordable?0.55:0.22;
+  const a=building ? (0.35+0.5*building.progress) : (affordable?0.55:0.22);
   g.setLineDash([4,4]);
   g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=1.6;
   g.beginPath(); g.arc(o.x,o.y,r,0,Math.PI*2); g.stroke();
   g.setLineDash([]);
-  g.fillStyle=`rgba(255,255,255,${affordable?0.72:0.35})`; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center';
+  g.fillStyle=`rgba(255,255,255,${building?(0.5+0.4*building.progress):(affordable?0.72:0.35)})`; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center';
   g.fillText(o.name, o.x, o.y+r+12);
-  if(o.offering&&o.offering.costText){
+  if(building){
+    // Build-progress ring — a distinct signal from the (unrelated) long-press confirmation ring, same
+    // visual language (radial fill from top) so it reads immediately as "in progress."
+    g.strokeStyle='rgba(158,240,189,.85)'; g.lineWidth=2.6;
+    g.beginPath(); g.arc(o.x,o.y,r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*building.progress); g.stroke();
+  } else if(o.offering&&o.offering.costText){
     g.fillStyle=`rgba(${rgb},${affordable?0.85:0.4})`; g.font='800 8px ui-monospace,monospace'; g.textAlign='center';
     g.fillText(o.offering.costText, o.x, o.y+3);
   }
@@ -862,9 +922,17 @@ function drawDagHud(){
   // organState() is the tri-state split the list panel already trusts: 'lock' is the only state that means
   // "genuinely locked" (matches "locked have no display anymore"); 'ready'/'unaff' both preview as shadows,
   // just at different brightness (drawDagShadowOrg) — an unaffordable-today organelle is still unlocked.
-  const shadowCandidates = dagShopCategory ? K.getYukiOfferings(world).filter(o=>
+  // An active Organ Manufacturing build stays visible as a "growing in" shadow regardless of the selected
+  // category — it's a real in-progress process, not a browsing preview, so it can't be hidden by tapping a
+  // different chip mid-build.
+  const manufacturingTarget = hud.manufacturing ? K.getYukiOfferings(world).find(o=>o.organelle===hud.manufacturing.organelle) : null;
+  const shadowCandidates = (dagShopCategory ? K.getYukiOfferings(world).filter(o=>
     o.organelle && organState(o)!=='lock' && K.__test.ORGAN_CATEGORY[o.organelle]===dagShopCategory && !hud.organelles.some(x=>x.id===o.organelle)
-  ).map(o=>({...o, id:o.organelle, graphRole:K.ORGAN_GRAPH_ROLE[o.organelle]||'tune', count:0, shadow:true, offering:o})) : [];
+  ) : [])
+    .concat(manufacturingTarget && !hud.organelles.some(x=>x.id===manufacturingTarget.organelle) ? [manufacturingTarget] : [])
+    .filter((o,i,arr)=>arr.findIndex(x=>x.organelle===o.organelle)===i)
+    .map(o=>({...o, id:o.organelle, graphRole:K.ORGAN_GRAPH_ROLE[o.organelle]||'tune', count:0, shadow:true, offering:o,
+      manufacturing: hud.manufacturing&&hud.manufacturing.organelle===o.organelle ? hud.manufacturing : null}));
   const orgList=hud.organelles.concat(shadowCandidates);
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
@@ -886,7 +954,11 @@ function drawDagHud(){
   const outflowIntensity={}; for(const id of ['enzymes']) outflowIntensity[id]=dagOutflowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
-  const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES)
+  // Organ Manufacturing's link to whatever it's currently building is temporary — added here only while a
+  // build is active, not a permanent ORGAN_GRAPH_EDGES entry — "start connected... when complete that
+  // connection should break."
+  const manufacturingEdge = hud.manufacturing ? [['organ_manufacturing',hud.manufacturing.organelle]] : [];
+  const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES).concat(manufacturingEdge)
     .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
     .map(([fromId,toId])=>[fromId,toId,dagEdgeActiveness(fromId,toId,lastCommand,flowIntensity,outflowIntensity)]);
   // Activity swell: an organelle grows while ANY edge touching it (either direction) is actively
@@ -1061,6 +1133,7 @@ function renderShop(){
 }
 function doBuy(id,kind){const res=K.buyOffering(world,id);if(res.ok){if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
 function doRemove(orgId){const res=K.removeOrganelle(world,orgId);if(res.ok){toast('Graft undone.');renderShop();}else toast(res.reason||'Cannot remove.');}
+function doManufacture(id){const res=K.startManufacturing(world,id);if(res.ok)toast('Growing it in — the body pulls hard on biomass and ATP.');else toast(res.reason||'Cannot manufacture.');}
 // One row of the lipid exchange counter: name · amount · fill bar · ▼ sell (→lipids) · ▲ buy (lipids→).
 // A vertical exchange column per resource: label · ▲ increase (top) · upright fill bar · value ·
 // ▼ reduce (bottom). Each arrow shows its lipid delta — +N (green, Yuki pays you) or −N (amber, you
