@@ -179,9 +179,10 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
 let dagHudH=200;
 function resize(){
   canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0);
-  // The DAG HUD occupies the same header band the old vitals+chips rows used to (below the canopy bar,
-  // above the status/controls cards) — clamped so it never eats the touch controls on short viewports.
-  dagHudH=clamp(Math.round(innerHeight*0.30),168,248);
+  // The DAG HUD needs real room for the force simulation to spread nodes out instead of crushing them
+  // into a thin strip — give it roughly the top half of the screen, clamped so it never eats the
+  // joystick/action buttons anchored to the bottom on short viewports.
+  dagHudH=clamp(Math.round(innerHeight*0.46),260,innerHeight-260);
   dagCanvas.width=Math.floor(innerWidth*dpr);dagCanvas.height=Math.floor(dagHudH*dpr);dagCanvas.style.width=innerWidth+'px';dagCanvas.style.height=dagHudH+'px';dagCtx.setTransform(dpr,0,0,dpr,0,0);
   // dagHudH is content-driven (varies with organelle count and viewport), so nudge whatever sits right
   // below the old fixed vitals+chips band to actually clear it, instead of leaving their old hardcoded offsets.
@@ -303,14 +304,21 @@ function updateUI(){
 
 // ── DAG HUD: replaces the old vitals+chips bars outright. Two node kinds drawn on #dagHud (a small
 // screen-space canvas layered under the status card, no camera transform — this isn't world space):
-// a fixed row of "sink" nodes standing in for every resource/vital the removed bars showed, and one
-// node per organelle the player currently owns, with edges from organelle -> the sink(s) it feeds
-// (K.ORGAN_GRAPH_EDGES, hand-authored in the kernel). Modify organelles (K.ORGAN_GRAPH_ROLE) draw
-// bigger/solid/bright; tune organelles draw smaller/dashed/dim — "we're just exposing the model's
-// comprehension of the player back to them."
+// a "sink" node per resource/vital the removed bars showed, and one node per organelle the player
+// currently owns, with edges from organelle -> the sink(s) it feeds (K.ORGAN_GRAPH_EDGES, hand-authored
+// in the kernel). Modify organelles (K.ORGAN_GRAPH_ROLE) draw bigger/solid/bright; tune organelles draw
+// smaller/dashed/dim — "we're just exposing the model's comprehension of the player back to them."
+//
+// This is a REAL force-directed simulation, not a fixed diagram wearing force-graph clothes: node
+// positions persist frame-to-frame in dagNodes and are pushed by mutual repulsion + spring edges + a
+// gentle directional bias (sinks drift toward the top, organelles toward the bottom, so the "vitals up,
+// body below feeding them" reading still emerges) rather than being placed by hand every frame. Letting
+// it actually settle (and re-settle live as organelles are gained) is the point — an emergent layout
+// instead of a hardcoded one, the same ethos the rest of the sim's ecology already follows.
 const DAG_VITAL_SINKS=['hp','energy','oxygen','dna'];
 const DAG_MINOR_SINKS=['biomass','lipids','toxins','gas','ballast','spores','enzymes','crystals'];
 const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals'};
+const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
 // Resource nodes replace the removed bars, so they carry the same "duress" (red, something's wrong)
 // and "filling" (green pulse, actively gaining) reads the old vitals/chips gave — parity, not just decoration.
 function dagSinkValue(id){
@@ -323,29 +331,60 @@ function dagSinkValue(id){
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
   return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
 }
-// Pure positioning: sink nodes are fixed in a two-row band across the top (the direct replacement for
-// the old .vitals/.chips header); organelle nodes flow left-to-right below, wrapping rows, tiered by
-// `tier` so foundational (tier 1) organs read first. No force-directed settling — legibility, not physics.
-function layoutDag(){
-  const w=innerWidth;
-  const sinks=[];
-  DAG_VITAL_SINKS.forEach((id,i)=>sinks.push({id,label:DAG_SINK_LABEL[id],x:w*(i+0.5)/DAG_VITAL_SINKS.length,y:24,r:15}));
-  DAG_MINOR_SINKS.forEach((id,i)=>sinks.push({id,label:DAG_SINK_LABEL[id],x:w*(i+0.5)/DAG_MINOR_SINKS.length,y:60,r:10}));
-  const orgs=[];
-  const list=hud.organelles.slice().sort((a,b)=>{const ta=a.tier==='gate'?4:a.tier,tb=b.tier==='gate'?4:b.tier;return ta-tb||a.name.localeCompare(b.name);});
-  const pad=14, rowH=28, top=82;
-  let x=pad,y=top;
-  for(const o of list){
-    const r=o.graphRole==='modify'?10.5:7;
-    if(x+r*2+8>w-pad){x=pad;y+=rowH;}
-    orgs.push({id:o.id,name:o.name,count:o.count,tier:o.tier,graphRole:o.graphRole,x:x+r,y,r});
-    x+=r*2+10;
+function dagEnsureNode(id,kind,w,h,r){
+  let n=dagNodes.get(id);
+  if(!n){
+    // Spawn near the kind's home band with a little jitter so a freshly-grafted organelle drifts into
+    // place from roughly the right neighborhood instead of rocketing in from a random corner.
+    const homeY = kind==='sink' ? h*0.26 : h*0.66;
+    n={x:w*0.5+(Math.random()-0.5)*60, y:homeY+(Math.random()-0.5)*60, vx:0, vy:0, kind};
+    dagNodes.set(id,n);
   }
-  return {sinks,orgs,w,h:y+rowH+pad};
+  n.kind=kind; n.r=r; n._seen=true;
+  return n;
+}
+const DAG_REPEL_K=14000, DAG_SPRING_K=0.018, DAG_EDGE_LEN=105, DAG_DAMPING=0.86;
+function dagStepPhysics(ids,edges,w,h){
+  for(let i=0;i<ids.length;i++){
+    const a=dagNodes.get(ids[i]);
+    for(let j=i+1;j<ids.length;j++){
+      const b=dagNodes.get(ids[j]);
+      let dx=b.x-a.x, dy=b.y-a.y, d2=dx*dx+dy*dy;
+      if(d2<0.5){ dx=(Math.random()-0.5)||0.1; dy=(Math.random()-0.5)||0.1; d2=dx*dx+dy*dy; }
+      const d=Math.sqrt(d2);
+      if(d>260) continue; // repulsion is short-range only — distant nodes shouldn't fight the springs
+      const f=DAG_REPEL_K/d2;
+      const ux=dx/d, uy=dy/d;
+      a.vx-=ux*f; a.vy-=uy*f; b.vx+=ux*f; b.vy+=uy*f;
+    }
+  }
+  for(const [fromId,toId] of edges){
+    const a=dagNodes.get(fromId), b=dagNodes.get(toId);
+    if(!a||!b) continue;
+    const dx=b.x-a.x, dy=b.y-a.y, d=Math.max(1,Math.hypot(dx,dy));
+    const f=(d-DAG_EDGE_LEN)*DAG_SPRING_K;
+    const ux=dx/d, uy=dy/d;
+    a.vx+=ux*f; a.vy+=uy*f; b.vx-=ux*f; b.vy-=uy*f;
+  }
+  for(const id of ids){
+    const n=dagNodes.get(id);
+    const homeY = n.kind==='sink' ? h*0.26 : h*0.66;
+    n.vy+=(homeY-n.y)*0.010;
+    n.vx+=(w*0.5-n.x)*0.0009;
+    const pad=n.r+8;
+    if(n.x<pad) n.vx+=(pad-n.x)*0.06;
+    if(n.x>w-pad) n.vx-=(n.x-(w-pad))*0.06;
+    if(n.y<pad) n.vy+=(pad-n.y)*0.06;
+    if(n.y>h-pad) n.vy-=(n.y-(h-pad))*0.06;
+    n.vx*=DAG_DAMPING; n.vy*=DAG_DAMPING;
+    const sp=Math.hypot(n.vx,n.vy), cap=9;
+    if(sp>cap){ n.vx=n.vx/sp*cap; n.vy=n.vy/sp*cap; }
+    n.x+=n.vx; n.y+=n.vy;
+  }
 }
 function dagEdge(g,x1,y1,x2,y2,rgb,a){
-  g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=3.4; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
-  g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=4.2; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1.1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
 }
 function drawDagSink(g,s,v){
   const frac=clamp(v.value/(v.max||1),0,1);
@@ -353,47 +392,55 @@ function drawDagSink(g,s,v){
   const pulse=0.5+0.5*Math.sin(uiPhase*0.42);
   const off=!!v.off;
   const rgb = off?'120,122,132':v.duress?'255,110,120':v.color;
-  const glowA = off?0.08:v.duress?(0.5+0.4*Math.sin(uiPhase*0.6)):filling?(0.35+0.35*pulse):0.16;
-  const bk=g.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*2.1);
+  const glowA = off?0.08:v.duress?(0.5+0.4*Math.sin(uiPhase*0.6)):filling?(0.35+0.35*pulse):0.18;
+  const bk=g.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*2.3);
   bk.addColorStop(0,`rgba(${rgb},${(glowA*0.55).toFixed(2)})`); bk.addColorStop(1,`rgba(${rgb},0)`);
-  g.fillStyle=bk; g.beginPath(); g.arc(s.x,s.y,s.r*2.1,0,Math.PI*2); g.fill();
-  g.fillStyle='rgba(6,8,18,.82)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
-  g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3;
-  g.beginPath(); g.arc(s.x,s.y,s.r-2,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  g.fillStyle=bk; g.beginPath(); g.arc(s.x,s.y,s.r*2.3,0,Math.PI*2); g.fill();
+  g.fillStyle='rgba(6,8,18,.85)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
+  g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3.4;
+  g.beginPath(); g.arc(s.x,s.y,s.r-2.4,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
   g.strokeStyle=`rgba(${rgb},.4)`; g.lineWidth=1; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.stroke();
-  g.fillStyle='rgba(255,255,255,.85)'; g.font='700 8px ui-sans-serif,system-ui'; g.textAlign='center';
-  g.fillText(s.label, s.x, s.y+s.r+10);
-  g.fillStyle=off?'rgba(200,200,210,.6)':`rgb(${rgb})`; g.font='800 8px ui-monospace,monospace';
-  g.fillText(off?'—':fmt(v.value), s.x, s.y+3);
+  g.fillStyle='rgba(255,255,255,.88)'; g.font='700 11px ui-sans-serif,system-ui'; g.textAlign='center';
+  g.fillText(s.label, s.x, s.y+s.r+14);
+  g.fillStyle=off?'rgba(200,200,210,.6)':`rgb(${rgb})`; g.font='800 10px ui-monospace,monospace';
+  g.fillText(off?'—':fmt(v.value), s.x, s.y+4);
 }
 function drawDagOrg(g,o){
   const rgb = o.tier==='gate' ? '245,212,122' : '158,240,189';
   const modify = o.graphRole==='modify';
   const a = modify?0.85:0.42;
-  const bk=g.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r*1.9);
+  const bk=g.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r*2.0);
   bk.addColorStop(0,`rgba(${rgb},${(a*0.4).toFixed(2)})`); bk.addColorStop(1,`rgba(${rgb},0)`);
-  g.fillStyle=bk; g.beginPath(); g.arc(o.x,o.y,o.r*1.9,0,Math.PI*2); g.fill();
+  g.fillStyle=bk; g.beginPath(); g.arc(o.x,o.y,o.r*2.0,0,Math.PI*2); g.fill();
   g.fillStyle=`rgba(${rgb},${(a*0.30).toFixed(2)})`; g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.fill();
   g.setLineDash(modify?[]:[3,3]);
-  g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=modify?1.6:1;
+  g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=modify?1.8:1.2;
   g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.stroke();
   g.setLineDash([]);
-  if(o.count>1){ g.fillStyle='rgba(255,255,255,.9)'; g.font='800 7px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+2.5); }
+  if(modify){ g.fillStyle='rgba(255,255,255,.8)'; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center'; g.fillText(o.name, o.x, o.y+o.r+12); }
+  if(o.count>1){ g.fillStyle='rgba(255,255,255,.92)'; g.font='800 9px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+3); }
 }
 function drawDagHud(){
   if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
-  const g=dagCtx, {sinks,orgs,w}=layoutDag();
-  g.clearRect(0,0,w,dagHudH);
-  const vals={}; for(const s of sinks) vals[s.id]=dagSinkValue(s.id);
-  for(const o of orgs){
-    for(const edge of K.ORGAN_GRAPH_EDGES){
-      if(edge[0]!==o.id) continue;
-      const s=sinks.find(x=>x.id===edge[1]); if(!s) continue;
-      dagEdge(g,o.x,o.y,s.x,s.y,vals[s.id].color,o.graphRole==='modify'?0.5:0.22);
-    }
+  const g=dagCtx, w=innerWidth, h=dagHudH;
+  const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
+  const orgList=hud.organelles;
+  for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, DAG_VITAL_SINKS.includes(id)?19:13);
+  for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?13:8.5);
+  // prune organelles no longer owned (sold/lost) — sinks are permanent fixtures, never pruned
+  for(const [id,n] of dagNodes){ if(n.kind==='org' && !orgList.some(o=>o.id===id)) dagNodes.delete(id); }
+  const activeIds=[...dagNodes.keys()];
+  const edges=K.ORGAN_GRAPH_EDGES.filter(([fromId])=>orgList.some(o=>o.id===fromId));
+  dagStepPhysics(activeIds,edges,w,h);
+  g.clearRect(0,0,w,h);
+  const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
+  for(const [fromId,toId] of edges){
+    const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
+    const o=orgList.find(x=>x.id===fromId);
+    dagEdge(g,a.x,a.y,b.x,b.y,vals[toId].color,o.graphRole==='modify'?0.5:0.22);
   }
-  for(const s of sinks) drawDagSink(g,s,vals[s.id]);
-  for(const o of orgs) drawDagOrg(g,o);
+  for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
+  for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o}); }
 }
 
 function updateActionButtons(actions){

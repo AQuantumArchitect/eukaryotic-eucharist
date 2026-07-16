@@ -362,7 +362,7 @@ const BALLAST_SINK_VY = 70;       // px/s — a dropped drop-weight brick: dense
 const LIPID_SURFACE_DECAY = 0;    // NO decay — a lipid slick pools and holds until eaten
 const LIPID_MAX_AGE = 1e9;        // lipids never age out — a plume holds until eaten
 const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
-const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
+const FAT_VENT_RATE = 0.0012;     // frac/s of standing DEEP biomass that decomposes into rising fat — kept LOW so the floor pile mostly accumulates for the big bottom-feeders to eat and haul OUT, rather than routing to an ungrazeable surface fat pool (only a modest fraction becomes rising plumes)
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat is calorie-dense day-to-day fuel
 const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
@@ -763,7 +763,7 @@ export const ORGANELLES = Object.freeze({
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 1, action: 'rasp', stackable: true, max: 5,
     desc: 'One active overlap-shred membrane. Damage comes only while rasping and only through overlap.',
-    stats: { dps: 12.5, energyCost: 1.6, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
+    stats: { dps: 12.5, energyCost: 4.2, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
   },
   toxin_launcher: {
     name: 'Toxic Launcher', tier: 2, action: 'acid', stackable: true, max: 3,
@@ -800,6 +800,11 @@ export const ORGANELLES = Object.freeze({
     desc: 'A pre-mitochondrial oxidizer: burns internal oxygen together with biomass to make ATP. Weaker than a mitochondrion, but it gives the oxygen build an ATP payoff without the Eucharist.',
     stats: { rate: 0.9, oxygenPerBiomass: 0.06, atpPerBiomass: 2.7 }
   },
+  lipid_armor_forge: {
+    name: 'Sclerous Lamina', tier: 3, action: null, stackable: true, max: 5, category: 'metabolic',
+    desc: 'Lays down a rind of dense LIPID armour from the cell\'s own biomass — a tough, fatty shell that makes the body a poorer meal (hunters score prey by biomass) and, in a deep bloom, a thorny mouthful. In the player it doubles as a DNA lock: the hardened lamina shields the sequenced genome.',
+    stats: { rate: 2.2, lipidPerBiomass: 0.85 }
+  },
   anabolic_vesicle: {
     name: 'Anabolic Vesicle', tier: 2, action: null, stackable: true, max: 5, category: 'metabolic',
     desc: 'Banks surplus energy as body mass: when your ATP is running high, it spends the excess to build biomass — the mirror of an anaerobic processor.',
@@ -833,7 +838,7 @@ export const ORGANELLES = Object.freeze({
   siphon_rasp: {
     name: 'Siphon Rasp', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'rasp',
     desc: 'A parasitic shredding membrane. While rasping, it drains a share of the victim\'s biomass and lipids straight into your cargo.',
-    stats: { dps: 8.0, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
+    stats: { dps: 8.0, energyCost: 5.5, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
   },
   spore_toxin_launcher: {
     name: 'Sporo-Toxic Launcher', tier: 3, action: 'sporeshot', stackable: true, max: 3, category: 'launcher',
@@ -849,7 +854,7 @@ export const ORGANELLES = Object.freeze({
   leech_rasp: {
     name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
     desc: 'A parasitic feeding membrane. Deals almost no damage, but while rasping it siphons biomass, lipids, and a modest ATP trickle straight out of the host — the algae-parasite\'s core organ.',
-    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
+    stats: { dps: 2.5, energyCost: 3.6, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
   },
   leech_lance: {
     name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
@@ -968,7 +973,7 @@ export const ORGANELLES = Object.freeze({
     name: 'Integrated Mitochondrion', tier: 'gate', action: null,
     desc: 'Not purchased. Achieved through Yuki\'s Eucharist. Turns oxygen and lipids into high ATP.',
     stackable: true, max: 4,
-    stats: { lipidBurn: 2.8, oxygenBurn: 0.18, energyMaxBonus: 42 }
+    stats: { lipidBurn: 4.5, oxygenBurn: 0.30, energyMaxBonus: 42 }
   },
   eucharist_archive: {
     name: 'Eucharist Archive', tier: 3, action: null,
@@ -3269,11 +3274,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lipidFill = clamp((e.cargo.lipids || 0) / Math.max(1, caps(e).lipids), 0, 1);
       const burnDrive = (0.10 + 1.4 * Math.pow(lipidFill, 1.3)) * (1 - atpFill);
       const lipidBurn = Math.min(e.cargo.lipids, ORGANELLES.mitochondrion.stats.lipidBurn * mito * burnDrive * dt);
-      const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.12);
+      const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.20);
       if (oxygenBurn > 0.001) {
         e.cargo.lipids -= lipidBurn;
         e.oxygen -= oxygenBurn;
-        e.cargo.energy += lipidBurn * 3.2 + oxygenBurn * 70;
+        e.cargo.energy += lipidBurn * 2.2 + oxygenBurn * 32;   // leaner ATP yield: the aerobic engine now COSTS more fat+O2 per ATP (drains the fat pool instead of banking a windfall)
         e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - oxygenBurn * 5);
       }
     } else {
@@ -3304,12 +3309,18 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // into fat makes it a poorer meal than the raw biomass pile it feeds on — a survival strategy —
       // and when it dies its lipid-rich corpse feeds the dark with FAT instead of just more biomass,
       // diversifying the deep food web.
-      if (e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > 2) {
+      // The Sclerous Lamina organelle lays down lipid armour on any body that carries it (deep blooms,
+      // and the player as a DNA-lock shell); the abyssal bottom-feeder does the same innately off the
+      // floor pile. Both convert biomass -> buoyant lipid rind (conserved).
+      const forge = orgCount(e, 'lipid_armor_forge');
+      if ((e.trophicRole === 'abyssal_scavenger' || forge > 0) && (e.cargo.biomass || 0) > 2) {
         const lipRoom = Math.max(0, caps(e).lipids - (e.cargo.lipids || 0));
         if (lipRoom > 0) {
-          const convert = Math.min(e.cargo.biomass - 2, lipRoom / ABYSSAL_ARMOR_YIELD, ABYSSAL_ARMOR_RATE * dt);
+          const rate = forge > 0 ? ORGANELLES.lipid_armor_forge.stats.rate * forge : ABYSSAL_ARMOR_RATE;
+          const yieldPer = forge > 0 ? ORGANELLES.lipid_armor_forge.stats.lipidPerBiomass : ABYSSAL_ARMOR_YIELD;
+          const convert = Math.min(e.cargo.biomass - 2, lipRoom / yieldPer, rate * dt);
           e.cargo.biomass -= convert;
-          e.cargo.lipids = (e.cargo.lipids || 0) + convert * ABYSSAL_ARMOR_YIELD;
+          e.cargo.lipids = (e.cargo.lipids || 0) + convert * yieldPer;
         }
       }
       // Mid predators run day-to-day on FAT: lipids oxidize straight to ATP, sparing the biomass belly
@@ -4823,10 +4834,15 @@ function populationTick(world, dt) {
     if (e.controller === 'scavenger') {
       const cap = caps(e);
       const starved = (e.cargo.biomass || 0) < cap.biomass * 0.10 && (e.cargo.energy || 0) < cap.energy * 0.10;
+      // A big benthic bottom-feeder that has GORGED on the floor pile emigrates with a full belly —
+      // drifting off the map carrying that biomass OUT of the column. This is the demand-driven matter
+      // SINK for biomass surplus: they immigrate when the floor piles up, leave once full, and what they
+      // carry is gone (no corpse). The relief valve that keeps the closed loop from silting up.
+      const gorged = e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > cap.biomass * 0.80;
       const overPressure = Math.max(0, (scavN - scavTarget) / Math.max(1, scavTarget));
-      if (starved) {
+      if (starved || gorged) {
         e._emigrate += dt;
-        if (e._emigrate > 4) { e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller }); }
+        if (e._emigrate > (gorged ? 3 : 4)) { e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller, full: gorged }); }
       } else e._emigrate = 0;
       if (e.alive && overPressure > 0 && world.rng() < overPressure * 0.18 * dt) {
         e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller });
@@ -5070,7 +5086,7 @@ function spawnAlgae(world, opts = {}) {
     // Algae are NOT O2-immune: a modest tolerance buys a little headroom, but lingering in the
     // nursery's saturated water still poisons them — the whole point of the dive-to-escape strategy.
     organelles: deep
-      ? { membrane: 4 + Math.floor(world.rng() * 3), anaerobic_processor: 2, photosystem: 1, oxygen_tolerance: 0, oxygen_vacuole: 1, membrane_hardening: 3 + Math.floor(world.rng() * 3), storage_vacuole: 8, exotic_vacuole: 1, toxin_launcher: 1 }
+      ? { membrane: 4 + Math.floor(world.rng() * 3), anaerobic_processor: 2, photosystem: 1, oxygen_tolerance: 0, oxygen_vacuole: 1, membrane_hardening: 3 + Math.floor(world.rng() * 3), storage_vacuole: 8, exotic_vacuole: 1, toxin_launcher: 1, lipid_armor_forge: 1 + Math.floor(world.rng() * 2) }
       : { membrane: mature ? 2 : 1, anaerobic_processor: 1, photosystem: 2 + (mature ? 2 : 0), oxygen_tolerance: mature ? 2 : 1, oxygen_vacuole: 1, membrane_hardening: mature ? 3 : 1, storage_vacuole: mature ? 8 : 4, exotic_vacuole: 1 },
     cargo: deep
       ? { biomass, lipids: rand(world, 24, 55), energy: rand(world, 12, 34), toxins: rand(world, 26, 60) }
@@ -5103,8 +5119,12 @@ function spawnScavenger(world, opts = {}) {
   const abyssal = !!opts.abyssal;
   const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 };
   if (!abyssal) organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
+  // The abyssal caste is a BIG bottom-feeder: a wide mouth and a huge belly to swallow the whale-fall
+  // pile and haul it OUT of the column. It immigrates when the floor biomass piles up (deepMatter, see
+  // spawnTick) and emigrates once GORGED (populationTick) — a demand-driven matter sink for surplus.
+  else { organelles.membrane = 3; organelles.membrane_intake = 2; organelles.storage_vacuole = 3; organelles.biomass_vacuole = 5; }
   const e = makeSoftBody(world, 'npc', x, y, {
-    r: rand(world, 11, 18) * (abyssal ? 2 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
+    r: rand(world, 11, 18) * (abyssal ? 2.4 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
     trophicRole: abyssal ? 'abyssal_scavenger' : 'anaerobic_scavenger', depthHome: y,
     organelles, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
