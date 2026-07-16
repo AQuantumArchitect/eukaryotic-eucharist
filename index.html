@@ -6,7 +6,7 @@
 <title>Eukaryotic Eucharist v1.3.3 - Predator Flow Balance</title>
 <style>
 :root{--bg:#050611;--panel:rgba(7,9,22,.86);--line:rgba(158,240,189,.20);--text:#f7f4ff;--muted:#aeb1c7;--good:#9ef0bd;--bad:#ff7897;--gold:#f5d47a;--blue:#86d2ff;--violet:#d6a2ff}
-*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}.vitals{position:absolute;left:10px;right:10px;top:55px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}.vital{border-radius:14px;padding:8px 9px;height:42px}.vtop{display:flex;justify-content:space-between;gap:8px;font-size:10px;font-weight:950;color:#fff}.vtop span:first-child{color:var(--muted);text-transform:uppercase}.track{position:relative;height:7px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:5px;border:1px solid rgba(255,255,255,.08)}.layerLines{position:absolute;inset:0;pointer-events:none;border-radius:99px}.fill{height:100%;width:0%;border-radius:99px;background:#fff}.hp .fill{background:linear-gradient(90deg,#ff6c8e,#ffb5c4)}.energy .fill{background:linear-gradient(90deg,#86d2ff,#f5d47a)}.depth .fill{background:linear-gradient(90deg,#9ef0bd,#d6a2ff)}.oxygen .fill{background:linear-gradient(90deg,#bfe8ff,#ffffff)}.dna .fill{background:linear-gradient(90deg,#b06dff,#d6a2ff)}.vital.oxygen{height:56px}.o2ExtRow{display:flex;align-items:center;gap:4px;margin-top:4px}.o2ExtRow span{font-size:8px;font-weight:950;color:#bfe8ff;white-space:nowrap}.o2ExtRow i{flex:1 1 auto;margin:0;display:block;height:5px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden}.o2ExtRow b{display:block;height:100%;width:0%;border-radius:99px;background:#bfe8ff}.chips{position:absolute;left:10px;right:10px;top:120px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.chip{border-radius:13px;padding:7px 8px;min-width:0;background:rgba(6,8,18,.70);border:1px solid rgba(255,255,255,.10)}.chipTop{display:flex;justify-content:space-between;font-size:9px;font-weight:950;text-transform:uppercase;color:var(--muted);gap:5px}.chip i{display:block;height:5px;border-radius:99px;margin-top:5px;background:rgba(255,255,255,.10);overflow:hidden}.chip b{display:block;height:100%;width:0%;border-radius:99px}.chip.ballast .ballastTrack{position:relative;overflow:visible}.chip.ballast .ballastTrack::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:rgba(255,255,255,.4)}.chip.ballast.off{opacity:.5}.status{position:absolute;left:12px;right:12px;top:212px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
+*{box-sizing:border-box;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;overflow:hidden;background:#050611;color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#wrap{position:relative;width:100vw;height:100vh;overflow:hidden;background:radial-gradient(circle at 50% 0%,#293e2d 0,#121423 28%,#050611 70%)}canvas{display:block;width:100%;height:100%;touch-action:none}.hud{position:absolute;inset:0;pointer-events:none}.card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 38px rgba(0,0,0,.45);backdrop-filter:blur(12px)}.canopyBar{position:absolute;left:10px;right:10px;top:8px;height:39px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,rgba(158,240,189,.18),rgba(214,162,255,.10),rgba(245,212,122,.10));font-weight:950;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 2px 8px #000}.canopyBar small{margin-left:10px;color:#dfffe4;font-weight:800;text-transform:none;letter-spacing:0;opacity:.82}#dagHud{position:absolute;left:0;right:0;top:50px;pointer-events:none}.status{position:absolute;left:12px;right:12px;top:212px;border-radius:16px;padding:10px 12px;font-size:11px;line-height:1.35;color:#e8e6ff}.status strong{color:var(--good)}.desktopPanel{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:300px;max-height:60vh;overflow:auto;border-radius:18px;padding:12px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.desktopPanel h3{margin:0 0 8px;color:var(--good);font-size:12px;text-transform:uppercase;letter-spacing:.06em}.orgList{display:grid;grid-template-columns:1fr 1fr;gap:6px}.org{border:1px solid rgba(255,255,255,.09);border-radius:10px;padding:7px;background:rgba(255,255,255,.035);font-size:10px;color:var(--muted)}.org.on{border-color:rgba(158,240,189,.35);background:rgba(158,240,189,.06)}.org b{display:block;color:#fff;font-size:11px}.controls{position:absolute;left:12px;bottom:12px;width:300px;border-radius:18px;padding:11px;font-size:11px;color:#eae7ff}.controls h4{margin:0 0 7px;color:var(--gold);text-transform:uppercase;font-size:11px}.key{display:inline-block;min-width:42px;text-align:center;background:rgba(255,255,255,.14);border-radius:5px;padding:1px 5px;margin:0 6px 4px 0;font-family:ui-monospace,monospace;font-weight:950}.prompt{position:absolute;left:50%;top:153px;transform:translateX(-50%);display:none;border-radius:999px;padding:9px 14px;font-size:12px;font-weight:950;z-index:30}.touch{display:none;position:absolute;inset:0;pointer-events:none;z-index:50}.joy{position:absolute;left:18px;bottom:24px;width:124px;height:124px;border-radius:999px;border:1px solid rgba(158,240,189,.28);background:radial-gradient(circle,rgba(158,240,189,.13),rgba(8,10,22,.32));pointer-events:auto;touch-action:none;box-shadow:0 16px 44px rgba(0,0,0,.42)}.knob{position:absolute;left:50%;top:50%;width:50px;height:50px;margin:-25px 0 0 -25px;border-radius:999px;background:rgba(158,240,189,.62);border:1px solid rgba(255,255,255,.36);box-shadow:0 0 22px rgba(158,240,189,.28);transform:translate(0,0)}.actions{position:absolute;right:13px;bottom:18px;display:grid;grid-template-columns:repeat(2,72px);gap:9px;pointer-events:auto}.act{height:58px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(8,10,22,.72);color:#f7f4ff;font-weight:950;font-size:10px;box-shadow:0 12px 34px rgba(0,0,0,.4);touch-action:none}.act b{display:block;font-size:17px;line-height:17px}.act.enabled{border-color:rgba(158,240,189,.5);background:rgba(18,38,30,.78)}.act.locked{opacity:.27;filter:saturate(.35)}.act.active{transform:scale(.96);background:rgba(158,240,189,.26)}.shopFab{position:absolute;right:14px;top:154px;border-radius:999px;border:1px solid rgba(158,240,189,.4);background:rgba(8,10,22,.72);color:#eaffee;padding:9px 13px;font-size:11px;font-weight:950;z-index:52;pointer-events:auto;display:none}.overlay{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding:18px;background:rgba(3,4,12,.24);z-index:108;pointer-events:none}.shop{pointer-events:auto;margin-top:152px;width:min(780px,calc(100vw - 420px));max-height:min(700px,calc(100vh - 168px));display:flex;flex-direction:column;overflow:hidden;border-radius:24px;padding:0;background:radial-gradient(circle at 10% 0%,rgba(158,240,189,.14),transparent 34%),radial-gradient(circle at 90% 20%,rgba(214,162,255,.12),transparent 34%),rgba(8,8,22,.96);border:1px solid rgba(158,240,189,.42);box-shadow:0 24px 70px rgba(0,0,0,.72)}
 /* Shopping: tradeable HUD bars become tap-zones — tap LEFT half to sell (→lipids, green), RIGHT to buy (lipids→, amber). */
 body.shopping [data-tres]{pointer-events:auto;cursor:pointer;position:relative;overflow:visible;background:linear-gradient(90deg,rgba(143,227,122,.18),transparent 44%,transparent 56%,rgba(255,182,120,.18))}
 body.shopping [data-tres]::before,body.shopping [data-tres]::after{position:absolute;bottom:1px;font-size:9px;font-weight:950;pointer-events:none;text-shadow:0 1px 3px #000;z-index:3}
@@ -19,7 +19,7 @@ body.shopping [data-tres]:active{filter:brightness(1.35)}
 .chip.wallet .chipTop span{color:#ffe6ad}
 .chip.wallet b{background:#f5d47a!important}
 .seqTop{margin-bottom:6px}.shopHead{display:flex;justify-content:space-between;gap:14px;flex:0 0 auto;padding:16px 16px 10px;background:linear-gradient(180deg,rgba(8,8,22,.98),rgba(8,8,22,.88));z-index:2}.shopExchange{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:7px;padding:2px 16px 12px;border-bottom:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(8,8,22,.66),rgba(8,8,22,.24))}#shopBody{flex:1 1 auto;overflow:auto;padding:12px 16px 16px;scrollbar-width:thin;scrollbar-color:rgba(158,240,189,.35) transparent}.shop h1{margin:0 0 4px;color:var(--good);font-size:20px}.shop p{margin:0;color:var(--muted);font-size:11px;line-height:1.35}.close{color:var(--bad);font-size:12px;font-weight:950;border:1px solid rgba(255,120,151,.3);border-radius:9px;padding:5px 9px;height:max-content;cursor:pointer}.section{margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.12)}.section:first-of-type{border-top:0;margin-top:4px;padding-top:0}.sectionTitle{display:flex;justify-content:space-between;gap:10px;margin:0 0 8px;color:var(--good);font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.07em}.sectionTitle small{letter-spacing:0;text-transform:none;color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.offer{border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);padding:10px;min-height:102px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer}.offer.exchange{--glowc:158,240,189;flex:1 1 152px;min-width:140px;min-height:auto;padding:8px 9px;border-color:rgba(158,240,189,.32);background:linear-gradient(90deg,rgba(158,240,189,.075),rgba(134,210,255,.04));box-shadow:0 0 calc(var(--need,0)*22px) rgba(var(--glowc),calc(var(--need,0)*.7)),inset 0 0 calc(var(--need,0)*16px) rgba(var(--glowc),calc(var(--need,0)*.16));filter:saturate(calc(1 + var(--need,0)*.85)) brightness(calc(1 + var(--need,0)*.32));transition:box-shadow .3s ease,filter .3s ease}.offer.exchange.out-biomass{--glowc:95,217,107;border-color:rgba(95,217,107,.46);background:linear-gradient(90deg,rgba(95,217,107,.14),rgba(95,217,107,.035))}.offer.exchange.out-lipids{--glowc:240,166,60;border-color:rgba(240,166,60,.50);background:linear-gradient(90deg,rgba(240,166,60,.15),rgba(240,166,60,.035))}.offer.exchange.out-energy{--glowc:73,182,255;border-color:rgba(73,182,255,.54);background:linear-gradient(90deg,rgba(73,182,255,.16),rgba(73,182,255,.035))}.offer.exchange.out-toxins{--glowc:232,226,44;border-color:rgba(232,226,44,.50);background:linear-gradient(90deg,rgba(232,226,44,.14),rgba(232,226,44,.035))}.offer.exchange.out-hp{--glowc:255,120,151;border-color:rgba(255,120,151,calc(.44 + var(--need,0)*.5));background:linear-gradient(90deg,rgba(255,120,151,.13),rgba(255,120,151,.03))}.offer.exchange.out-detox{--glowc:214,162,255;border-color:rgba(214,162,255,calc(.44 + var(--need,0)*.5));background:linear-gradient(90deg,rgba(214,162,255,.13),rgba(214,162,255,.03))}.offer.exchange.urgent{animation:needPulse 1.15s ease-in-out infinite}@keyframes needPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}.exchangeGrid{grid-template-columns:1fr}.offer.exchange .cat{margin-bottom:3px}.offer.exchange .oname{font-size:11px}.offer.exchange .exchangeFlow{margin-top:5px;gap:5px}.offer.exchange .pill{padding:3px 6px;font-size:9px}.offer.exchange .odesc{display:none}.pill.dropP{color:#e6d4ff}.offer.sequence{flex:1 1 152px;min-width:140px;min-height:auto;padding:8px 9px;border-color:rgba(143,227,122,.4);background:linear-gradient(90deg,rgba(143,227,122,.11),rgba(143,227,122,.03))}.offer.sequence .oname{font-size:11px}.offer.sequence .cat{margin-bottom:3px}.offer.sequence .buyCue{margin-top:6px;font-size:9px;font-weight:900}.offer.organelle{border-color:rgba(134,210,255,.25);background:rgba(134,210,255,.045)}.offer.theme-general{border-color:rgba(134,210,255,.30);background:linear-gradient(135deg,rgba(134,210,255,.080),rgba(255,255,255,.030))}.offer.theme-algae{border-color:rgba(137,239,142,.34);background:linear-gradient(135deg,rgba(137,239,142,.090),rgba(191,232,255,.040))}.offer.theme-attack{border-color:rgba(255,120,151,.35);background:linear-gradient(135deg,rgba(255,120,151,.090),rgba(232,226,44,.035))}.offer.theme-exotic{border-color:rgba(176,109,255,.34);background:linear-gradient(135deg,rgba(255,184,77,.07),rgba(176,109,255,.06))}.offer.eucharist{border-color:rgba(245,212,122,.32);background:rgba(245,212,122,.055)}.offer.colony{border-color:rgba(214,162,255,.32);background:rgba(214,162,255,.055)}.offer.ready{border-color:rgba(158,240,189,.48);box-shadow:inset 0 0 0 1px rgba(158,240,189,.08),0 10px 28px rgba(0,0,0,.22)}.offer.ready:hover{transform:translateY(-1px);background:rgba(158,240,189,.085)}.offer.lock{opacity:.42;cursor:not-allowed;filter:saturate(.55)}.exchangeFlow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}.pill{border-radius:999px;padding:4px 7px;font-size:10px;font-weight:950;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);white-space:nowrap}.pill.costP{color:#ffd8df}.pill.gainP{color:#dfffe4}.flowArrow{font-weight:950;color:var(--gold);opacity:.9}.buyCue{margin-top:8px;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--good)}.cat{font-size:8px;font-weight:950;color:var(--gold);text-transform:uppercase;border:1px solid rgba(245,212,122,.28);border-radius:99px;padding:2px 6px;width:max-content;margin-bottom:5px}.oname{font-weight:950;font-size:12px;color:#fff}.odesc{color:var(--muted);font-size:10px;line-height:1.28;margin-top:3px}.cost{font-size:10px;font-weight:900;color:var(--good);margin-top:7px}.req{font-size:10px;font-weight:900;color:var(--bad);margin-top:7px;line-height:1.25}.initiation{font-size:9px;font-weight:900;letter-spacing:.03em;color:#ff9db0;margin-top:6px;opacity:.85}.toast{position:absolute;left:50%;bottom:154px;transform:translateX(-50%);display:none;border-radius:999px;padding:10px 16px;font-size:12px;font-weight:850;z-index:120}.law{position:absolute;left:10px;right:10px;bottom:154px;border-radius:15px;padding:8px 10px;font-size:10px;color:var(--muted);text-align:center;display:none}.gameOver{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,6,17,.82);z-index:120;pointer-events:auto}.gameOver .box{width:min(520px,calc(100vw - 36px));border-radius:24px;padding:28px;text-align:center}.gameOver h1{margin:0 0 8px;color:var(--bad)}.gameOver p{margin:0 0 18px;color:var(--muted)}.gameOver button{border:0;border-radius:999px;background:var(--good);padding:12px 20px;font-weight:950;color:#071008}.focusGate{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,6,17,.88);z-index:200;cursor:pointer;pointer-events:auto}.focusGate h2{color:var(--good);font-size:22px;margin:0 0 8px;font-weight:950;letter-spacing:.04em}.focusGate p{color:var(--muted);font-size:13px;margin:0}.shopWarn{flex:0 0 auto;padding:9px 16px;font-size:11px;font-weight:900;color:#ffdca6;background:linear-gradient(180deg,rgba(255,120,80,.17),rgba(255,120,80,.06));border-bottom:1px solid rgba(255,150,90,.36);text-align:center;letter-spacing:.02em}.shopWarn.flash{animation:warnFlash .32s ease 2}@keyframes warnFlash{0%,100%{background:linear-gradient(180deg,rgba(255,120,80,.17),rgba(255,120,80,.06))}50%{background:rgba(255,88,60,.55);color:#fff}}
-@media(max-width:900px){.desktopPanel,.controls,.status{display:none}.touch{display:block}.shopFab{display:block}.chips{top:117px;grid-template-columns:repeat(4,1fr)}.canopyBar small{display:none}.law{display:block}.overlay{align-items:flex-end;justify-content:center;padding:0;background:rgba(3,4,12,.30)}.shop{width:100vw;max-height:79vh;border-radius:26px 26px 0 0;border-left:0;border-right:0;border-bottom:0;padding:0}#shopBody{padding-bottom:calc(16px + env(safe-area-inset-bottom))}.grid{grid-template-columns:1fr}.offer{min-height:84px}.prompt{top:151px;font-size:11px}.toast{bottom:153px}}
+@media(max-width:900px){.desktopPanel,.controls,.status{display:none}.touch{display:block}.shopFab{display:block}.canopyBar small{display:none}.law{display:block}.overlay{align-items:flex-end;justify-content:center;padding:0;background:rgba(3,4,12,.30)}.shop{width:100vw;max-height:79vh;border-radius:26px 26px 0 0;border-left:0;border-right:0;border-bottom:0;padding:0}#shopBody{padding-bottom:calc(16px + env(safe-area-inset-bottom))}.grid{grid-template-columns:1fr}.offer{min-height:84px}.prompt{top:151px;font-size:11px}.toast{bottom:153px}}
 @media(max-width:480px){.chipTop{font-size:8px}.chip{padding:6px 6px}.actions{grid-template-columns:repeat(2,68px);gap:8px}.act{height:55px}.joy{width:116px;height:116px}.vitals{gap:5px}.vital{padding:7px 7px}.vtop{font-size:9px}}
 body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping .shopFab{display:none}body.shopping .chips,body.shopping .vitals,body.shopping .canopyBar{z-index:110;filter:none;opacity:1}body.shopping .prompt{display:none!important}
 </style>
@@ -103,13 +103,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
   <canvas id="game" aria-label="Eukaryotic Eucharist v1.3.3 predator flow balance canvas"></canvas>
   <div class="hud">
     <div class="canopyBar card">All Praise Yuki <small>metabolism to information</small></div>
-    <div class="vitals">
-      <div class="vital hp card" id="hpVital"><div class="vtop"><span>HP</span><span id="hpText">0</span></div><div class="track"><div class="fill" id="hpFill"></div><div class="layerLines" id="hpLayers"></div></div></div>
-      <div class="vital energy card" id="energyVital"><div class="vtop"><span>ATP</span><span id="energyText">0</span></div><div class="track"><div class="fill" id="energyFill"></div></div></div>
-      <div class="vital dna card" id="dnaVital"><div class="vtop"><span>DNA</span><span id="dnaText">0</span></div><div class="track"><div class="fill" id="dnaFill"></div></div></div>
-      <div class="vital oxygen card" id="o2Vital"><div class="vtop"><span>O2</span><span id="o2Text">0</span></div><div class="track"><div class="fill" id="o2Fill"></div></div><div class="o2ExtRow"><span>air</span><i><b id="o2ExtFill"></b></i></div></div>
-    </div>
-    <div class="chips" id="chips"></div>
+    <canvas id="dagHud" aria-label="Body graph: owned organelles feeding your vitals"></canvas>
     <div class="status card" id="status"><strong>v1.3.3</strong> predator flow balance</div>
     <div class="controls card"><h4>Projected controls</h4><div id="controls"></div></div>
     <div class="prompt card" id="prompt"></div>
@@ -131,8 +125,10 @@ import * as K from './src/graph_kernel.mjs?v=light-oxygen-cloud-20260714h';
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
+const dagCanvas = document.getElementById('dagHud');
+const dagCtx = dagCanvas.getContext('2d');
 const ui = {
-  hpText: el('hpText'), hpFill: el('hpFill'), hpLayers: el('hpLayers'), energyText: el('energyText'), energyFill: el('energyFill'), dnaText: el('dnaText'), dnaFill: el('dnaFill'), o2Text: el('o2Text'), o2Fill: el('o2Fill'), o2ExtFill: el('o2ExtFill'), chips: el('chips'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), hpVital: el('hpVital'), energyVital: el('energyVital'), dnaVital: el('dnaVital'), o2Vital: el('o2Vital'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
+  dagHud: el('dagHud'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn')
 };
 function el(id){return document.getElementById(id)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -180,7 +176,19 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   toast('Reborn from the froth — a fresh genome. Yuki\'s deeper grafts are sealed until you earn them again.');
 }
 
-function resize(){canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+let dagHudH=200;
+function resize(){
+  canvas.width=Math.floor(innerWidth*dpr);canvas.height=Math.floor(innerHeight*dpr);canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0);
+  // The DAG HUD occupies the same header band the old vitals+chips rows used to (below the canopy bar,
+  // above the status/controls cards) — clamped so it never eats the touch controls on short viewports.
+  dagHudH=clamp(Math.round(innerHeight*0.30),168,248);
+  dagCanvas.width=Math.floor(innerWidth*dpr);dagCanvas.height=Math.floor(dagHudH*dpr);dagCanvas.style.width=innerWidth+'px';dagCanvas.style.height=dagHudH+'px';dagCtx.setTransform(dpr,0,0,dpr,0,0);
+  // dagHudH is content-driven (varies with organelle count and viewport), so nudge whatever sits right
+  // below the old fixed vitals+chips band to actually clear it, instead of leaving their old hardcoded offsets.
+  const bandBottom=50+dagHudH+8;
+  ui.status.style.top=bandBottom+'px';
+  ui.shopFab.style.top=bandBottom+'px';
+}
 addEventListener('resize',resize,{passive:true}); resize();
 
 addEventListener('keydown',e=>{
@@ -232,8 +240,8 @@ function command(){
 
 function loop(now){
   const dt=Math.min(.05,(now-last)/1000||1/60); last=now;
-  if(ui.shopOverlay.style.display!=='flex') K.step(world, command(), dt);
-  else K.yukiRestore(world, dt);   // in Yuki's chamber she freely heals HP, recharges ATP, eases O2
+  const sheltered=ui.shopOverlay.style.display==='flex';
+  K.step(world, command(), dt, sheltered); // sheltered: tucked inside Yuki (no pause) — she heals/eases you, the world keeps running
   projection=K.getRenderProjection(world); hud=K.getHudProjection(world);
   const player=projection.entities.find(e=>e.id===world.playerId);
   if(player){camera.x=player.x-innerWidth*.5;camera.y=clamp(player.y-innerHeight*.53,0,K.WORLD.h-innerHeight);}
@@ -276,53 +284,10 @@ function fillPulse(key,cur){
   fillPrev[key]=cur;
   return (fillTimer[key]||0)>0;
 }
-const CHIP_TIP={
-  biomass:'Biomass — your bulk and the fuel processors burn into ATP. Gather it by feeding on fields (F).',
-  lipids:'Lipids (fat) — spent on membrane repair (Q) and a source of buoyancy. Banked from feeding.',
-  toxins:'Toxins — metabolic waste and ammo for toxin weapons. Too much harms you; vent with Detox at Yuki.',
-  __ballast:'Ballast trim — your buoyancy. Hold S to flood (vent gas, dive), W to release (rise). Needs a Ballast Bladder.',
-  __pressure:'Water pressure — compresses ballast gas the deeper you dive (Boyle\'s Law), so the same tank buys less lift down here. Universal — every diver feels it, armor or not.',
-  spores:'Spores — exotic material spent on grafts at Yuki. Harvested from kills and the deep; held in Exotic Vesicle Racks.',
-  enzymes:'Enzymes — exotic catalyst for grafts and engulfing. Dropped by scavenger kills; held in Exotic Vesicle Racks.',
-  crystals:'Crystals — exotic mineral for grafts and wards. Made by a Mineralizing Gland or found deep; held in Exotic Vesicle Racks.',
-  dna:'DNA — genetic records torn from mutated cells. Sequence them at Yuki to permanently unlock organs. Lost if you die first.'
-};
 function updateUI(){
   if(!hud)return;
-  ui.hpText.textContent=`${fmt(hud.hp.value)}/${fmt(hud.hp.max)}`; ui.hpFill.style.width=pct(hud.hp.value,hud.hp.max);
-  // Membrane layers = HP bars: draw a divider at each layer boundary so armor reads as plates.
-  const layers=Math.min(8,hud.hp.layers||1);
-  if(layers>1){const seg=100/layers,st=[];for(let L=1;L<layers;L++){const x=seg*L;st.push(`transparent ${x-0.7}%`,`rgba(4,6,17,.7) ${x-0.7}%`,`rgba(4,6,17,.7) ${x+0.7}%`,`transparent ${x+0.7}%`);}ui.hpLayers.style.backgroundImage=`linear-gradient(90deg,${st.join(',')})`;}else ui.hpLayers.style.backgroundImage='';
-  const energy=hud.resources.find(r=>r.id==='energy'); ui.energyText.textContent=`${fmt(energy.value)}/${fmt(energy.max)}`; ui.energyFill.style.width=pct(energy.value,energy.max);
-  const dna=hud.resources.find(r=>r.id==='dna'); ui.dnaText.textContent=`${fmt(dna.value)}/${fmt(dna.max)}`; ui.dnaFill.style.width=pct(dna.value,dna.max);
-  // Stored O2 is an ABSOLUTE volume (value / your capacity); "air" is the ENVIRONMENT'S saturation %
-  // at this depth — feed (breathe) to pull your fill toward it: high air fills you, low air empties you.
-  ui.o2Text.innerHTML=`${Math.round(hud.oxygen.value*100)}/${Math.round(hud.oxygen.max*100)} · <span style="color:#9fd0ff;font-weight:800">air ${Math.round((hud.oxygen.external||0)*100)}%</span>`; ui.o2Fill.style.width=pct(hud.oxygen.value,hud.oxygen.max); ui.o2Fill.style.opacity=hud.oxygen.value>hud.oxygen.tolerance?1:.72;
-  if(ui.o2ExtFill) ui.o2ExtFill.style.width=Math.round((hud.oxygen.external||0)*100)+'%';
-  // ── Duress flashing: HP when a cell wounds you, ATP when critically low, O2 over the poison line ──
-  if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
-  ui.hpVital.classList.toggle('duress', hpFlash>0);
-  const atpFrac=energy.value/Math.max(1,energy.max); ui.energyVital.classList.toggle('duress', atpFrac<0.10);
-  // Matches the kernel's actual overload gate exactly (graph_kernel.mjs: e.oxygen>tol, grace handled
-  // kernel-side) — this used to also require depth<400, a leftover from a shallow-only gate the kernel
-  // dropped last session, so deep O2 damage was silently flashing nothing. Fixed: over tolerance = red.
-  const o2Over=hud.oxygen.value>hud.oxygen.tolerance; ui.o2Vital.classList.toggle('duress', o2Over);
-  // ── Fill flashing: stats that are actively GAINING glow green (is my feeding working?) ──
   uiPhase++;
-  ui.hpVital.classList.toggle('filling', fillPulse('hp',hud.hp.value) && hpFlash<=0);
-  ui.energyVital.classList.toggle('filling', fillPulse('atp',energy.value) && atpFrac>=0.10);
-  ui.o2Vital.classList.toggle('filling', fillPulse('o2',hud.oxygen.value) && !o2Over);
-  // ── Stage-aware tooltips: what each stat is + what to do right now (verified against mechanics) ──
-  ui.hpVital.title='HP — membrane integrity. Flashes red when a cell wounds you. Mend it with Lipid Repair (Q, needs a Lipid Repair Loom) or add membrane layers at Yuki; lose a full layer and it sheds.';
-  ui.energyVital.title='ATP powers every action — at zero, all actions are blocked. Make it by feeding on matter fields (F / right-click); processors turn biomass into ATP. Charge ATP instantly at Yuki.'+(atpFrac<0.10?'  ⚠ Almost empty — feed or Charge ATP now.':'');
-  ui.o2Vital.title='Banked oxygen — respiration fuel for the aerobic / mitochondrial path. The second number is your safe limit; above it oxygen poisons you. Lower it: Detox at Yuki, dive to darker water, or raise the limit with Oxygen Tolerance / Catalase.'+(o2Over?'  ⚠ Over the limit — taking O2 damage!':'');
-  ui.dnaVital.title=`DNA — genetic records torn from mutated cells (${hud.depth.zone}, deeper water sheds richer strands). Sequence them at Yuki to permanently unlock organs — lost if you die first. Dive by holding S (needs a Ballast Bladder); rise with W.`;
-  // Row 2 is the anaerobic->lipogenic metabolic chain (lipids, biomass+sunlight, enzymes) plus
-  // pressure, the force that compresses them; row 3 is the exotic/waste row. Grouped by relationship,
-  // not alphabetically — the layout future pipe-diagrams between organelles will draw onto.
-  const visible = ['lipids','biomass','enzymes','__pressure','spores','__ballast','toxins','crystals'];
-  const glowT=0.5+0.5*Math.sin(uiPhase*0.42); // shared pulse phase for the filling glow
-  ui.chips.innerHTML = visible.map(id=>{if(id==='__ballast')return ballastChip();if(id==='__pressure')return pressureChip();const r=hud.resources.find(x=>x.id===id);const filling=fillPulse('chip_'+id,r.value);const glow=filling?`box-shadow:0 0 ${(5+9*glowT).toFixed(1)}px rgba(158,240,189,${(0.28+0.45*glowT).toFixed(2)});border-color:rgba(158,240,189,${(0.4+0.35*glowT).toFixed(2)})`:'';const tr=false?` data-tres="${id}"`:'';const wal=id==='lipids'?' wallet':'';return `<div class="chip${wal}"${tr} title="${CHIP_TIP[id]||''}" style="${glow}"><div class="chipTop"><span>${r.label}</span><span>${fmt(r.value)}</span></div><i><b style="width:${pct(r.value,r.max)};background:${r.color}"></b></i>${id==='biomass'?sunBar():''}</div>`}).join('');
+  drawDagHud();
   paintTradeZones();
   const metab = hud.metabolism ? ` · processors ${hud.metabolism.anaerobicProcessorLevel}${hud.metabolism.energyStarved?' · ATP EMPTY: actions blocked':''}` : '';
   const carried = (hud.carriedStrains&&hud.carriedStrains.length)?`<br><span style="color:#8fe37a;font-weight:900">◈ ${hud.carriedStrains.length} DNA sample${hud.carriedStrains.length>1?'s':''} carried — sequence at Yuki to unlock (lost if you die)</span>`:'';
@@ -336,6 +301,101 @@ function updateUI(){
   // renderShop() runs on open and after each buy — that's all it needs.
 }
 
+// ── DAG HUD: replaces the old vitals+chips bars outright. Two node kinds drawn on #dagHud (a small
+// screen-space canvas layered under the status card, no camera transform — this isn't world space):
+// a fixed row of "sink" nodes standing in for every resource/vital the removed bars showed, and one
+// node per organelle the player currently owns, with edges from organelle -> the sink(s) it feeds
+// (K.ORGAN_GRAPH_EDGES, hand-authored in the kernel). Modify organelles (K.ORGAN_GRAPH_ROLE) draw
+// bigger/solid/bright; tune organelles draw smaller/dashed/dim — "we're just exposing the model's
+// comprehension of the player back to them."
+const DAG_VITAL_SINKS=['hp','energy','oxygen','dna'];
+const DAG_MINOR_SINKS=['biomass','lipids','toxins','gas','ballast','spores','enzymes','crystals'];
+const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals'};
+// Resource nodes replace the removed bars, so they carry the same "duress" (red, something's wrong)
+// and "filling" (green pulse, actively gaining) reads the old vitals/chips gave — parity, not just decoration.
+function dagSinkValue(id){
+  if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0};
+  if(id==='oxygen'){ const over=hud.oxygen.value>hud.oxygen.tolerance; return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:over}; }
+  if(id==='gas'){ const b=hud.ballast||{}; return {value:b.gas||0, max:Math.max(0.05,b.gasCap||0), color:'134,210,255', duress:false, off:!b.hasOrgan}; }
+  if(id==='ballast'){ const b=hud.bricks||{value:0,cap:0}; return {value:b.value, max:Math.max(0.05,b.cap), color:hexRgb(K.COLORS.ballast), duress:false, off:!(b.cap>0)}; }
+  const r=hud.resources.find(x=>x.id===id);
+  if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
+  const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
+  return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
+}
+// Pure positioning: sink nodes are fixed in a two-row band across the top (the direct replacement for
+// the old .vitals/.chips header); organelle nodes flow left-to-right below, wrapping rows, tiered by
+// `tier` so foundational (tier 1) organs read first. No force-directed settling — legibility, not physics.
+function layoutDag(){
+  const w=innerWidth;
+  const sinks=[];
+  DAG_VITAL_SINKS.forEach((id,i)=>sinks.push({id,label:DAG_SINK_LABEL[id],x:w*(i+0.5)/DAG_VITAL_SINKS.length,y:24,r:15}));
+  DAG_MINOR_SINKS.forEach((id,i)=>sinks.push({id,label:DAG_SINK_LABEL[id],x:w*(i+0.5)/DAG_MINOR_SINKS.length,y:60,r:10}));
+  const orgs=[];
+  const list=hud.organelles.slice().sort((a,b)=>{const ta=a.tier==='gate'?4:a.tier,tb=b.tier==='gate'?4:b.tier;return ta-tb||a.name.localeCompare(b.name);});
+  const pad=14, rowH=28, top=82;
+  let x=pad,y=top;
+  for(const o of list){
+    const r=o.graphRole==='modify'?10.5:7;
+    if(x+r*2+8>w-pad){x=pad;y+=rowH;}
+    orgs.push({id:o.id,name:o.name,count:o.count,tier:o.tier,graphRole:o.graphRole,x:x+r,y,r});
+    x+=r*2+10;
+  }
+  return {sinks,orgs,w,h:y+rowH+pad};
+}
+function dagEdge(g,x1,y1,x2,y2,rgb,a){
+  g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=3.4; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+}
+function drawDagSink(g,s,v){
+  const frac=clamp(v.value/(v.max||1),0,1);
+  const filling=fillPulse('dag_'+s.id,v.value);
+  const pulse=0.5+0.5*Math.sin(uiPhase*0.42);
+  const off=!!v.off;
+  const rgb = off?'120,122,132':v.duress?'255,110,120':v.color;
+  const glowA = off?0.08:v.duress?(0.5+0.4*Math.sin(uiPhase*0.6)):filling?(0.35+0.35*pulse):0.16;
+  const bk=g.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*2.1);
+  bk.addColorStop(0,`rgba(${rgb},${(glowA*0.55).toFixed(2)})`); bk.addColorStop(1,`rgba(${rgb},0)`);
+  g.fillStyle=bk; g.beginPath(); g.arc(s.x,s.y,s.r*2.1,0,Math.PI*2); g.fill();
+  g.fillStyle='rgba(6,8,18,.82)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
+  g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3;
+  g.beginPath(); g.arc(s.x,s.y,s.r-2,-Math.PI/2,-Math.PI/2+Math.PI*2*frac); g.stroke();
+  g.strokeStyle=`rgba(${rgb},.4)`; g.lineWidth=1; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.stroke();
+  g.fillStyle='rgba(255,255,255,.85)'; g.font='700 8px ui-sans-serif,system-ui'; g.textAlign='center';
+  g.fillText(s.label, s.x, s.y+s.r+10);
+  g.fillStyle=off?'rgba(200,200,210,.6)':`rgb(${rgb})`; g.font='800 8px ui-monospace,monospace';
+  g.fillText(off?'—':fmt(v.value), s.x, s.y+3);
+}
+function drawDagOrg(g,o){
+  const rgb = o.tier==='gate' ? '245,212,122' : '158,240,189';
+  const modify = o.graphRole==='modify';
+  const a = modify?0.85:0.42;
+  const bk=g.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r*1.9);
+  bk.addColorStop(0,`rgba(${rgb},${(a*0.4).toFixed(2)})`); bk.addColorStop(1,`rgba(${rgb},0)`);
+  g.fillStyle=bk; g.beginPath(); g.arc(o.x,o.y,o.r*1.9,0,Math.PI*2); g.fill();
+  g.fillStyle=`rgba(${rgb},${(a*0.30).toFixed(2)})`; g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.fill();
+  g.setLineDash(modify?[]:[3,3]);
+  g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=modify?1.6:1;
+  g.beginPath(); g.arc(o.x,o.y,o.r,0,Math.PI*2); g.stroke();
+  g.setLineDash([]);
+  if(o.count>1){ g.fillStyle='rgba(255,255,255,.9)'; g.font='800 7px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+2.5); }
+}
+function drawDagHud(){
+  if(prevHp!=null && hud.hp.value < prevHp-0.5) hpFlash=20; prevHp=hud.hp.value; hpFlash=Math.max(0,hpFlash-1);
+  const g=dagCtx, {sinks,orgs,w}=layoutDag();
+  g.clearRect(0,0,w,dagHudH);
+  const vals={}; for(const s of sinks) vals[s.id]=dagSinkValue(s.id);
+  for(const o of orgs){
+    for(const edge of K.ORGAN_GRAPH_EDGES){
+      if(edge[0]!==o.id) continue;
+      const s=sinks.find(x=>x.id===edge[1]); if(!s) continue;
+      dagEdge(g,o.x,o.y,s.x,s.y,vals[s.id].color,o.graphRole==='modify'?0.5:0.22);
+    }
+  }
+  for(const s of sinks) drawDagSink(g,s,vals[s.id]);
+  for(const o of orgs) drawDagOrg(g,o);
+}
+
 function updateActionButtons(actions){
   const map = new Map(actions.map(a=>[a.id,a]));
   const defs=[['feed','F/RMB','Feed'],['repair','Q','Repair'],['rasp','LMB','Rasp'],['dash','D','Dash'],['acid','R','Launcher'],['flame','J','Flame'],['sporeshot','C','Sporo-Gun'],['harpoon','Z','Harpoon'],['mark','G','Mark'],['engulf','B','Engulf'],['ward','H','Ward'],['cloud','V','Cloud'],['jettison','T','Jettison'],['divide','M','Divide'],['yuki','Y','Yuki']];
@@ -346,7 +406,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold S floods ballast (dive), W releases (rise)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop biomass (shed weight, cheap)',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
@@ -523,7 +583,7 @@ function exchangeNeed(o){if(!hud)return 0;const out=o.output||exchangeMainOutput
 const CAT_COLOR={metabolic:'#ffb84d',lance:'#ff3d9a',rasp:'#ff7a3d',launcher:'#b06dff',leech:'#8fe37a',aura:'#ff5a5a',control:'#6fd6ff',risk:'#ff2d7a',execute:'#ff8a3d',projectile:'#4db8ff',orbital:'#ffd24d',swarm:'#5fe0a0',feed:'#8ef19e',guard:'#bfe8ff',burst:'#c9a0ff'};
 // Resource colors sourced from the kernel (single source of truth) as [r,g,b] triples,
 // used to paint feeding fields by composition and to tint exchange/cost pills.
-const RES_COLORS=Object.fromEntries(['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna'].map(k=>[k,hexRgb(K.COLORS[k]).split(',').map(Number)]));
+const RES_COLORS=Object.fromEntries(['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','ballast'].map(k=>[k,hexRgb(K.COLORS[k]).split(',').map(Number)]));
 function graftCard(o){
   let head=`<span class="cat">${o.kind}</span>`;
   if(o.kind==='sequence'){head='<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a">◈ sequence at Yuki</span>';}
@@ -537,33 +597,6 @@ function graftCard(o){
   return `<div>${head}<div class="oname">${o.name}</div><div class="odesc">${o.desc}</div></div><div>${o.costText?`<div class="cost">Cost: ${o.costText}</div>`:''}${catNote}${initiation}${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:`<div class="buyCue">${cue}</div>`}</div>`;
 }
 function exchangeCard(o){return `<div><span class="cat">exchange</span><div class="oname">${o.name}</div><div class="exchangeFlow">${resourcePills(o.cost,'costP')}${exchangeOutPills(o)}</div></div>${o.reasons&&o.reasons.length?`<div class="req">${o.reasons.join('<br>')}</div>`:''}`}
-// The ballast meter: a trim gauge under the O2 bar. Fill past the center tick = buoyant
-// (rising), short of it = heavy (sinking); DIVE while flooded. Inert without the float organ.
-function ballastChip(){
-  const b=hud.ballast||{};
-  if(!b.hasOrgan) return `<div class="chip ballast off" title="${CHIP_TIP.__ballast}"><div class="chipTop"><span>Ballast</span><span>no float</span></div><i class="ballastTrack"><b style="width:50%;background:rgba(255,255,255,.14)"></b></i></div>`;
-  const trim=clamp(b.trim??0.5,0,1); const buoyant=trim>=0.5;
-  const fill=clamp(b.gasFill??0.5,0,1); // the bar shows actual bladder GAS
-  const state=b.flooded?'DIVE':(buoyant?'RISE':'SINK');
-  const col=b.flooded?'232,150,60':(buoyant?'73,182,255':'240,120,90');
-  return `<div class="chip ballast" title="${CHIP_TIP.__ballast}"><div class="chipTop"><span>Ballast</span><span style="color:rgb(${col})">${state}</span></div><i class="ballastTrack"><b style="width:${(fill*100).toFixed(0)}%;background:rgb(${col})"></b></i></div>`;
-}
-// Pressure chip: a universal environmental reading, not an owned-organ display — every body feels
-// it (it compresses ballast gas via Boyle's Law, see buoyancy()), so there's no "off" state.
-function pressureChip(){
-  const pv=clamp(hud.pressure?.value??0,0,1);
-  return `<div class="chip pressure" title="${CHIP_TIP.__pressure}"><div class="chipTop"><span>Pressure</span><span>${Math.round(pv*100)}%</span></div><i><b style="width:${(pv*100).toFixed(0)}%;background:#ffb37a"></b></i></div>`;
-}
-// Sunlight sub-bar under the Biomass chip — appears only once a Photosystem is grafted (you're
-// now a light-harvester). Warm yellow that fills and brightens as you rise toward the idyllic lit
-// shallows, giving the algae path a direct read on "am I in good light to grow?".
-function sunBar(){
-  const d=hud&&hud.depth; if(!d||!d.photosynthetic) return '';
-  const l=Math.max(0,Math.min(1,d.light||0));
-  const col=`rgba(245,${Math.round(200+40*l)},${Math.round(85+35*l)},${(0.5+0.5*l).toFixed(2)})`;
-  // Compact single line (☀NN + thin bar) so the biomass chip doesn't grow tall and overrun the panel below it.
-  return `<div style="display:flex;align-items:center;gap:4px;margin-top:4px"><span style="font-size:8px;font-weight:950;color:#f5d47a;white-space:nowrap">☀${Math.round(l*100)}</span><i style="flex:1 1 auto;margin:0"><b style="width:${(l*100).toFixed(0)}%;background:${col}"></b></i></div>`;
-}
 function resLabel(k){return k==='energy'?'ATP':k}
 // Each pill wears its resource's own color, so ATP reads blue, toxins yellow, biomass
 // green, etc — in the exchange bar exactly as on the fields.
@@ -690,6 +723,14 @@ function drawFields(){
       ctx.lineWidth=1.8; ctx.setLineDash([4,5]);
       for(let k=0;k<2;k++){const ph=(T*0.35+k/2)%1; const rr=R*(0.4+ph*0.55); ctx.strokeStyle=`rgba(${c},${0.5*(1-ph)})`; ctx.beginPath(); ctx.arc(f.x,f.y,rr,0,Math.PI*2); ctx.stroke();}
       ctx.setLineDash([]);
+    } else if(f.resType==='ballast'){
+      // dropped drop-weight brick: small, dense, drab — plummeting, not floating like the living resources
+      const c=RES_COLORS.ballast.join(','), n=Math.min(4,1+Math.floor(amt/3)), sz=2.6+Math.min(2.4,amt/6);
+      for(let k=0;k<n;k++){
+        const bx=f.x+(k-(n-1)/2)*sz*1.3, by=f.y+Math.sin(k*2.1)*sz*0.5;
+        ctx.fillStyle=`rgba(${c},.85)`; ctx.fillRect(bx-sz*0.5,by-sz*0.5,sz,sz);
+        ctx.strokeStyle=`rgba(20,16,12,.5)`; ctx.lineWidth=1; ctx.strokeRect(bx-sz*0.5,by-sz*0.5,sz,sz);
+      }
     }
   }
 }
@@ -735,7 +776,7 @@ function drawParticles(){
     else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
     ctx.restore()}
 }
-function drawEntities(){for(const e of projection.entities){if(!onScreen(e.x,e.y,e.r+70))continue;drawEntity(e)}}
+function drawEntities(){for(const e of projection.entities){if(e.sheltered)continue;if(!onScreen(e.x,e.y,e.r+70))continue;drawEntity(e)}}
 function drawEntity(e){
   const speed=clamp(Math.hypot(e.vx,e.vy)/260,0,1); const hp=clamp(e.hp/e.maxHp,0,1); const r=e.r; const ang=e.phase||0;
   if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
