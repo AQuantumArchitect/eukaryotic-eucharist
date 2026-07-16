@@ -210,6 +210,9 @@ const JUNK_EXOTICS = Object.freeze(['spores', 'enzymes', 'crystals']); // junk D
 // Grafting an organ is trauma, not a clean upgrade: the graft inflames the body (toxin
 // surge) and tears membrane (HP hit). A gritty "initiation" — you graft, then recover.
 const GRAFT_INITIATION = Object.freeze({ hpFrac: 0.09, hpMin: 7, toxins: 6 });
+// Undoing a graft isn't a clean refund either, but it's not nothing: reclaim the biomass a body's own
+// matter contributed to building the organ (its authored base cost, not the lipid price Yuki charges).
+const ORGAN_REMOVE_REFUND_FRAC = 0.5;
 // Ballast trim (the diver's verb): flooding the oxygen vacuoles expels gas so the body
 // goes dense and plunges. Venting is free, but it spends the internal O2 you need for
 // lift, oxygen tolerance, and aerobic ATP — and you can only re-inflate in oxygenated
@@ -438,6 +441,16 @@ const FIELD_TYPE = Object.freeze({
   toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
+// FAT BAND: once a lipid slick reaches the canopy ceiling (see updateFields' `atSurface`), it stops
+// growing an isotropic radius and instead grows f.halfWidth — a real LATERAL-only footprint, not the
+// purely cosmetic oval the renderer used to fake. Two banded patches merge the instant their edges touch
+// (mergeNearbyFields), and once a band's halfWidth nears the cap, further growth saturates toward zero —
+// new lipid matter still raises stock.lipids (thickness/light-blocking, see computeFatShade), it just
+// stops widening the band. "start exactly like it is, then it'll only diffuse laterally... eventually, if
+// it meets itself, it should form a band and then the fat should just stack into that band."
+const FAT_BAND_MAX_HALF_WIDTH = 700; // px — roughly a full screen width at rest before lateral growth saturates
+const FAT_BAND_LATERAL_K = 55;       // lateral halfWidth growth rate multiplier once banded (vs the old isotropic spreadRate)
+const FAT_BAND_THICKNESS = 46;       // px — the band's fixed vertical extent for overlap/collision purposes once banded
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
 // exponentially expensive, so a many-layered tank is a serious investment.
 const MEMBRANE_COST_RATIO = (1 + Math.sqrt(5)) / 2; // golden ratio φ ≈ 1.618 per added layer
@@ -564,32 +577,35 @@ function categoryMult(entity, offering) {
   return fib(categoryCount(entity, cat) + 1);
 }
 
-// Shop currency = LIPIDS ("gold"). An organ's construction-biomass is refined into lipids at this rate;
-// biomass then leaves the organ price list entirely (you refine biomass→lipids at Yuki's sell). Exotics
-// (spores/enzymes/crystals) and the venom currency (toxins) pass through untouched. The FAT Biomass
-// Vacuole is the one exception — it still pays in biomass, because paying in biomass IS the FAT build.
-const BIOMASS_TO_LIPID = 0.4;
+// Shop currency = LIPIDS ("gold"), at a near-1:1 conversion off the organ's real (biomass-first) base
+// cost — "yuki offers pure lipid purchase at a 1 biomass to 1 lipid conversion." No more heavy discount:
+// buying instantly from Yuki costs close to what the organ is actually worth, in lipids; building it
+// in-body (manufacturingCost, below) spends the SAME base cost directly in biomass+a little lipids, which
+// is cheaper — the designed nudge toward in-house construction. Exotics (spores/enzymes/crystals) and the
+// venom currency (toxins) pass through untouched. The FAT Biomass Vacuole is the one exception — it still
+// pays in biomass, because paying in biomass IS the FAT build.
+const BIOMASS_TO_LIPID = 1.0;
 function lipidize(cost, org, mult = 1) {
   if (!cost || org === 'biomass_vacuole') return cost;
   const c = {};
-  let lip = 0, hasExotic = false;
+  let lip = 0;
   for (const [k, v] of Object.entries(cost)) {
     if (k === 'biomass') lip += v * BIOMASS_TO_LIPID;
     else if (k === 'lipids') lip += v;
-    else { c[k] = v; if (EXOTIC_KEYS.includes(k)) hasExotic = true; } // exotics/toxins/energy pass through
+    else c[k] = v; // exotics/toxins/energy pass through, unscaled by the lipid conversion
   }
-  // For an exotic-requiring organ the EXOTIC is the real cost, so lipids are only a token fee (÷4). A
-  // pure-lipid organ carries the real lipid price, halved so a "big" one is ~6 lipids. Then the whole
-  // lipid cost ESCALATES with the category mult (so every category climbs geometrically, not just exotics).
-  lip *= hasExotic ? 0.25 : 0.5;
-  lip *= mult;
+  lip *= mult; // the whole lipid cost ESCALATES with the category mult (so every category climbs geometrically)
   if (lip > 0) c.lipids = Math.max(1, Math.ceil(lip));
   return c;
 }
-function scaledCost(entity, offering) {
+// The scaled-but-not-yet-lipidized cost — membrane's φ curve / category-mult escalation applied to the
+// offering's raw authored cost. This is the real "base cost" (mostly biomass) that BOTH manufacturingCost
+// (spends it directly) and scaledCost (converts it to a lipid sticker price) build from, so the two paths
+// can never drift apart into two different prices for the same organ.
+function scaledRawCost(entity, offering) {
   const base = offering?.cost || {};
   const org = offering?.organelle;
-  if (!org) return base;                     // exchanges, sequencing, eucharist sacrament, companions — untouched
+  if (!org) return { out: base, mult: 1 };   // exchanges, sequencing, eucharist sacrament, companions — untouched
   let out, mult = 1;
   if (org === 'membrane') {                  // whole-cost φ scaling (membranes are armour, its own curve)
     const f = Math.pow(MEMBRANE_COST_RATIO, Math.max(0, orgCount(entity, 'membrane') - 1));
@@ -600,7 +616,12 @@ function scaledCost(entity, offering) {
     if (mult <= 1) out = { ...base };
     else { out = {}; for (const [k, v] of Object.entries(base)) out[k] = EXOTIC_KEYS.includes(k) ? Math.ceil(v * mult) : v; }
   }
-  return lipidize(out, org, mult);           // matter→lipids; exotics AND lipids escalate by the category mult
+  return { out, mult };
+}
+function scaledCost(entity, offering) {
+  if (!offering?.organelle) return offering?.cost || {};
+  const { out, mult } = scaledRawCost(entity, offering);
+  return lipidize(out, offering.organelle, mult); // matter→lipids; exotics AND lipids escalate by the category mult
 }
 const COMPANIONS = Object.freeze({
   grazer: {
@@ -782,7 +803,7 @@ export const ORGANELLES = Object.freeze({
   // stepManufacturing); one build at a time, spent as a Gaussian pulse like the Waste Compactor.
   organ_manufacturing: {
     name: 'Organ Manufacturing', tier: 2, action: null, stackable: false, max: 1, category: 'metabolic',
-    desc: 'Grow a new organelle in-body instead of buying one from Yuki — tap an unlocked shadow on your body graph to start. Draws heavily on biomass and ATP as a smooth pulse while the build runs; no lipids spent. One build at a time.',
+    desc: 'Grow a new organelle in-body instead of buying one from Yuki — tap an unlocked shadow on your body graph to start. Draws mostly biomass, a little lipids, as a smooth pulse while the build runs; no ATP spent. One build at a time.',
     stats: {}
   },
   // Dash Vent is jettison's other half: instead of a passive drop, it feeds ejected biomass INTO a
@@ -1124,7 +1145,7 @@ export const OFFERINGS = Object.freeze([
   { id: 'ballast_siphon', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Ballast Siphon', desc: 'Dumps ballast gas faster while flooded — a sharper, quicker dive.', cost: { biomass: 12, lipids: 6, spores: 1 }, organelle: 'ballast_siphon', requiresDiscovery: 'ballast_siphon', stackLimit: 4 },
   { id: 'ballast_stone', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Ballast Stone', desc: 'Mineralized weight: sink faster and hold the deep without constantly venting gas — the committed diver\'s anchor. Cheap and buyable from the start.', cost: { biomass: 10, lipids: 2 }, organelle: 'ballast_stone', stackLimit: 4 },
   { id: 'waste_compactor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Waste Compactor', desc: 'On command (see controls), squeezes most of your carried toxins into a permanent ballast brick, alongside a fixed slug of biomass and ATP. Weight-neutral on the biomass; the toxin side is where real, lasting weight comes from.', cost: { biomass: 10, lipids: 6 }, organelle: 'waste_compactor', stackLimit: 4 },
-  { id: 'organ_manufacturing', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Organ Manufacturing', desc: 'Grow new organelles in-body from biomass and ATP instead of buying them from Yuki — tap an unlocked shadow on your body graph to start a build. Draws heavily on both as a smooth pulse while a build runs; no lipids spent on the build itself.', cost: { biomass: 16, lipids: 10 }, organelle: 'organ_manufacturing', stackLimit: 1 },
+  { id: 'organ_manufacturing', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Organ Manufacturing', desc: 'Grow new organelles in-body from mostly biomass, a little lipids, instead of buying them from Yuki — tap an unlocked shadow on your body graph to start a build. Draws as a smooth pulse while a build runs; no ATP spent.', cost: { biomass: 16, lipids: 10 }, organelle: 'organ_manufacturing', stackLimit: 1 },
   { id: 'lipid_bladder', section: 'Tier 2B - Algal oxygen path', theme: 'algae', kind: 'organelle', name: 'Lipid Bladder', desc: 'Stored fat is lighter than water: a full lipid reserve gives lift on its own — buoyancy for the fat-burning mitochondrial build without fermenting gas.', cost: { biomass: 12, lipids: 9 }, organelle: 'lipid_bladder', requiresDiscovery: 'lipid_bladder', stackLimit: 5 },
 
   { id: 'rasping_lamella', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Rasping Lamella', desc: 'One active overlap shred membrane. It only works when bodies actually overlap.', cost: { lipids: 5 }, organelle: 'rasping_lamella', stackLimit: 5 },
@@ -1965,10 +1986,11 @@ export const ORGAN_GRAPH_EDGES = [
   // Waste Compactor (action:'compact'): drains toxins + a fixed biomass/ATP cost into ballast, on command.
   ['toxins', 'waste_compactor'], ['biomass', 'waste_compactor'], ['energy', 'waste_compactor'],
   ['waste_compactor', 'ballast'],
-  // Organ Manufacturing: pulls biomass+ATP heavily while a build is active (see stepManufacturing) — the
-  // temporary edge to whatever it's currently building is added client-side only while that build runs,
-  // not here (it's not a permanent structural connection to any one organelle).
-  ['biomass', 'organ_manufacturing'], ['energy', 'organ_manufacturing'],
+  // Organ Manufacturing: pulls mostly biomass, a little lipids, while a build is active (see
+  // stepManufacturing) — no ATP. The temporary edge to whatever it's currently building is added
+  // client-side only while that build runs, not here (it's not a permanent structural connection to any
+  // one organelle).
+  ['biomass', 'organ_manufacturing'], ['lipids', 'organ_manufacturing'],
   // Active-draw edges: these organelles only pull ATP while actually firing (movement input held / rasp
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
   ['basal_motility', 'energy'],
@@ -4002,22 +4024,48 @@ function updateFields(world, dt) {
       // Clinging bodies add their heft to the fall's effective mass, so a swarmed morsel sinks like a
       // whale-fall (accumulated in feedFromFields this step; consumed and cleared just below).
       const effBiomass = Math.max(0, (f.stock.biomass || 0) + (f._clingMass || 0) * CLING_MASS_FACTOR);
-      const targetVy = isBiomass
+      let targetVy = isBiomass
         ? clamp(BIOMASS_SINK_K * Math.pow(effBiomass, 1.1), 0, WHALE_FALL_TERMINAL)
         : isLipidSlick
         ? -clamp(LIPID_RISE_K / Math.cbrt(Math.max(1, f.stock.lipids || 0)), LIPID_RISE_MIN, LIPID_RISE_MAX)
         : f.resType === 'ballast'
         ? BALLAST_SINK_VY // dense drop-weight: plummets at a fixed fast rate, not the gentle generic drift cap
         : clamp(f.vyTarget || 0, -upCap, FIELD_TERMINAL_VY);
+      // FAT CATCHES FALLING BIOMASS: biomass sitting near a banded fat layer (a corpse from a kill right
+      // at the canopy, say) gets its sink resisted the same way a body's own vertical crossing does —
+      // "a surface for the player to catch falling biomass on." Only worth the scan near the canopy band
+      // itself, not for the thousands of biomass falls elsewhere in the column.
+      if (isBiomass && f.y < WORLD.canopy + FAT_BAND_THICKNESS * 3) {
+        for (const g of world.fields) {
+          if (g === f || g.resType !== 'lipids' || !g.banded) continue;
+          if (Math.abs(dxWrap(f.x, g.x)) < (g.halfWidth || 0) + 40 && Math.abs(f.y - g.y) < FAT_BAND_THICKNESS * 2) {
+            targetVy *= 0.08; break;
+          }
+        }
+      }
       f.vy = (f.vy || 0) + (targetVy - (f.vy || 0)) * Math.min(1, 2 * dt);
       f.y = clamp(f.y + f.vy * dt, WORLD.canopy, WORLD.h - 40);
-      f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
+      // FAT BAND: once a rising lipid slick actually rests at the canopy ceiling, it stops growing an
+      // isotropic radius and instead grows f.halfWidth — real lateral-only reach (see FAT_BAND_MAX_HALF_WIDTH
+      // above). Everything else (and lipids still mid-rise) keeps the normal isotropic spread.
+      const nowBanded = isLipidSlick && f.y <= WORLD.canopy + 2;
+      if (nowBanded) {
+        const room = clamp(1 - (f.halfWidth || 0) / FAT_BAND_MAX_HALF_WIDTH, 0, 1);
+        f.halfWidth = (f.halfWidth || 0) + (f.spreadRate || 0) * FAT_BAND_LATERAL_K * room * dt;
+        f.banded = true;
+      } else {
+        f.spread = (f.spread || 0) + (f.spreadRate || 0) * dt;   // radius grows; with fast decay the patch thins
+        f.banded = false; f.halfWidth = 0;
+      }
     }
     // Footprint = the mass CORE (sqrt of the amount left in f.stock — shrinks straight from the core as
     // feeders eat it, no floor propping it up) PLUS a per-type diffusion spread layered on top (biomass
-    // slow, toxins moderate, ATP fast, lipids into ovals — see FIELD_TYPE spread). No max cap: a field is
-    // free to diffuse as wide as its age and mass carry it.
-    f.radius = Math.max(6, Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0) + (f.spread || 0));
+    // slow, toxins moderate, ATP fast — see FIELD_TYPE spread). A banded lipid field's footprint instead
+    // comes from its lateral halfWidth (Part A) — "the fat should just stack into that band" once matter
+    // keeps arriving past the width cap. No max cap on the non-banded case: a field is free to diffuse as
+    // wide as its age and mass carry it.
+    const coreRadius = Math.sqrt(Math.max(0, total)) * (f.radiusScale || 8.0);
+    f.radius = f.banded ? Math.max(6, coreRadius, f.halfWidth) : Math.max(6, coreRadius + (f.spread || 0));
     // Biomass falls live long enough to reach and feed the deep (bounded by BIOMASS_MAX_AGE); lipids
     // get a longer lifetime too so a slow rise can actually reach and pool at the surface instead of
     // aging out mid-climb; everything else keeps its short material lifetime.
@@ -5043,13 +5091,19 @@ function stepWasteCompaction(world, e, dt) {
 // the one blended "how expensive is this" number scaledCost always produces; rare offerings that also
 // require a raw exotic (spores/enzymes/crystals) don't get that exotic waived by manufacturing — it's a
 // different currency for the biomass/lipids/ATP portion only, not a way to dodge an exotic requirement.
-const MANUFACTURING = { biomassPerValue: 3.5, atpPerValue: 1.8, baseDuration: 2, durationPerValue: 0.35, minDuration: 2, maxDuration: 14 };
+// In-house building spends the organ's REAL base cost directly — "mostly biomass with a little bit of
+// lipids" — instead of guessing biomass/ATP proportions off Yuki's lipid sticker price. No ATP required:
+// building costs matter, not charge.
+const MANUFACTURING = { lipidSurchargeFrac: 0.15, baseDuration: 2, durationPerValue: 0.35, minDuration: 2, maxDuration: 14 };
 function manufacturingCost(entity, offering) {
-  const cost = scaledCost(entity, offering);
-  const value = cost.lipids || 1;
+  const { out } = scaledRawCost(entity, offering);
+  const biomassTotal = out.biomass || 0;
+  const lipidsTotal = biomassTotal * MANUFACTURING.lipidSurchargeFrac;
+  const exotics = {};
+  for (const k of EXOTIC_KEYS) if (out[k] > 0) exotics[k] = out[k];
+  const value = biomassTotal + lipidsTotal;
   return {
-    biomassTotal: value * MANUFACTURING.biomassPerValue,
-    atpTotal: value * MANUFACTURING.atpPerValue,
+    biomassTotal, lipidsTotal, exotics,
     duration: clamp(MANUFACTURING.baseDuration + value * MANUFACTURING.durationPerValue, MANUFACTURING.minDuration, MANUFACTURING.maxDuration),
   };
 }
@@ -5057,7 +5111,9 @@ function manufacturingCost(entity, offering) {
 // Waste Compactor). Re-validates the offering server-side rather than trusting the client: genuinely
 // LOCKED (DNA-undiscovered/missing prereq/mito/host-ready/companion-cap/maxed) blocks a build the same way
 // it blocks a Yuki purchase, but being merely unaffordable-in-LIPIDS does NOT block manufacturing — that's
-// the whole point of a second currency. Mirrors organState()'s client-side 'lock' vs 'unaff' split.
+// the whole point of a second currency. Mirrors organState()'s client-side 'lock' vs 'unaff' split. Any
+// EXOTIC cost (spores/enzymes/crystals) is paid up front, not pulsed — you either have the rare material
+// or you don't, there's no meaningful "partial spore."
 export function startManufacturing(world, offeringId, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e) return { ok: false, reason: 'missing entity' };
@@ -5070,12 +5126,19 @@ export function startManufacturing(world, offeringId, entityId = world.playerId)
   if (proj.maxed) return { ok: false, reason: 'already grafted or maxed' };
   const genuinelyLocked = proj.locked && !(proj.reasons && proj.reasons.length && proj.reasons.every(r => r.startsWith('needs ')));
   if (genuinelyLocked) return { ok: false, reason: (proj.reasons || []).join('; ') || 'locked' };
-  const { biomassTotal, atpTotal, duration } = manufacturingCost(e, proj);
-  e.manufacturing = { organelle: offering.organelle, offeringId, elapsed: 0, duration, biomassTotal, atpTotal };
+  // Cost from the RAW offering, not `proj` — getYukiOfferings' projection already ran the offering
+  // through scaledCost/lipidize (its biomass folded away into a lipids price for Yuki's sticker). Feeding
+  // that back into manufacturingCost would silently zero out biomassTotal for every build.
+  const { biomassTotal, lipidsTotal, exotics, duration } = manufacturingCost(e, offering);
+  for (const [k, v] of Object.entries(exotics)) {
+    if ((e.cargo[k] || 0) < v) return { ok: false, reason: `needs ${v} ${k}` };
+  }
+  for (const [k, v] of Object.entries(exotics)) e.cargo[k] -= v;
+  e.manufacturing = { organelle: offering.organelle, offeringId, elapsed: 0, duration, biomassTotal, lipidsTotal };
   world.events.push({ type: 'manufacture_start', entityId: e.id, organelle: offering.organelle });
   return { ok: true };
 }
-// Steps an in-progress build: drains biomass+ATP as the same Gaussian pulse shape Waste Compactor uses
+// Steps an in-progress build: drains biomass+lipids as the same Gaussian pulse shape Waste Compactor uses
 // (gaussianPulseRate), capped at what's actually on hand each frame (a body that runs dry mid-build just
 // gets a smaller bite that frame, not a negative cargo value — the timer itself is NOT gated on
 // affordability, so a build always completes on schedule). On completion: grant the organelle for real,
@@ -5088,9 +5151,9 @@ function stepManufacturing(world, e, dt) {
   m.elapsed += dt;
   const drain = (target) => Math.max(0, Math.min(target, gaussianPulseRate(m.elapsed, m.duration, target) * dt));
   const biomassDrained = Math.min(drain(m.biomassTotal), e.cargo.biomass || 0);
-  const atpDrained = Math.min(drain(m.atpTotal), e.cargo.energy || 0);
+  const lipidsDrained = Math.min(drain(m.lipidsTotal), e.cargo.lipids || 0);
   e.cargo.biomass = Math.max(0, (e.cargo.biomass || 0) - biomassDrained);
-  e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - atpDrained);
+  e.cargo.lipids = Math.max(0, (e.cargo.lipids || 0) - lipidsDrained);
   if (m.elapsed >= m.duration) {
     e.organelles[m.organelle] = (e.organelles[m.organelle] || 0) + 1;
     e._capsEpoch = -1;
@@ -5667,9 +5730,14 @@ function spawnScavenger(world, opts = {}) {
   if (abyssal) { organelles.membrane = 3; organelles.membrane_intake = 2; organelles.storage_vacuole = 3; organelles.biomass_vacuole = 5; }
   // The grazer's mitochondrion gives it hasMito()'s strong lipid feed-affinity (feedFromFields) — it
   // genuinely prefers the fat pooling at the top, and its respiration burns that fat for ATP just like
-  // any aerobic body. Skips exotic_vacuole (smaller, thinner-armored) and needs oxygen_tolerance to sit
-  // comfortably in the bright shelf water it forages.
-  else if (grazer) { organelles.oxygen_tolerance = 6; organelles.mitochondrion = 1; delete organelles.exotic_vacuole; }
+  // any aerobic body. lipolytic_vesicle (an existing organelle, see its per-frame conversion block in
+  // updateEnvironmentAndMetabolism) is its "cuz no fermentation" fix: a body that mainly eats FAT still
+  // needs a real path to structural BIOMASS, since fission gates on cargo.biomass fill, not lipids.
+  // cleavage_furrow plugs it into the fully generic wild-fission system (wildFissionRate/doFission,
+  // already shared by every hunter — no new fission code) for the "self replicate really quickly,
+  // creating cleaning waves" behavior. Skips exotic_vacuole (smaller, thinner-armored) and needs
+  // oxygen_tolerance to sit comfortably in the bright shelf water it forages.
+  else if (grazer) { organelles.oxygen_tolerance = 6; organelles.mitochondrion = 1; organelles.lipolytic_vesicle = 2; organelles.cleavage_furrow = 1; delete organelles.exotic_vacuole; }
   else organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   const e = makeSoftBody(world, 'npc', x, y, {
     r: rand(world, 11, 18) * (abyssal ? 2.4 : grazer ? 0.55 : 1), color: abyssal ? '#6f97a8' : grazer ? '#f5c86b' : '#8ef19e', controller: 'scavenger',
@@ -5796,6 +5864,7 @@ const CRAB_MAW_FRAC = 0.72;           // fields within crab.r×this are vacuumed
 const CRAB_BELLY = 80000;             // swallowed-matter cap; departs when full (or after one full loop)
 const CRAB_ENGULF_MIN_MASS = 80;      // only bodies this HEAVY (structural biomassMass) ...
 const CRAB_ENGULF_MIN_R = 50;         // ... or this GIANT (radius) are swallowed — the deep winners; small fry pass through
+const CRAB_CURRENT = 210;             // px/s lateral shove of the current field around the crab (bodies part + route around it, not damaged)
 
 function spawnShroomba(world, opts = {}) {
   const deepMatter = opts.deepMatter || CRAB_SUMMON_THRESHOLD;
@@ -5855,6 +5924,32 @@ function updateShroombaBrain(world, e, dt) {
     e._swallowed += m;
     o.alive = false; o._noCorpse = true;
     world.events.push({ type: 'crab_swallow', entityId: e.id, victimId: o.id });
+  }
+
+  // LATERAL CURRENTS: the marching colossus shoves a field of water sideways — bodies in its vicinity are
+  // pushed laterally out of its path (they part and route AROUND it) rather than damaged. Falls off with
+  // distance; mostly horizontal, a touch of vertical parting. Cheap O(n) while a crab exists.
+  const currentR = e.r * 1.15;
+  for (const o of world.entities) {
+    if (!o.alive || o === e || o.controller === 'shroomba') continue;
+    const dx = dxWrap(e.x, o.x), dy = o.y - e.y;
+    const d = Math.hypot(dx, dy); if (d > currentR || d < 1) continue;
+    const fall = (1 - d / currentR) * CRAB_CURRENT * dt;
+    o.vx += (dx / d) * fall;             // sideways, away from the crab's core
+    o.vy += (dy / d) * fall * 0.35;      // mild vertical parting
+  }
+
+  // WASH IN PREDATORS: the marching crab stirs up different predatory bacteria in its wake. Periodic deep
+  // spawns near it; applyStrain (depth-scaled) gives them their deep signature genes.
+  e._washT -= dt;
+  if (e._washT <= 0) {
+    e._washT = rand(world, 10, 20);
+    const n = 1 + Math.floor(world.rng() * 3);
+    const esc = escalationLevel(world);
+    for (let i = 0; i < n && world.entities.length < POP_CAP; i++) {
+      spawnPredator(world, { x: wrapX(e.x + rand(world, -e.r * 0.8, e.r * 0.8)), y: clamp(e.y + rand(world, -e.r * 0.5, e.r * 0.2), WORLD.deepTop + 400, WORLD.h - 120), escalation: esc });
+    }
+    world.events.push({ type: 'crab_washin', entityId: e.id, count: n });
   }
 
   // DEPART = the sink: after a full loop (WORLD.w travelled) or a full belly, the crab leaves and its
@@ -5986,6 +6081,16 @@ function bestBodyTarget(entity, world, player) {
   const caution = entity.caution ?? 0.5;
   const myCapHp = caps(entity).hp;
   const riskTolerance = 1 - Math.min(0.9, drive * 0.6); // hungrier ⇒ less deterred by big/tanky prey
+  // FAT BAND: is there a banded fat slick anywhere near my own x, within reach of the surface? Computed
+  // once per call (not per candidate below) — "predators munch the fat from below and then break through
+  // to grab scavengers or biomass." The existing sunCost term already prices the physiological risk of
+  // actually going up there; this only adds the PULL of a real, close opportunity on top of it.
+  let nearFatBand = false;
+  if (entity.y > WORLD.canopy + FAT_BAND_THICKNESS && entity.y < WORLD.canopy + 900) {
+    for (const g of world.fields) {
+      if (g.resType === 'lipids' && g.banded && Math.abs(dxWrap(entity.x, g.x)) < (g.halfWidth || 0) + 60) { nearFatBand = true; break; }
+    }
+  }
   let best = null, bestScore = -Infinity;
   for (const other of world.entities) {
     if (!other.alive || other.id === entity.id) continue;
@@ -6050,7 +6155,11 @@ function bestBodyTarget(entity, world, player) {
     // quarry gets only a whisker of stickiness; a dying one right in front of me gets a strong pull.
     const commitBonus = (entity._targetRef === other)
       ? (0.6 + 3.2 * (1 - otherHpFill)) * Math.exp(-d / 300) : 0;
-    const score = reward + algaeBonus + weak + proximityAggro + starving + marked + commitBonus
+    // FAT BAND OPPORTUNITY: prey sitting on/above a fat band I'm lurking below is a real, close catch —
+    // "break through to grab scavengers or biomass to replicate." sunCost above already prices the real
+    // physiological risk of pushing up there; this is only the pull of the opportunity being worth it.
+    const fatBandPull = (nearFatBand && other.y < entity.y && other.y < WORLD.canopy + FAT_BAND_THICKNESS * 3) ? 1.6 : 0;
+    const score = reward + algaeBonus + weak + proximityAggro + starving + marked + commitBonus + fatBandPull
       - risk - sunCost - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
@@ -6096,10 +6205,21 @@ function feedFromFields(world, entity, dt) {
   }
   let totalFlow = 0;
   for (const f of world.fields) {
-    const d = distWrap(entity.x, entity.y, f.x, f.y);
-    const overlap = radius + f.radius - d;
+    // A BANDED lipid field is a real lateral slab, not a circle — check dx against its wide halfWidth
+    // and dy against a fixed thin band thickness separately, instead of one Euclidean distance. Anything
+    // else (including a lipid field still mid-rise) keeps the plain circular overlap test.
+    let overlap, overlapFraction;
+    if (f.resType === 'lipids' && f.banded) {
+      const dx = Math.abs(dxWrap(entity.x, f.x)), dy = Math.abs(entity.y - f.y);
+      const ox = radius + (f.halfWidth || 0) - dx, oy = radius + FAT_BAND_THICKNESS - dy;
+      overlap = Math.min(ox, oy);
+      overlapFraction = overlap > 0 ? clamp(Math.min(ox / Math.min(radius, f.halfWidth || 1), oy / Math.min(radius, FAT_BAND_THICKNESS)), 0, 1.25) : 0;
+    } else {
+      const d = distWrap(entity.x, entity.y, f.x, f.y);
+      overlap = radius + f.radius - d;
+      overlapFraction = overlap > 0 ? clamp(overlap / Math.min(radius, f.radius), 0, 1.25) : 0;
+    }
     if (overlap <= 0) continue;
-    const overlapFraction = clamp(overlap / Math.min(radius, f.radius), 0, 1.25);
     for (const r of MATTER_RESOURCES) {
       if (r === 'ballast') continue; // processed waste, not food — a dropped brick sinks and despawns, nothing grazes it
       const stock = f.stock[r] || 0; if (stock <= 0) continue;
@@ -6114,12 +6234,14 @@ function feedFromFields(world, entity, dt) {
       f._clingMass = (f._clingMass || 0) + (entity.biomassMass || 0) + (entity.cargo.biomass || 0);
       if ((f.vy || 0) > 0) entity.vy += ((f.vy || 0) - (entity.vy || 0)) * CLING_GRAB * dt;
     }
-    // FAT FRICTION: a lipid plume is viscous — a body grazing it is bogged down (velocity bled off in
-    // proportion to how dense the fat is and how deep it's in it). Fat is clingy and slow to cross.
+    // FAT FRICTION: a lipid plume/band is viscous VERTICALLY only — crossing it (sinking in from above,
+    // punching up through it from below) is bogged down, but swimming sideways ALONG it is unimpeded.
+    // That's what turns a banded slick into a real surface: a body can slide across it freely and only
+    // pays a cost trying to pass through it top-to-bottom.
     if (f.resType === 'lipids' && (f.stock.lipids || 0) > 0.5) {
       const stick = clamp(overlapFraction * (f.stock.lipids || 0) / 90, 0, 1) * FAT_FRICTION * dt;
       const keep = 1 / (1 + stick);
-      entity.vx *= keep; entity.vy *= keep;
+      entity.vy *= keep;
     }
     // LATERAL FEEDING GRIP: a body locked onto ANY food patch grips it SIDEWAYS — its lateral drift bled
     // off hard (stronger than the vertical cling) so it holds on the meal in the current instead of
@@ -6219,7 +6341,8 @@ function spawnResourceField(world, x, y, stock, opts = {}) {
       oval: tp.oval || 1,                 // horizontal stretch for the rendered footprint (lipids diffuse into ovals)
       // vyTarget/spreadRate are the type's physics; vy/spread evolve during drift; _matter caches the
       // stock total for the per-NPC field scan (bestFieldFor) so it reads a number, not a reduce.
-      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0
+      vyTarget: tp.vy, spreadRate: tp.spread, vy: 0, spread: 0, _matter: amt, fatBudget: 0, _merged: false, _clingMass: 0,
+      banded: false, halfWidth: 0 // fat-band state (Part A) — a lipid field flips banded once it rests at the canopy
     };
     world.fields.push(f);
     if (!ret) ret = f;
@@ -6246,9 +6369,13 @@ function mergeNearbyFields(world) {
       const d = distWrap(a.x, a.y, b.x, b.y);
       // Biomass AUTO-COMBINES aggressively (it holds together and, with no decay, must pool into a few
       // big piles instead of hundreds of persistent flecks) — merge distance scales with the piles' own
-      // radii. Other resources keep the tight window.
+      // radii. Two BANDED lipid patches merge the instant their lateral edges touch — "if it meets itself
+      // it should form a band" (see FAT_BAND_MAX_HALF_WIDTH). Other resources keep the tight window.
+      const bothBanded = a.resType === 'lipids' && a.banded && b.banded;
       const mergeDist = a.resType === 'biomass'
         ? Math.max(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.9)
+        : bothBanded
+        ? Math.max(FIELD_MERGE_WINDOW, ((a.halfWidth || 0) + (b.halfWidth || 0)) * 0.98)
         : Math.min(FIELD_MERGE_WINDOW, (a.radius + b.radius) * 0.35);
       if (d > mergeDist) continue;
       const ta = totalMatter(a.stock), tb = totalMatter(b.stock), total = Math.max(1, ta + tb);
@@ -6258,6 +6385,7 @@ function mergeNearbyFields(world) {
       a.age = Math.min(a.age, b.age);
       a.maxAge = Math.max(a.maxAge, b.maxAge);
       a.maxRadius = Math.max(a.maxRadius, b.maxRadius);
+      if (bothBanded) a.halfWidth = Math.min(FAT_BAND_MAX_HALF_WIDTH * 1.5, (a.halfWidth || 0) + (b.halfWidth || 0));
       b._merged = true;
       world.stats.fieldsMerged += 1;
       merged = true;
@@ -6330,6 +6458,16 @@ export function nearYuki(world, entity = getPlayer(world)) {
   for (let i = 0; i < YUKI_TEND.count; i++) {
     if (d > yukiTendrilLen(world, i) + 22) continue;    // below this strand's tip
     if (Math.abs(dxWrap(entity.x, yukiStrandX(world, i, entity.y))) < YUKI_TEND.reach) return true;
+  }
+  return false;
+}
+// Proximity to the Horseshroomba crab's fungal shop-on-its-back — mirrors nearYuki but keyed to the LIVE
+// crab's moving body. The player communes with the deep merchant when close to its mass.
+export function nearCrab(world, entity = getPlayer(world)) {
+  if (!entity) return false;
+  for (const c of world.entities) {
+    if (!c.alive || c.controller !== 'shroomba') continue;
+    if (distWrap(entity.x, entity.y, c.x, c.y) < c.r * 0.55 + 60) return true;
   }
   return false;
 }
@@ -6444,12 +6582,15 @@ export function yukiRestore(world, dt, entityId = world.playerId) {
   clampCargo(e);
 }
 
-export function getYukiOfferings(world, entityId = world.playerId) {
+export function getYukiOfferings(world, entityId = world.playerId, source = 'yuki') {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo
   const e = world.entities.find(x => x.id === entityId);
   const readiness = hostReadiness(e, world);
   const activeColony = (e.colony || []).length;
-  const staticOfferings = OFFERINGS.map(o => {
+  // The Horseshroomba's fungal shop is a DEEP MERCHANT: it deals only in exotic traits, DNA information,
+  // and Tier-3 goods (the rare deep spoils), not the general Tier-2 survival stock Yuki carries.
+  const pool = source === 'crab' ? OFFERINGS.filter(o => /Exotic|Tier 3|DNA/i.test(o.section || '')) : OFFERINGS;
+  const staticOfferings = pool.map(o => {
     const def = o.organelle ? ORGANELLES[o.organelle] : null;
     const limit = o.stackLimit || def?.max || (def?.stackable ? 99 : 1);
     const owned = o.organelle && !def?.stackable && orgCount(e, o.organelle) >= limit;
@@ -6662,9 +6803,18 @@ export function removeOrganelle(world, orgId, entityId = world.playerId) {
   if (orgId === 'membrane' && n <= 1) return { ok: false, reason: 'cannot shed your last membrane' };
   if (n <= 1) delete entity.organelles[orgId]; else entity.organelles[orgId] = n - 1;
   entity._capsEpoch = -1;
+  // Reclaim a share of the biomass this organ cost to build (its authored base cost, not Yuki's lipid
+  // price) — capped by whatever room is left in the tank (possibly smaller now, e.g. after shedding a
+  // membrane). No longer "free, no refund."
+  const offering = OFFERINGS.find(o => o.organelle === orgId);
+  const refund = (offering?.cost?.biomass || 0) * ORGAN_REMOVE_REFUND_FRAC;
+  if (refund > 0) {
+    const room = Math.max(0, caps(entity).biomass - (entity.cargo.biomass || 0));
+    entity.cargo.biomass = (entity.cargo.biomass || 0) + Math.min(refund, room);
+  }
   clampCargo(entity);
   entity.hp = clamp(entity.hp, 0, caps(entity).hp);
-  world.events.push({ type: 'remove_organelle', entityId, organelle: orgId });
+  world.events.push({ type: 'remove_organelle', entityId, organelle: orgId, biomassRefund: refund });
   return { ok: true, orgId };
 }
 
@@ -6691,6 +6841,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     metabolism: { anaerobicProcessorLevel: orgCount(e, 'anaerobic_processor'), anaerobicRate: orgCount(e, 'anaerobic_processor') * ORGANELLES.anaerobic_processor.stats.rate, energyStarved: (e.cargo.energy || 0) <= 0.01 },
     actions: getAvailableActions(world, entityId),
     nearYuki: nearYuki(world, e),
+    nearCrab: nearCrab(world, e),
     ballast: (() => {
       // Trim = net vertical tendency, centered at 0.5: >0.5 buoyant (rising), <0.5 heavy (sinking).
       // Mirrors the SAME gas-vs-weight the submarine drift uses (gas is lift, biomass is weight; the
@@ -6716,7 +6867,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     compacting: e.compacting ? { intensity: clamp(gaussianPulseRate(e.compacting.elapsed, e.compacting.duration, 1) / gaussianPulseRate(e.compacting.duration / 2, e.compacting.duration, 1), 0, 1) } : null,
     // An in-progress in-body build (Organ Manufacturing) — organelle is the target being grown, progress
     // is 0..1 elapsed/duration (drives the shadow node's "under construction" grow-in), intensity is the
-    // same normalized Gaussian-pulse-rate signal compacting uses (drives the biomass/energy edge pull).
+    // same normalized Gaussian-pulse-rate signal compacting uses (drives the biomass/lipids edge pull).
     manufacturing: e.manufacturing ? {
       organelle: e.manufacturing.organelle,
       progress: clamp(e.manufacturing.elapsed / e.manufacturing.duration, 0, 1),
@@ -6764,7 +6915,7 @@ function objectiveText(world, e) {
 
 export function getRenderProjection(world) {
   CAPS_EPOCH++; // external read entry point — never serve a stale caps() memo
-  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, sheltered: !!e.sheltered, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
+  const entityProjection = world.entities.map(e => ({ id: e.id, kind: e.kind, x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: e.r, hp: e.hp, maxHp: caps(e).hp, color: e.color, controller: e.controller, trophicRole: e.trophicRole, cellCount: e.cellCount || 0, marchDir: e._marchDir || 0, strain: e.strain || null, bodyPlan: e.bodyPlan || null, companionType: e.companionType || null, ownerId: e.ownerId || null, marked: (e.marked || 0) > 0 ? e.marked : 0, warded: (e.warded || 0) > 0 ? e.warded : 0, ballast: !!e.ballast, sheltered: !!e.sheltered, photophobic: !!e.photophobic, friendly: e.friendly, phase: e.phase, feedIntent: e.feedIntent, repairIntent: e.repairIntent, action: e.action, organelles: { ...e.organelles }, hit: e.hit, combatHit: e.combatHit || 0, oxygen: e.oxygen, oxygenTolerance: oxygenTolerance(e), toxins: e.cargo.toxins || 0, toxinCap: caps(e).toxins, fallState: e.fallState, incubating: e.incubating ? { ...e.incubating } : null }));
   const colonyRender = [];
   for (const e of world.entities) {
     if (!e.colony || !e.colony.length) continue;

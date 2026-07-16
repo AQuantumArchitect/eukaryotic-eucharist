@@ -316,7 +316,7 @@ addEventListener('keydown',e=>{
   keys.add(k);
   if(k==='e'){
     if(ui.shopOverlay.style.display==='flex') closeShop();
-    else if(hud?.nearYuki) openShop();
+    else if(hud?.nearYuki||hud?.nearCrab) openShop();
   }
   if(k==='p') resetWorld();
   if(k==='o') dagToggleOpen();
@@ -332,7 +332,7 @@ canvas.addEventListener('mousedown',e=>{ if(e.button===2){e.preventDefault(); po
 addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false});
 addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false; dagPressEnd(e);});
 addEventListener('blur',()=>{pointer.down=false;pointer.right=false; dagPressCancel();});
-ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki) openShop(); else toast('Reach a Yuki tendril to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
+ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki||hud?.nearCrab) openShop(); else toast('Reach a Yuki tendril — or the crab merchant — to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
 
 function setupJoy(){
   const joy=ui.joy, knob=ui.knob;
@@ -1046,7 +1046,7 @@ function updateActionButtons(actions){
   ui.actions.innerHTML=defs.map(([id,key,label])=>{const a=map.get(id);const cls=a?(a.enabled?'enabled':'locked'):'locked';const shown=a?.label||label;return `<button class="act ${cls} ${buttons[id]||a?.active?'active':''}" data-act="${id}"><b>${key}</b>${shown}</button>`}).join('');
   for(const b of ui.actions.querySelectorAll('.act')){
     const id=b.dataset.act;
-    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki)openShop();else toast('Reach a Yuki tendril to commune.'); return;} buttons[id]=true; b.classList.add('active');};
+    b.onpointerdown=e=>{e.preventDefault(); if(id==='yuki'){if(ui.shopOverlay.style.display==='flex')closeShop();else if(hud.nearYuki||hud.nearCrab)openShop();else toast('Reach a Yuki tendril — or the crab merchant — to commune.'); return;} buttons[id]=true; b.classList.add('active');};
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
@@ -1097,7 +1097,8 @@ addEventListener('pointerdown',e=>{
   const r=K.tradeAtYuki(world,res,dir);
   if(!r.ok) toast(r.reason||'—'); else renderShop();
 }, true);
-function openShop(){shopLeaveArmed=false;refreshTradeInfo();ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');renderShop()}
+let shopSource='yuki';
+function openShop(){shopSource=(hud&&hud.nearCrab&&!hud.nearYuki)?'crab':'yuki';shopLeaveArmed=false;refreshTradeInfo();ui.shopOverlay.style.display='flex';document.body.classList.add('shopping');document.body.classList.toggle('crabshop',shopSource==='crab');renderShop()}
 function closeShop(force){
   const s=shopStress();
   // Send them off whole: don't let the player wander off wounded, toxic, or with a near-dead ATP
@@ -1116,7 +1117,7 @@ function closeShop(force){
 // "Your Body" IS the shop now: the exchange bar stays a frozen top cross-bar; everything else —
 // your owned organs AND the whole organelle store — lives in one scrollable body, grouped by system.
 function renderShop(){
-  const offers=K.getYukiOfferings(world);
+  const offers=K.getYukiOfferings(world, world.playerId, shopSource);
   // Yuki exchange counter — LIPIDS are the currency. Each resource has ▲ buy (lipids→it) and ▼ sell
   // (it→lipids). HP buys only (repair); lipids is the money itself. Selling toxins/O2 is the new detox.
   // The exchange lives on the HUD resource bars now (tap-zones). The modal is pure body + store.
@@ -1205,7 +1206,7 @@ function organCard(o){
   else if(st==='unaff')btn=`<button class="oBuy dis" data-id="${o.id}">⊕ Graft</button>`;
   else btn=`<span class="oBuy lockicon">🔒</span>`;
   const badge=cnt>0?`<span class="ownBadge">×${cnt}</span>`:'';
-  const removeBtn=(cnt>0&&o.organelle)?`<button class="oRemove" data-remove="${o.organelle}" title="Undo one graft — free, no refund">−</button>`:'';
+  const removeBtn=(cnt>0&&o.organelle)?`<button class="oRemove" data-remove="${o.organelle}" title="Undo one graft — reclaims some of its biomass">−</button>`:'';
   const cost=o.costText?`<span class="oCost">${o.costText}</span>`:'';
   const reason=(st==='lock'||st==='unaff')&&o.reasons&&o.reasons.length?`<div class="oReason ${st}">${o.reasons[0]}</div>`:'';
   return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${removeBtn}${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${catNote}${initiation}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
@@ -1355,12 +1356,17 @@ function drawFields(){
       // crisp edge ring — a defined green footprint that doesn't wash out on a busy background
       ctx.strokeStyle=`rgba(${c},${0.4*Math.min(1,amt/28)})`; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(f.x,f.y,R*0.9,0,Math.PI*2); ctx.stroke();
     } else if(f.resType==='lipids'){
-      // amber fat SLICK — diffuses into a horizontal OVAL as it rises; globules ride within it
-      const c=RES_COLORS.lipids.join(','), ov=Math.sqrt(f.oval||1), rx=R*ov, ry=R/ov, amtA=clamp(amt/40,.16,.55);
-      ctx.save(); ctx.translate(f.x,f.y); ctx.scale(ov,1/ov);
-      const rg=ctx.createRadialGradient(0,0,0,0,0,R);
+      // amber fat SLICK — while rising, a cosmetic oval (unchanged: "start exactly like it is"). Once
+      // BANDED (resting at the canopy — f.banded/f.halfWidth, see updateFields/mergeNearbyFields), the
+      // ellipse instead draws the REAL lateral-only footprint: "it'll only diffuse laterally."
+      const c=RES_COLORS.lipids.join(','), banded=!!f.banded;
+      const ov=Math.sqrt(f.oval||1);
+      const rx=banded?Math.max(R,f.halfWidth||0):R*ov, ry=banded?Math.min(R,46):R/ov;
+      const amtA=clamp(amt/40,.16,.55);
+      ctx.save(); ctx.translate(f.x,f.y);
+      const rg=ctx.createRadialGradient(0,0,0,0,0,Math.max(rx,ry));
       rg.addColorStop(0,`rgba(${c},${amtA})`); rg.addColorStop(.7,`rgba(${c},${amtA*.4})`); rg.addColorStop(1,`rgba(${c},0)`);
-      ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill(); ctx.restore();
+      ctx.fillStyle=rg; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fill(); ctx.restore();
       const n=Math.min(8,1+Math.floor(amt/4)), sz=2.2+Math.min(3.2,amt/8);
       for(let k=0;k<n;k++){
         const a=(k/n)*Math.PI*2+f.x*0.05, rad=(0.2+0.6*((k*0.37+f.x*0.003)%1));
@@ -1468,7 +1474,39 @@ function drawPlayerRings(e){
   ring(r0+gap,   lipFrac, RES_COLORS.lipids.join(','), true);
 }
 function drawEntities(){for(const e of projection.entities){if(e.sheltered)continue;if(!onScreen(e.x,e.y,e.r+70))continue;drawEntity(e)}}
+// The Horseshroomba crab — an abstracted spiky cell-mass in a handful of cheap shapes (CPU-light). A
+// dark fungal halo, a ring of tapered spikes, a few carapace lobes, a central dome, a pulsing vacuum maw,
+// and a warm cap marking the shop on its back. Sized by its (huge) r.
+function drawCrab(e){
+  const r=e.r, x=e.x, y=e.y, T=world.t, dir=e.marchDir||1;
+  ctx.save();
+  const bk=ctx.createRadialGradient(x,y,r*0.2,x,y,r);
+  bk.addColorStop(0,'rgba(42,28,52,0.5)'); bk.addColorStop(0.7,'rgba(30,20,40,0.24)'); bk.addColorStop(1,'rgba(30,20,40,0)');
+  ctx.fillStyle=bk; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  const nSpikes=clamp(Math.round((e.cellCount||240)/28),7,11);
+  ctx.fillStyle='rgba(120,92,134,0.92)';
+  for(let i=0;i<nSpikes;i++){
+    const a=(i/nSpikes)*Math.PI*2 + Math.sin(i*2.3+x*0.001)*0.14 + T*0.05*dir;
+    const len=r*(0.86+0.34*((i*0.37+x*0.0007)%1)), w=r*0.09;
+    const bx=x+Math.cos(a)*r*0.52, by=y+Math.sin(a)*r*0.52;
+    const px=Math.cos(a+Math.PI/2)*w, py=Math.sin(a+Math.PI/2)*w;
+    ctx.beginPath(); ctx.moveTo(bx+px,by+py); ctx.lineTo(bx-px,by-py); ctx.lineTo(x+Math.cos(a)*len,y+Math.sin(a)*len); ctx.closePath(); ctx.fill();
+  }
+  for(let i=0;i<4;i++){
+    const a=(i/4)*Math.PI*2+T*0.04*dir, lr=r*0.36, lx=x+Math.cos(a)*r*0.26, ly=y+Math.sin(a)*r*0.26;
+    const g=ctx.createRadialGradient(lx-lr*0.3,ly-lr*0.3,lr*0.1,lx,ly,lr);
+    g.addColorStop(0,'#8a6b96'); g.addColorStop(1,'#54406a');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(lx,ly,lr,0,Math.PI*2); ctx.fill();
+  }
+  const cg=ctx.createRadialGradient(x-r*0.12,y-r*0.12,r*0.05,x,y,r*0.5);
+  cg.addColorStop(0,'#9b7aa8'); cg.addColorStop(1,'#48345a');
+  ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(x,y,r*0.44,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=`rgba(18,9,24,${0.42+0.2*Math.sin(T*2)})`; ctx.beginPath(); ctx.arc(x,y,r*0.17,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(230,182,120,0.9)'; ctx.beginPath(); ctx.arc(x,y-r*0.34,r*0.10,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
 function drawEntity(e){
+  if(e.controller==='shroomba'){drawCrab(e);return;}
   const speed=clamp(Math.hypot(e.vx,e.vy)/260,0,1); const hp=clamp(e.hp/e.maxHp,0,1); const r=e.r; const ang=e.phase||0;
   if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
   if(e.action==='rasp'){ctx.strokeStyle='rgba(255,180,110,.72)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,r+5,ang-.9,ang+.9);ctx.stroke()}
