@@ -368,6 +368,7 @@ const WHALE_FALL_TERMINAL = 150;  // px/s cap on a plummeting biomass fall
 // line: the more foragers gather on the falling food, the faster the food (and they) leave the top.
 const CLING_MASS_FACTOR = 0.6;    // fraction of a clinging body's mass that counts toward the fall's sink law
 const CLING_GRAB = 3.2;           // how hard the fall's descent pulls a clinging body's vy toward its own
+const FAT_FRICTION = 4.0;         // viscosity of a lipid plume: a body grazing fat is bogged down in it (clingy, slow to cross)
 const BIOMASS_SINK_DECAY = 0;     // NO decay — biomass never remineralizes; only eaten matter leaves the system (closed loop)
 const BIOMASS_FLOOR_DECAY = 0;    // NO decay on the floor either — it auto-combines into piles and waits to be grazed
 const BIOMASS_MAX_AGE = 1e9;      // biomass never ages out — it persists until eaten
@@ -5640,6 +5641,13 @@ function feedFromFields(world, entity, dt) {
     if (f.resType === 'biomass' && (f.stock.biomass || 0) > 0.5) {
       f._clingMass = (f._clingMass || 0) + (entity.biomassMass || 0) + (entity.cargo.biomass || 0);
       if ((f.vy || 0) > 0) entity.vy += ((f.vy || 0) - (entity.vy || 0)) * CLING_GRAB * dt;
+    }
+    // FAT FRICTION: a lipid plume is viscous — a body grazing it is bogged down (velocity bled off in
+    // proportion to how dense the fat is and how deep it's in it). Fat is clingy and slow to cross.
+    if (f.resType === 'lipids' && (f.stock.lipids || 0) > 0.5) {
+      const stick = clamp(overlapFraction * (f.stock.lipids || 0) / 90, 0, 1) * FAT_FRICTION * dt;
+      const keep = 1 / (1 + stick);
+      entity.vx *= keep; entity.vy *= keep;
     }
   }
   if (totalFlow > 0) entity.hunger = Math.max(0, entity.hunger - totalFlow * 0.014);
