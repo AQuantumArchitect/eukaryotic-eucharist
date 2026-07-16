@@ -873,12 +873,29 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(K.__test.biomassWeight(p) < weight0, 'shedding mass genuinely lightens the body — real buoyancy follows, no synthetic kick');
   assert(w.fields.some(f => f.sourceKind === 'jettison'), 'jettison spills a feed-field'); }
 
-// Solid ballast: pressure compacts stored biomass into dense drop-weight bricks, which add real weight.
+// Waste Compactor (button-activated, replaces the old passive tick): drains toxinFrac of current toxins
+// plus a fixed biomass+ATP cost, into uncapped ballast. Weight-neutral on the biomass side.
 { const w = K.createWorld({ seed: 7405 }); const p = K.getPlayer(w);
-  p.organelles.storage_vacuole = 6; p._capsEpoch = -1;
-  p.cargo.biomass = 40; p.cargo.ballast = 0; p.y = K.WORLD.h * 0.9; // deep — high pressure, fast compaction
-  for (let i = 0; i < 20 * 60; i++) K.step(w, {}, 1 / 60, false);
-  assert(p.cargo.ballast > 0, 'pressure passively compacts stored biomass into ballast bricks over time'); }
+  p.organelles.waste_compactor = 1; p._capsEpoch = -1;
+  p.cargo.toxins = 20; p.cargo.biomass = 100; p.cargo.energy = 50; p.cargo.ballast = 0;
+  const st = K.ORGANELLES.waste_compactor.stats;
+  assert(K.__test.compactWaste(w, p), 'compact fires with enough biomass/ATP');
+  assert(Math.abs(p.cargo.toxins - 20 * (1 - st.toxinFrac)) < 1e-6, 'drains exactly toxinFrac of current toxins — geometric, not fixed');
+  assert(Math.abs(p.cargo.biomass - (100 - st.biomassCost)) < 1e-6, 'costs a fixed slug of biomass regardless of toxin level');
+  assert(Math.abs(p.cargo.energy - (50 - st.energyCost)) < 1e-6, 'costs a fixed slug of ATP');
+  assert(p.cargo.ballast > 0, 'produces ballast');
+  assert(!K.__test.compactWaste(w, p), 'cooldown blocks an immediate re-fire — spammable, not free every frame');
+  assert(K.__test.caps(p).ballast === Infinity, 'ballast capacity is uncapped by design — the closest thing a body has to an age');
+  for (let i = 0; i < 200; i++) { p.cooldowns.compact = 0; p.cargo.biomass = 200; p.cargo.energy = 200; K.__test.compactWaste(w, p); }
+  assert(p.cargo.ballast > 500, 'ballast climbs with no ceiling across many presses'); }
+
+// Weight formula: the biomass half of every brick is weight-neutral (matches biomassWeight's own
+// cargoFactor exactly) — this is the actual fix for the old >5x amplifier bug.
+{ const w = K.createWorld({ seed: 7406 }); const p = K.getPlayer(w);
+  p.organelles.waste_compactor = 1; p._capsEpoch = -1;
+  p.cargo.ballast = 0; const w0 = K.__test.biomassWeight(p);
+  p.cargo.ballast = 100; const w1 = K.__test.biomassWeight(p);
+  assert(Math.abs((w1 - w0) - 100 * 0.11) < 1e-6, '100 ballast adds exactly 100*cargoFactor weight — no amplification'); }
 
 // Jettison prefers dropping carried ballast bricks first — the "drop weight" action, an instant sink
 // with no lingering feed-field (processed waste, not food) — and only falls back to biomass when empty.
