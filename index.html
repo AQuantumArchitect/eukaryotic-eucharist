@@ -468,10 +468,13 @@ function updateUI(){
 // it actually settle (and re-settle live as organelles are gained) is the point — an emergent layout
 // instead of a hardcoded one, the same ethos the rest of the sim's ecology already follows.
 const DAG_VITAL_SINKS=['hp','energy','oxygen'];
-// MERGED: the old separate "gas" (ballast bladder) sink is gone — oxygen is the single internal-gas pool
-// now (respiration fuel, poison risk, AND lift all draw from it, see graph_kernel.mjs buoyancy()).
-const DAG_MINOR_SINKS=['biomass','lipids','toxins','ballast','spores','enzymes','crystals'];
-const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
+// The underlying simulation still keeps ONE merged `oxygen` field per body (respiration fuel, poison
+// risk, AND lift all draw from it, see graph_kernel.mjs buoyancy()) — but the DISPLAY splits back into
+// two readable halves: 'oxygen' is now a static-size gauge for the real-O2 portion (see drawDagSink's
+// oxygen branch), and 'gas' is a separate growing bubble for the inert lift-gas portion (the fermented
+// ballast gas the W/S trim and oxygen_vacuole/pressure_bladder/gas_gland/ballast_siphon organs fill).
+const DAG_MINOR_SINKS=['biomass','lipids','gas','toxins','ballast','spores','enzymes','crystals'];
+const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',gas:'gas',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
 // UI-only edges: environmental readouts (ambient pressure, sunlight) aren't real player resources, so
 // they don't belong in the kernel's ORGAN_GRAPH_EDGES — they're purely "what this organ's dial reacts to."
 const DAG_EXTRA_EDGES=[['oxygen','pressure'],['photosystem','sunlight']];
@@ -493,7 +496,8 @@ const DAG_ROTATION_EASE=0.05;
 // persistent (not just on-hit) once you're down to a quarter health.
 function dagSinkValue(id){
   if(id==='hp') return {value:hud.hp.value, max:hud.hp.max, color:'255,140,168', duress:hpFlash>0||hud.hp.value<=hud.hp.max*0.25};
-  if(id==='oxygen') return {value:hud.oxygen.value, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false, o2:hud.oxygen.o2, n:hud.oxygen.n};
+  if(id==='oxygen') return {value:hud.oxygen.o2, max:hud.oxygen.max, color:hexRgb(K.COLORS.oxygen), duress:false, external:hud.oxygen.external};
+  if(id==='gas') return {value:hud.oxygen.n, max:hud.oxygen.max, color:hexRgb(K.COLORS.gas), duress:false};
   if(id==='ballast'){ const b=hud.bricks||{value:0}; return {value:b.value, max:1, color:hexRgb(K.COLORS.ballast), duress:false, noMax:true}; }
   const r=hud.resources.find(x=>x.id===id);
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
@@ -549,11 +553,12 @@ function dagEnsureNode(id,kind,w,h,r){
 // old pre-2x baseline size and swell dramatically past the flat 2x standard as they fill, so "how full am
 // I" is legible from across the room, not just from the fill-arc. Everything else gets a flat 2x bump.
 function dagSinkRadius(id,v){
-  // MERGED: oxygen joins the "literal tank" swell group now that it's both a respiration AND lift
-  // resource (previously it was a flat vital-tier size; the separate 'gas' sink that used to swell here
-  // is gone, folded into this one). toxins joins too — "start smaller... and then swell like all the
-  // other ones," replacing its old flat DAG_MINOR_SINKS fallback size.
-  if(id==='biomass'||id==='lipids'||id==='oxygen'||id==='toxins'){
+  // 'gas' (the lift-gas bubble) joins the "literal tank" swell group — it's the volumetric one now,
+  // reads empty small and swells dramatically as it fills, same as biomass/lipids/toxins. 'oxygen' does
+  // NOT swell anymore (see the vital-tier fixed size below) — it's a static gauge on purpose, per the
+  // gas/O2 display rework: comparing internal-vs-external O2 needs a fixed reference frame, not a size
+  // that's also changing underneath the comparison.
+  if(id==='biomass'||id==='lipids'||id==='gas'||id==='toxins'){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
     return 13+frac*(80-13); // literal tanks: empty = old baseline, full = well past the flat 2x standard
   }
@@ -771,18 +776,33 @@ function drawDagSink(g,s,v){
   g.fillStyle='rgba(6,8,18,.85)'; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.fill();
   g.strokeStyle=`rgba(${rgb},${off?0.35:0.92})`; g.lineWidth=3.4;
   if(s.id==='oxygen'&&!off){
-    // Pie chart, not a single fill-arc: O2 (real, breathable) and N (inert fermentation filler) each get
-    // their own wedge, sized by their actual share of the total — "i'm imagining a pie chart of gas types."
-    // Overall SIZE still follows the same swell-with-total-fill law as biomass/lipids/toxins (dagSinkRadius,
-    // unchanged) — the pie only changes how the FILL itself reads, not how big the node gets.
-    const total=Math.max(1e-6,(v.o2||0)+(v.n||0));
-    const o2Frac=clamp((v.o2||0)/total,0,1);
-    const o2Rgb='168,120,255', nRgb='255,255,255';
-    const startAng=-Math.PI/2, o2End=startAng+Math.PI*2*frac*o2Frac, nEnd=startAng+Math.PI*2*frac;
-    const ringW=2.4+frac*2.4; // thicker ring the fuller the tank — "the line around the edge should be size"
-    g.lineWidth=ringW;
-    if(o2End>startAng){ g.strokeStyle=`rgba(${o2Rgb},.92)`; g.beginPath(); g.arc(s.x,s.y,s.r-2.4,startAng,o2End); g.stroke(); }
-    if(nEnd>o2End){ g.strokeStyle=`rgba(${nRgb},.85)`; g.beginPath(); g.arc(s.x,s.y,s.r-2.4,o2End,nEnd); g.stroke(); }
+    // Static gauge: v.value is now the REAL-O2 portion (hud.oxygen.o2), so `frac` above already IS the
+    // internal reading — no separate variable needed. External is the ambient O2 where the body is right
+    // now. A fixed node size (dagSinkRadius keeps 'oxygen' out of the swell group) means comparing the two
+    // markers isn't confused by the node itself also changing size. The connecting "spring" between them
+    // is literally the gap: slack when equilibrated, stretched right after a dive/surface — an easy read
+    // of the diffusion rate/gradient, not a number to do math on.
+    const o2Rgb='168,120,255', extRgb='255,255,255';
+    const startAng=-Math.PI/2, ringR=s.r-2.4;
+    const intAng=startAng+Math.PI*2*frac;
+    const extFrac=clamp(v.external??0,0,1), extAng=startAng+Math.PI*2*extFrac;
+    g.lineWidth=2.6; g.strokeStyle=`rgba(${o2Rgb},.92)`;
+    g.beginPath(); g.arc(s.x,s.y,ringR,startAng,intAng); g.stroke();
+    const intX=s.x+Math.cos(intAng)*ringR, intY=s.y+Math.sin(intAng)*ringR;
+    const extX=s.x+Math.cos(extAng)*ringR, extY=s.y+Math.sin(extAng)*ringR;
+    // External marker: a short radial tick at the ambient-O2 angle.
+    g.strokeStyle=`rgba(${extRgb},.9)`; g.lineWidth=2.2;
+    g.beginPath(); g.moveTo(s.x+Math.cos(extAng)*(ringR-5),s.y+Math.sin(extAng)*(ringR-5));
+    g.lineTo(s.x+Math.cos(extAng)*(ringR+5),s.y+Math.sin(extAng)*(ringR+5)); g.stroke();
+    // Spring: a shallow zigzag between the two markers along their SHORT way around the circle. Its
+    // deflection/opacity/width all scale with the angular gap — the tension itself is the signal.
+    let d=extAng-intAng; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2;
+    const tension=clamp(Math.abs(d)/Math.PI,0,1);
+    const midAng=intAng+d/2, zig=6+tension*10;
+    g.strokeStyle=`rgba(255,220,150,${(0.35+tension*0.5).toFixed(2)})`; g.lineWidth=1.4+tension*1.8;
+    g.beginPath(); g.moveTo(intX,intY);
+    g.lineTo(s.x+Math.cos(midAng)*(ringR+zig), s.y+Math.sin(midAng)*(ringR+zig));
+    g.lineTo(extX,extY); g.stroke();
   } else if(s.id==='toxins'&&frac>0.02&&!off){
     // Swirl: the fill-arc's inner edge wobbles instead of tracing a clean line — a "sickly churn" that
     // grows with fill, not a flat readout.
@@ -994,7 +1014,7 @@ function drawDagHud(){
     if((id==='pressure'||id==='sunlight'||id==='dna') && !specialIds.includes(id)) dagNodes.delete(id);
   }
   const activeIds=[...dagNodes.keys()];
-  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','oxygen']) if(vals[id]) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
+  const flowIntensity={}; for(const id of ['biomass','lipids','toxins','energy','spores','enzymes','crystals','dna','oxygen','gas']) if(vals[id]) flowIntensity[id]=dagFlowIntensity(id,vals[id].value);
   const outflowIntensity={}; for(const id of ['enzymes']) outflowIntensity[id]=dagOutflowIntensity(id,vals[id].value);
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.

@@ -32,6 +32,7 @@ export const COLORS = Object.freeze({
   crystals: '#ff5dba',
   dna: '#ffffff',
   oxygen: '#bfe8ff',
+  gas: '#8fd0c8',        // lift/ballast gas — the DAG's separate growing "gas bubble", distinct from the O2 gauge
   light: '#fff0a5',
   ballast: '#8a7a6b'   // dull stone-grey — compacted waste brick, deliberately drab/inert next to the living resource hues
 });
@@ -1978,9 +1979,11 @@ export const ORGAN_GRAPH_EDGES = [
   ['exotic_vacuole', 'spores'],
   ['exotic_vacuole', 'crystals'], ['mineralizing_gland', 'crystals'],
   ['exotic_vacuole', 'enzymes'],
-  // MERGED: the gas bladder is the same oxygen pool now — these all feed 'oxygen' directly, landing on
-  // top of its existing membrane/oxygen_store/countercurrent_gill/photolytic_vacuole fan-in.
-  ['oxygen_vacuole', 'oxygen'], ['pressure_bladder', 'oxygen'], ['gas_gland', 'oxygen'], ['ballast_siphon', 'oxygen'],
+  // The lift-gas organs feed the DAG's separate 'gas' bubble node (index.html), not the O2 gauge — the
+  // underlying pool is still the single merged `oxygen` field (buoyancy() still reads it the same way),
+  // this only re-labels which VISUAL node they connect to, splitting the display back into two readable
+  // halves (real O2 vs lift gas) without touching the simulation's data model.
+  ['oxygen_vacuole', 'gas'], ['pressure_bladder', 'gas'], ['gas_gland', 'gas'], ['ballast_siphon', 'gas'],
   ['anaerobic_processor', 'oxygen'], ['clean_processor', 'oxygen'], ['virulent_processor', 'oxygen'],
   ['catalytic_processor', 'oxygen'], ['hydrogenosome', 'oxygen'],
   // Harm edges: not a flow, but a real causal link — the DAG HUD contracts these live while the
