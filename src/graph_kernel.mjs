@@ -431,11 +431,16 @@ const BLOOM_ACID_RECOIL = 0.010;  // HP/s per toxin unit that a deep toxic bloom
 // the way its material does. Heavy biomass sinks and holds; light lipids rise; volatile ATP flashes
 // wide and thins out fast; toxins seep into a slow, lingering cloud. Fields only ever merge same-type.
 const FIELD_RES = Object.freeze(['biomass', 'lipids', 'energy', 'toxins', 'ballast']);
+// Diffusion (footprint spread rate) tuned down to 1/7th its old pace across the board — the old rates
+// let patches balloon in size far faster than they were being grazed down, especially visible in the
+// fat/lipid slick pooling at the canopy. vy (rise/sink drift speed) is a separate physical concept and
+// is untouched here.
+const DIFFUSE_SLOWDOWN = 7;
 const FIELD_TYPE = Object.freeze({
-  biomass: { vy:  15, spread: 0.4, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
-  lipids:  { vy: -13, spread: 1.8, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
-  energy:  { vy:   0, spread: 24,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
-  toxins:  { vy:   4, spread: 3.2, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
+  biomass: { vy:  15, spread: 0.4 / DIFFUSE_SLOWDOWN, decay: 0, radiusScale: 8.0 }, // slow diffusion (auto-combines at the floor); no decay — only eaten matter leaves
+  lipids:  { vy: -13, spread: 1.8 / DIFFUSE_SLOWDOWN, decay: 0, radiusScale: 6.5, oval: 1.7 }, // diffuses into a horizontal OVAL slick; no decay — holds until eaten
+  energy:  { vy:   0, spread: 24 / DIFFUSE_SLOWDOWN,  decay: 2.6, radiusScale: 6.5 }, // fast diffusion — flashes wide + thins fast
+  toxins:  { vy:   4, spread: 3.2 / DIFFUSE_SLOWDOWN, decay: 0.4, radiusScale: 7.5 }, // moderate outward diffusion, lingers
   ballast: { vy: BALLAST_SINK_VY, spread: 0, decay: 0, radiusScale: 4.5, maxRadius: 60 }, // dense drop-weight brick: plummets straight down, tight and small — not food, no lingering spread
 });
 // Each added membrane (HP bar) costs geometrically more than the last — armor gets
@@ -1313,6 +1318,7 @@ export function systemMatter(world) {
     if (!e.alive) continue;
     if (e.cargo) for (const r of MATTER_RESOURCES) cargo += Math.max(0, e.cargo[r] || 0);
     body += e.biomassMass || 0;
+    body += e._swallowed || 0;   // shroomba belly — vacuumed matter, conserved here until the crab departs (then it leaves the system = the sink)
   }
   return { fields, cargo, body, total: fields + cargo + body };
 }
@@ -1352,6 +1358,30 @@ export function lightAt(y) {
   const scale = (darkDepth - shelfDepth) / (darkLogit - shelfLogit);
   const midpoint = shelfDepth - shelfLogit * scale;
   return clamp(1 / (1 + Math.exp((d - midpoint) / scale)), 0, 1);
+}
+
+// FAT SHADE: a big lipid mass pooled at the canopy physically blocks light from reaching what's below
+// it — "the fat at the top is a giant mass that blocks out the sun." world._fatShade is recomputed once
+// per step (see finishWorldStep) from the total lipid stock currently sitting in the shelf band, not
+// per-entity, since it's a world-scale mass, not a per-column raycast. Bodies IN the shelf band itself
+// (at/above the fat, closest to the real sun) read unshaded light; bodies below it see it dimmed.
+const FAT_SHADE_BAND = 260;       // px below canopy where pooled lipid mass counts as "the fat layer"
+const FAT_SHADE_SATURATE = 400;   // lipid units in that band for near-maximum blockage
+const FAT_SHADE_MAX = 0.82;       // hardest blockage ever applies — never fully dark, even under a huge slick
+function computeFatShade(world) {
+  let lipidMass = 0;
+  for (const f of world.fields) {
+    if (f.resType === 'lipids' && f.y < WORLD.canopy + FAT_SHADE_BAND) lipidMass += f.stock.lipids || 0;
+  }
+  return clamp(lipidMass / FAT_SHADE_SATURATE, 0, 1) * FAT_SHADE_MAX;
+}
+// Live per-entity light read for gameplay (photosynthesis, bloom repair) — lightAt(y) attenuated by
+// the current fat shade for anything below the shelf band. yAtLight/zoneName/HUD projections keep using
+// plain lightAt on purpose (ambient baseline for seeding/labels, not the moment-to-moment growth signal).
+function shadedLightAt(world, y) {
+  const base = lightAt(y);
+  if (y <= WORLD.canopy + FAT_SHADE_BAND) return base;
+  return base * (1 - (world._fatShade || 0));
 }
 
 // Invert the monotone light field for analytic ecology seeding. Initial hunter
@@ -1656,6 +1686,11 @@ function seedMatureEcosystem(world) {
     y: WORLD.nurseryTop + rand(world, 120, 1100),
     x: rand(world, 0, WORLD.w)
   });
+  // A few fat-grazers seeded right at the canopy from the start, so the new caste is visible immediately
+  // rather than only trickling in over time via immigration.
+  for (let i = 0; i < 3; i++) spawnScavenger(world, {
+    grazer: true, y: WORLD.canopy + rand(world, 60, 260), x: rand(world, 0, WORLD.w)
+  });
 
   // Sample the normal ecology directly. No phase buckets or hidden fall-state script: aggregate
   // invariants come from ecologyRegime while each body gets an independent continuous orbit.
@@ -1776,6 +1811,8 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
     algaeTraits: opts.algaeTraits ? { ...opts.algaeTraits } : null, algaeSeedPhase: opts.algaeSeedPhase ?? 0,
     algaeCyclePeriod: opts.algaeCyclePeriod ?? 0, algaePrevDirection: opts.algaePrevDirection ?? 0,
     algaeCycleCount: 0, _algaeBoundary: false, _workJitter: opts._workJitter ?? 1,
+    // Horseshroomba crab state (inert on every other body; declared here to keep one hidden class).
+    _marchDir: 0, _marchDist: 0, _swallowed: 0, cellCount: 0, _belchT: 0, _waveT: 0, _washT: 0, _noCorpse: false,
     _capsEpoch: -1, _capsVal: null, _hasLance: false, _lanceReach: 0, _lanceCands: null, _raspStack: 0
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
@@ -2199,6 +2236,7 @@ function feedRate(entity) {
 }
 
 function targetRadius(entity) {
+  if (entity.controller === 'shroomba') return entity.baseR || entity.r || 18; // colossus: fixed size, not fullness-driven
   const base = entity.baseR || entity.r || 18;
   const c = caps(entity);
   const biomassFill = clamp((entity.cargo.biomass || 0) / Math.max(1, c.biomass), 0, 1);
@@ -2294,6 +2332,7 @@ export function stepEcology(world, dt = 1 / 60) {
 }
 
 function finishWorldStep(world, player, dt) {
+  world._fatShade = computeFatShade(world);
   updateNPCs(world, player, dt);
   updateEnvironmentAndMetabolism(world, dt);
   updateFields(world, dt);
@@ -3258,6 +3297,8 @@ function updateNPCs(world, player, dt) {
       continue;
     }
 
+    if (e.controller === 'shroomba') { updateShroombaBrain(world, e, dt); continue; }
+
     if (e.controller === 'scavenger') { updateScavengerBrain(world, e, dt); continue; }
 
     if (FREE_HUNTERS.has(e.controller)) {
@@ -3413,7 +3454,7 @@ function updateAlgaeAI(world, e, dt) {
   // Yuki's canopy is a steep, strong heal: bask in the bright top band to mend before the next
   // bloat-and-fall. The lightless deep is attrition — a bloom must ride its ballast back up to the
   // light to survive; one that can't recover starves and dissolves into deep slurry for the froth.
-  const light = lightAt(e.y);
+  const light = shadedLightAt(world, e.y);
   const woundFraction = clamp(1 - e.hp / Math.max(1, c.hp), 0, 1);
   const repairDrive = ALGAE_HEAL * light * Math.pow(woundFraction, 0.65);
   e.hp = Math.min(c.hp, e.hp + repairDrive * dt); // repair slows smoothly as the wound closes
@@ -3463,7 +3504,7 @@ function updateEnvironmentAndMetabolism(world, dt) {
     if ((e.cargo.biomass || 0) > 0) {
       e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - (e.cargo.biomass || 0) * MASS_TAX_K * dt);
     }
-    const light = lightAt(e.y);
+    const light = shadedLightAt(world, e.y);
     const extO2 = oxygenAt(e.y);
     const porosity = membranePorosity(e);
     // Small molecules cross every bacterial membrane continuously. Oxygen relaxes
@@ -3787,18 +3828,20 @@ function updateEnvironmentAndMetabolism(world, dt) {
     // Oxygen overload is tick damage. No separate depth gate — the ambient O2 cliff (see oxygenAt)
     // already does that work: it's genuinely dangerous through the nursery and genuinely safe once
     // you're past it, so the geography comes from the field itself, not a hardcoded distance rule.
+    // O2/toxin overload no longer trips the fast combat hit-strobe (e.hit) — that read as a hard
+    // flash for a purely ambient/gradual condition. The renderer instead reads oxygen/oxygenTolerance
+    // and toxins/toxinCap directly (entityProjection already carries both) for a slow pulsing tint on
+    // the body itself, same physiological signal, gentler read.
     const tol = oxygenTolerance(e);
     if (e.grace <= 0 && e.oxygen > tol) {
       const excess = e.oxygen - tol;
       e.hp -= excess * (hasMito(e) ? 3.4 : 7.4) * dt;
-      e.hit = Math.max(e.hit, 0.05);
     }
 
     const toxCap = caps(e).toxins;
     if (toxCap > 0 && e.cargo.toxins > toxCap * 0.68) {
       const toxExcess = (e.cargo.toxins - toxCap * 0.68) / Math.max(1, toxCap);
       e.hp -= (1.8 + 9.5 * toxExcess) * toxExcess * dt;
-      e.hit = Math.max(e.hit, 0.045);
     }
 
     // Vampire burn: a dark-adapted deep body cooks in the light of the shallows.
@@ -5062,6 +5105,7 @@ function stepManufacturing(world, e, dt) {
 }
 
 function bloomDeath(world, e) {
+  if (e._noCorpse) return; // vacuumed into a shroomba belly, or the crab itself departing — the matter left the system, no corpse spill
   const stock = emptyCargo();
   // CLOSED LOOP: a corpse releases only the matter the body actually held — its structural mass
   // (biomassMass) plus carried cargo, minus a fraction lost to volatiles (respired/dissolved). There
@@ -5373,6 +5417,11 @@ function entrySpawn(world, role) {
     if (p && y < p.y && p.y - y < SPAWN_CLEARANCE) y = p.y + rand(world, SPAWN_CLEARANCE, SPAWN_CLEARANCE + 800);
     return { x: offX(), y: clamp(y, WORLD.nurseryTop - 200, WORLD.ruptureBottom + 400) };
   }
+  if (role === 'grazer_scavenger') {
+    // Right in the canopy fat slick, same neighborhood as young algae — no player-clearance gate,
+    // it's meant to be found and easily hunted near the surface.
+    return { x: freeX(), y: clamp(WORLD.canopy + rand(world, 60, 300), WORLD.canopy + 10, WORLD.nurseryTop) };
+  }
   if (role === 'abyssal_scavenger') {
     // The ancient anaerobe rises from the abyss floor to graze the sinking whale-fall.
     let y = WORLD.h - rand(world, 150, 1800);
@@ -5419,6 +5468,16 @@ function spawnTick(world, dt) {
       world.events.push({ type: 'deep_bloom_birth', controller: 'algae' });
     }
   }
+  // HORSESHROOMBA CRAB — the deep pile's relief valve. When detritus accumulates on the floor past the
+  // summon threshold, a crab sized to the pile is drawn in (bigger pile -> bigger, likelier crab) to
+  // vacuum it out. Only one at a time; it self-removes on departure.
+  if (!world.entities.some(x => x.alive && x.controller === 'shroomba')) {
+    let deepPile = 0;
+    for (const f of world.fields) if (f.y > WORLD.deepTop + 1500) deepPile += (f._matter || 0);
+    if (deepPile > CRAB_SUMMON_THRESHOLD && world.rng() < 1 - Math.exp(-0.05 * (deepPile / CRAB_SUMMON_THRESHOLD) * dt)) {
+      spawnShroomba(world, { deepMatter: deepPile });
+    }
+  }
   // SCAVENGERS immigrate toward a soft target (they emigrate when starved, see populationTick) —
   // a migratory forager pool that flows through. Below target the froth draws foragers in.
   // The fission guild (predator/protozoan/metazoan) only gets a tiny immigration FLOOR — their
@@ -5462,7 +5521,11 @@ function spawnTick(world, dt) {
       world.events.push({ type: 'immigrate', controller: want });
     }
     else if (scavN < scavengerTarget(world)) {
-      spawnScavenger(world, entrySpawn(world, 'scavenger')); // burned-in HP-fill sampled in makeSoftBody
+      // The fat-grazer is a sub-variety of the oxic caste, not a separately-budgeted population — it
+      // shares scavengerTarget's demand-driven cap, just biased toward the canopy fat slick instead of
+      // the general oxic depth spread.
+      const wantGrazer = world.rng() < 0.3;
+      spawnScavenger(world, wantGrazer ? { ...entrySpawn(world, 'grazer_scavenger'), grazer: true } : entrySpawn(world, 'scavenger')); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -5588,34 +5651,45 @@ function spawnScavenger(world, opts = {}) {
   const arrival = opts.x == null || opts.y == null ? scavengerImmigrationLocation(world) : null;
   const y = opts.y ?? arrival.y;
   const x = opts.x ?? arrival.x;
-  // Two castes of the SAME forager, differing only by O2 physiology (the brain reads it parametrically):
-  // the OXIC caste tolerates the bright, oxygenated shallows; the ABYSSAL caste is an O2-INTOLERANT
-  // "ancient" — a double-sized clone with its oxygen_tolerance stripped, so the same niche rule confines
-  // it to the anaerobic deep where it eats the sinking whale-fall.
+  // Three castes of the SAME forager, differing in O2 physiology and diet (the brain reads them
+  // parametrically): the OXIC caste tolerates the bright, oxygenated shallows; the ABYSSAL caste is an
+  // O2-INTOLERANT "ancient" — a double-sized clone with its oxygen_tolerance stripped, confined to the
+  // anaerobic deep where it eats the sinking whale-fall; the GRAZER caste is a small, mobile surface
+  // forager that lives right in the canopy's fat slick — "little scooty nibbly ones" the player can
+  // easily hunt for a big ATP payoff.
   const abyssal = !!opts.abyssal;
-  // lipid_repair_loom on EVERY scavenger (both castes) gives the fat they nibble a purpose: they stitch
+  const grazer = !!opts.grazer;
+  // lipid_repair_loom on EVERY scavenger (all castes) gives the fat they nibble a purpose: they stitch
   // their own wounds with it (repairFromLipids in the brain), so grazed lipids become durability.
   // Built from real organs like every hunter: leech_rasp (Leech Lamella) is the scavenger's WEAPON and
   // its parasite mouth in one — low-damage rasp that siphons a host's biomass/lipids/ATP (drives the mob
   // finish + the cling-to-biomass bite via contactDamage). Replaces the old hardcoded scavengerBite AND
   // the inert charge_cytostome they used to carry (that organ only functions for the FREE_HUNTER guild).
   const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, leech_rasp: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1, lipid_repair_loom: 1 };
-  if (!abyssal) organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   // The abyssal caste is a BIG bottom-feeder: a wide mouth and a huge belly to swallow the whale-fall
   // pile and haul it OUT of the column. It immigrates when the floor biomass piles up (deepMatter, see
   // spawnTick) and emigrates once GORGED (populationTick) — a demand-driven matter sink for surplus.
-  else { organelles.membrane = 3; organelles.membrane_intake = 2; organelles.storage_vacuole = 3; organelles.biomass_vacuole = 5; }
+  if (abyssal) { organelles.membrane = 3; organelles.membrane_intake = 2; organelles.storage_vacuole = 3; organelles.biomass_vacuole = 5; }
+  // The grazer's mitochondrion gives it hasMito()'s strong lipid feed-affinity (feedFromFields) — it
+  // genuinely prefers the fat pooling at the top, and its respiration burns that fat for ATP just like
+  // any aerobic body. Skips exotic_vacuole (smaller, thinner-armored) and needs oxygen_tolerance to sit
+  // comfortably in the bright shelf water it forages.
+  else if (grazer) { organelles.oxygen_tolerance = 6; organelles.mitochondrion = 1; delete organelles.exotic_vacuole; }
+  else organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
   const e = makeSoftBody(world, 'npc', x, y, {
-    r: rand(world, 11, 18) * (abyssal ? 2.4 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
-    trophicRole: abyssal ? 'abyssal_scavenger' : 'anaerobic_scavenger', depthHome: y,
-    organelles, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
+    r: rand(world, 11, 18) * (abyssal ? 2.4 : grazer ? 0.55 : 1), color: abyssal ? '#6f97a8' : grazer ? '#f5c86b' : '#8ef19e', controller: 'scavenger',
+    trophicRole: abyssal ? 'abyssal_scavenger' : grazer ? 'fat_grazer' : 'anaerobic_scavenger', depthHome: y,
+    organelles,
+    cargo: grazer ? { biomass: rand(world, 2, 8), energy: rand(world, 16, 32), lipids: rand(world, 6, 16) } : { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) },
+    oxygen: oxygenAt(y)
   });
   // MILD light-sensitivity for the oxic caste: photophobic with a HIGH light tolerance, so only the
   // bright top of the column (above the light sigmoid's knee) hurts. That keeps them out of the shallow
   // line and settles their comfort minimum in the twilight MIDDLE — from where they push up to catch
   // falling debris early or wait for it to sink to them. Continuous per-body variance (no wall); the
-  // abyssal caste stays light-indifferent (it's dark down there — O2 confines it instead).
-  if (!abyssal) {
+  // abyssal caste stays light-indifferent (it's dark down there — O2 confines it instead); the grazer is
+  // light-INDIFFERENT too, on purpose — it lives right in the brightest water, at the fat slick itself.
+  if (!abyssal && !grazer) {
     e.photophobic = true;
     // High tolerance = only the BRIGHT shelf (top ~z1000) stings; comfort settles just under it, in the
     // wounded-algae fall stream. Per-body variance spreads that home into a BAND, not one razor line.
@@ -5714,6 +5788,88 @@ function spawnCompanion(world, owner, type) {
 // with its own mitochondria, wearing a body of 2–4 somatic sub-cells (a real
 // e.colony, the same structure the player builds). Tanky, slow, and — because its
 // lead can mutate — a jackpot of exotic DNA when finally cracked open.
+// ───────────────────────── THE HORSESHROOMBA CRAB ─────────────────────────
+// A colossal migratory bottom-vacuum — the ecosystem's reset valve. It is summoned when the deep
+// detritus pile builds up (sized to it), marches clockwise around the no-light/no-O2 floor slurping the
+// pile (and any body small enough for its maw) into its belly, then DEPARTS carrying that matter out of
+// the system — the emigration-style sink that finally reaches the deep pile and closes the leak. Bigger
+// accumulation -> bigger, likelier crab -> harder reset -> selection on the deep winners. One entity,
+// rendered as a cell-mass (the "300 cells" is flavor + cellCount lobes).
+const CRAB_SUMMON_THRESHOLD = 6000;   // deep-matter (fields below deepTop+1500) that starts drawing a crab
+const CRAB_MARCH_SPEED = 55;          // px/s clockwise (×depthTempo ~0.6 on the floor -> ~33) — a slow colossus
+const CRAB_MAW_FRAC = 0.72;           // fields within crab.r×this are vacuumed; bodies within ×0.45 are swallowed
+const CRAB_BELLY = 80000;             // swallowed-matter cap; departs when full (or after one full loop)
+const CRAB_ENGULF_MIN_MASS = 80;      // only bodies this HEAVY (structural biomassMass) ...
+const CRAB_ENGULF_MIN_R = 50;         // ... or this GIANT (radius) are swallowed — the deep winners; small fry pass through
+
+function spawnShroomba(world, opts = {}) {
+  const deepMatter = opts.deepMatter || CRAB_SUMMON_THRESHOLD;
+  const scale = clamp(deepMatter / CRAB_SUMMON_THRESHOLD, 1, 3.4);   // bigger pile -> bigger crab
+  const r = 1000 + 500 * scale;                                     // ~1500 .. ~2700 px radius (thousands of px tall)
+  const player = getPlayer(world);
+  const x = wrapX((player ? player.x : world.rng() * WORLD.w) + WORLD.w / 2); // opposite side of the cone from the player
+  const y = clamp(WORLD.h - r * 0.55, WORLD.deepTop + 800, WORLD.h - 200);    // body spans up from the floor into the mid-deep
+  const e = makeSoftBody(world, 'npc', x, y, {
+    r, baseR: r, color: '#7a5c86', controller: 'shroomba', trophicRole: 'reset_crab', depthHome: y,
+    // A giant intake + belly so its caps hold the slurp; no mitochondrion (deep, anoxic); photophobic.
+    organelles: { membrane: 40, membrane_intake: 24, storage_vacuole: 8, biomass_vacuole: 8, phagosome: 4, anaerobic_processor: 6 },
+    cargo: { biomass: 0, energy: 0, lipids: 0 }, oxygen: 0, photophobic: true
+  });
+  e.cellCount = Math.round(180 + 140 * scale);   // rendered lobes
+  e._marchDir = world.rng() < 0.5 ? 1 : -1;      // clockwise-ish; direction fixed for this crab's loop
+  e._marchDist = 0; e._swallowed = 0;
+  e._belchT = rand(world, 4, 9); e._waveT = rand(world, 3, 7); e._washT = rand(world, 8, 16);
+  e.maxHp = caps(e).hp; e.hp = e.maxHp;
+  e.bodyPlan = 'crab';
+  world.entities.push(e);
+  world.events.push({ type: 'shroomba_arrive', entityId: e.id, r: Math.round(r) });
+  return e;
+}
+
+// The crab's brain: a slow directed march around the deep floor, vacuuming the pile into its belly, then
+// leaving with it. No thrust/steer — it advances its x directly (it's a colossus, not a swimmer).
+function updateShroombaBrain(world, e, dt) {
+  const step = CRAB_MARCH_SPEED * depthTempo(e.y) * e._marchDir * dt;
+  e.x = wrapX(e.x + step);
+  e._marchDist += Math.abs(step);
+  const targetY = clamp(WORLD.h - e.r * 0.55, WORLD.deepTop + 800, WORLD.h - 200);
+  e.y += (targetY - e.y) * Math.min(1, 0.5 * dt);
+  e.vx = 0; e.vy = 0;
+
+  // VACUUM the detritus pile: drain biomass/lipid/etc fields in the maw into the belly (uncapped — the
+  // belly is a sink, not storage). Matter moves field -> _swallowed; systemMatter conserves it there.
+  const reach = e.r * CRAB_MAW_FRAC;
+  for (const f of world.fields) {
+    if (f.resType === 'ballast') continue;
+    if (distWrap(e.x, e.y, f.x, f.y) > reach + f.radius) continue;
+    for (const r of MATTER_RESOURCES) { const amt = f.stock[r] || 0; if (amt > 0) { f.stock[r] = 0; e._swallowed += amt; } }
+    f._matter = 0;
+  }
+  // ENGULF bodies caught in the core maw — but SELECTIVELY, per the reset's role: the "bacteria that got
+  // too heavy and survived the descent" and the "giant winners" of the deep brawl. A body is swallowed
+  // only if it is HEAVY (structural mass) or GIANT (radius), so the small deep guild passes through the
+  // sweep while the overgrown winners and gorged bottom-feeders are culled — the selection pressure.
+  // Absorb their REAL matter (conserved) and remove them cleanly (no corpse). Never the player.
+  const coreMaw = e.r * 0.45;
+  for (const o of world.entities) {
+    if (!o.alive || o === e || o.kind === 'player' || o.controller === 'shroomba') continue;
+    if ((o.biomassMass || 0) < CRAB_ENGULF_MIN_MASS && o.r < CRAB_ENGULF_MIN_R) continue; // spare the small/light
+    if (distWrap(e.x, e.y, o.x, o.y) > coreMaw + o.r) continue;
+    let m = (o.biomassMass || 0) + (o._swallowed || 0);
+    if (o.cargo) for (const r of MATTER_RESOURCES) m += Math.max(0, o.cargo[r] || 0);
+    e._swallowed += m;
+    o.alive = false; o._noCorpse = true;
+    world.events.push({ type: 'crab_swallow', entityId: e.id, victimId: o.id });
+  }
+
+  // DEPART = the sink: after a full loop (WORLD.w travelled) or a full belly, the crab leaves and its
+  // whole belly drops out of systemMatter. Removed with no corpse.
+  if (e._marchDist >= WORLD.w || e._swallowed >= CRAB_BELLY) {
+    world.events.push({ type: 'shroomba_depart', entityId: e.id, swallowed: Math.round(e._swallowed) });
+    e.alive = false; e._noCorpse = true;
+  }
+}
+
 function spawnMetazoan(world, opts = {}) {
   const y = opts.y ?? (WORLD.deepTop + rand(world, 700, 2400));
   const x = opts.x ?? rand(world, 0, WORLD.w);
@@ -6522,7 +6678,7 @@ export function getHudProjection(world, entityId = world.playerId) {
   const e = world.entities.find(x => x.id === entityId);
   if (!e) return null;
   const c = caps(e);
-  const env = { oxygen: oxygenAt(e.y), light: lightAt(e.y), pressure: pressureAt(e.y) };
+  const env = { oxygen: oxygenAt(e.y), light: shadedLightAt(world, e.y), pressure: pressureAt(e.y) };
   const readiness = hostReadiness(e, world);
   return {
     hp: { value: e.hp, max: c.hp, label: 'HP', layers: orgCount(e, 'membrane') },

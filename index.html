@@ -251,20 +251,43 @@ let graphOpen=true;
 function dagToggleOpen(){ graphOpen=!graphOpen; }
 ui.graphToggle.onclick=dagToggleOpen;
 
-// Shop-on-graph: which ORGAN_CATEGORY bucket's unlocked-unowned organelles show as shadow nodes right now.
-// null = no category selected = today's owned-only view. Category chips are the single source of scope —
-// there's no separate Yuki-proximity gate here (buy/remove via the graph works anywhere).
+// Shared Affordable/Owned/New filter-chip component — same markup and click semantics reused by BOTH
+// the Yuki shop panel and the graph's shop-on-graph chip row, so they're genuinely the same control, not
+// two lookalikes. Each surface keeps its OWN state instance (see shopFilter / dagFilter) since their
+// sensible defaults differ — the shop panel defaults to "browse what's affordable," the graph defaults
+// Owned to true since owned nodes already always appear on the graph regardless of any toggle.
+function filterChipsHTML(state){
+  const mk=(key,label)=>`<button class="mgrToggle${state[key]?' on':''}" data-fkey="${key}">${state[key]?'✓':'○'} ${label}</button>`;
+  return mk('affordableOnly','Affordable')+mk('ownedOnly','Owned')+mk('newOnly','New');
+}
+function wireFilterChips(container,state,rerender){
+  if(!container) return;
+  for(const b of container.querySelectorAll('[data-fkey]')) b.onpointerup=e=>{e.preventDefault();state[b.dataset.fkey]=!state[b.dataset.fkey];rerender();};
+}
+
+// Shop-on-graph: which ORGAN_CATEGORY bucket's unlocked-unowned organelles show as shadow nodes right
+// now. null = no category selected. There's no separate Yuki-proximity gate here (buy/remove via the
+// graph works anywhere). dagFilter.newOnly has a graph-specific meaning: browse unlocked-unowned
+// organelles from EVERY category at once, ignoring the selected category chip (on the shop panel "New"
+// instead just means "organs you've never bought" WITHIN whatever's already showing).
 let dagShopCategory=null;
+// affordableOnly defaults OFF here (unlike the shop panel) — the established shop-on-graph behavior
+// from last round shows unaffordable-but-unlocked organelles as dimmer shadows on purpose ("an
+// unaffordable-today organelle is still unlocked"); the toggle just makes that filterable now.
+const dagFilter={affordableOnly:false, ownedOnly:true, newOnly:false};
 const DAG_SHOP_CATEGORIES=['feeding','metabolism','structure','oxygen','movement','weapons','swarm'];
-(function buildDagShopChips(){
-  ui.dagShopChips.innerHTML=DAG_SHOP_CATEGORIES.map(c=>`<button class="dagChip" data-cat="${c}">${c}</button>`).join('');
-  for(const b of ui.dagShopChips.querySelectorAll('.dagChip')){
+function buildDagShopChips(){
+  const cats=DAG_SHOP_CATEGORIES.map(c=>`<button class="dagChip${c===dagShopCategory?' on':''}" data-cat="${c}">${c}</button>`).join('');
+  ui.dagShopChips.innerHTML=filterChipsHTML(dagFilter)+cats;
+  wireFilterChips(ui.dagShopChips,dagFilter,buildDagShopChips);
+  for(const b of ui.dagShopChips.querySelectorAll('[data-cat]')){
     b.onclick=()=>{
       dagShopCategory = dagShopCategory===b.dataset.cat ? null : b.dataset.cat;
-      for(const c of ui.dagShopChips.querySelectorAll('.dagChip')) c.classList.toggle('on', c.dataset.cat===dagShopCategory);
+      buildDagShopChips();
     };
   }
-})();
+}
+buildDagShopChips();
 
 // Tap: shadow or owned-not-maxed organelle -> buy (verbatim reuse of the list panel's own buy flow,
 // cost-check/mutation/toast/refresh all included) — UNLESS Organ Manufacturing is owned and idle and the
@@ -296,6 +319,7 @@ addEventListener('keydown',e=>{
     else if(hud?.nearYuki) openShop();
   }
   if(k==='p') resetWorld();
+  if(k==='o') dagToggleOpen();
   if(k==='k') { K.killPlayer(world); toast('You burst your own membrane — your corpse blooms into a feeding field.'); }
   if(e.key==='Escape') closeShop();
 });
@@ -719,18 +743,6 @@ function dagEdge(g,x1,y1,x2,y2,r2,rgb,a,width){
   g.fillStyle=`rgba(${rgb},${a.toFixed(2)})`;
   g.beginPath(); g.moveTo(tipx,tipy); g.lineTo(lx,ly); g.lineTo(rx,ry); g.closePath(); g.fill();
 }
-// The ovoid backdrop is purely a "here's where the graph lives" ground — dropped while the shop is open
-// so the graph can float visibly on top of the shop instead of hiding it behind a solid panel.
-function dagBackdrop(g,w,h){
-  const cx=w/2, cy=h/2, rx=Math.max(20,w/2-18), ry=Math.max(20,h/2-14);
-  g.save();
-  g.beginPath(); g.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
-  const grad=g.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
-  grad.addColorStop(0,'rgba(10,14,26,.58)'); grad.addColorStop(0.75,'rgba(8,11,20,.38)'); grad.addColorStop(1,'rgba(6,8,16,.08)');
-  g.fillStyle=grad; g.fill();
-  g.strokeStyle='rgba(158,240,189,.20)'; g.lineWidth=1.4; g.stroke();
-  g.restore();
-}
 function drawDagSink(g,s,v){
   // Uncapped resources (ballast) have no ceiling to show progress toward — a full ring, since the node's
   // own logarithmic SIZE (dagSinkRadius) is what actually communicates "how much," not a fill fraction.
@@ -924,7 +936,6 @@ function drawDagHud(){
   if(hud.nearYuki) graphOpen=true;
   ui.dagShopChips.style.display=graphOpen?'flex':'none';
   const g=dagCtx, w=innerWidth, h=dagHudH;
-  const shopOpen=ui.shopOverlay.style.display==='flex';
   const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
   const specialIds=dagActiveSpecialIds();
   // Shop-on-graph: unlocked-but-unowned organelles in the selected category preview as shadow nodes,
@@ -939,14 +950,21 @@ function drawDagHud(){
   // category — it's a real in-progress process, not a browsing preview, so it can't be hidden by tapping a
   // different chip mid-build.
   const manufacturingTarget = hud.manufacturing ? K.getYukiOfferings(world).find(o=>o.organelle===hud.manufacturing.organelle) : null;
-  const shadowCandidates = (dagShopCategory ? K.getYukiOfferings(world).filter(o=>
-    o.organelle && organState(o)!=='lock' && K.__test.ORGAN_CATEGORY[o.organelle]===dagShopCategory && !hud.organelles.some(x=>x.id===o.organelle)
+  // dagFilter.newOnly browses every category at once (ignoring the selected chip); dagFilter.affordableOnly
+  // additionally drops 'unaff' previews, leaving only genuinely-graftable-right-now shadows.
+  const shadowScope = dagFilter.newOnly || dagShopCategory;
+  const shadowCandidates = (shadowScope ? K.getYukiOfferings(world).filter(o=>
+    o.organelle && organState(o)!=='lock' && (!dagFilter.affordableOnly || organState(o)==='ready')
+    && (dagFilter.newOnly || K.__test.ORGAN_CATEGORY[o.organelle]===dagShopCategory) && !hud.organelles.some(x=>x.id===o.organelle)
   ) : [])
     .concat(manufacturingTarget && !hud.organelles.some(x=>x.id===manufacturingTarget.organelle) ? [manufacturingTarget] : [])
     .filter((o,i,arr)=>arr.findIndex(x=>x.organelle===o.organelle)===i)
     .map(o=>({...o, id:o.organelle, graphRole:K.ORGAN_GRAPH_ROLE[o.organelle]||'tune', count:0, shadow:true, offering:o,
       manufacturing: hud.manufacturing&&hud.manufacturing.organelle===o.organelle ? hud.manufacturing : null}));
-  const orgList=hud.organelles.concat(shadowCandidates);
+  // dagFilter.ownedOnly, when turned off, hides owned nodes from the graph — except membrane, which
+  // must always stay present (it's what dagOffX/dagOffY, the player-lock, is computed from).
+  const ownedShown = dagFilter.ownedOnly ? hud.organelles : hud.organelles.filter(o=>o.id==='membrane');
+  const orgList=ownedShown.concat(shadowCandidates);
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
@@ -1011,7 +1029,6 @@ function drawDagHud(){
     }
     return;
   }
-  if(!shopOpen) dagBackdrop(g,w,h);
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
     const base=dagEdgeBaseAlpha(fromId,toId,orgList);
@@ -1033,7 +1050,7 @@ function updateActionButtons(actions){
     b.onpointerup=b.onpointercancel=b.onpointerleave=()=>{buttons[id]=false;b.classList.remove('active')};
   }
 }
-function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['U','Compact waste — drains most of your toxins into permanent ballast (biomass + ATP cost)',!!map.get('compact')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
+function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['U','Compact waste — drains most of your toxins into permanent ballast (biomass + ATP cost)',!!map.get('compact')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['O','Toggle body graph',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
 // Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
 // basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
@@ -1117,9 +1134,9 @@ function renderShop(){
   const bhEl=document.getElementById('bodyHead'); if(bhEl) bhEl.style.display='none';
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
   let rest=offers.filter(o=>!inBar(o));
-  if(affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
-  if(ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
-  if(newOnly) rest=rest.filter(o=>orgCardCount(o)===0);           // only organs you've never bought
+  if(shopFilter.affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
+  if(shopFilter.ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
+  if(shopFilter.newOnly) rest=rest.filter(o=>orgCardCount(o)===0);           // only organs you've never bought
   const buckets=SHOP_GROUPS.map(()=>[]);
   const groupOf=id=>{for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
   for(const o of rest) buckets[groupOf(o.id)].push(o);
@@ -1196,15 +1213,13 @@ function organCard(o){
 // Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
 // Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
 // plus quick-jump chips to each populated shop category.
-let affordableOnly=true, ownedOnly=false, newOnly=false;
+const shopFilter={affordableOnly:true, ownedOnly:false, newOnly:false};
 const CAT_SHORT=['Feed','Metab','Struct','Oxygen','Move','Weapons','Swarm','Euchar','Tier 3','Other'];
 function renderGuide(){
   if(!ui.shopGuide) return;
   const chips=SHOP_GROUPS.map((g,i)=>ui.shopBody.querySelector('#grp'+i)?`<button class="mgrCat" data-grp="${i}">${CAT_SHORT[i]||g[0].slice(0,6)}</button>`:'').join('');
-  ui.shopGuide.innerHTML=`<button class="mgrToggle${affordableOnly?' on':''}" id="mgrAfford">${affordableOnly?'✓':'○'} Affordable</button><button class="mgrToggle${ownedOnly?' on':''}" id="mgrOwned">${ownedOnly?'✓':'○'} Owned</button><button class="mgrToggle${newOnly?' on':''}" id="mgrNew">${newOnly?'✓':'○'} New</button><div class="mgrCats">${chips}</div>`;
-  const af=ui.shopGuide.querySelector('#mgrAfford'); if(af) af.onpointerup=e=>{e.preventDefault();affordableOnly=!affordableOnly;renderShop();};
-  const ow=ui.shopGuide.querySelector('#mgrOwned'); if(ow) ow.onpointerup=e=>{e.preventDefault();ownedOnly=!ownedOnly;renderShop();};
-  const nw=ui.shopGuide.querySelector('#mgrNew'); if(nw) nw.onpointerup=e=>{e.preventDefault();newOnly=!newOnly;renderShop();};
+  ui.shopGuide.innerHTML=filterChipsHTML(shopFilter)+`<div class="mgrCats">${chips}</div>`;
+  wireFilterChips(ui.shopGuide,shopFilter,()=>{renderGuide();renderShop();});
   for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
@@ -1423,21 +1438,50 @@ function drawParticles(){
     else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
     ctx.restore()}
 }
+// Step-tracker-style vitals rings around the player's own body: HP (outer) + Energy (inner) sweep the
+// LEFT semicircle, Biomass (outer) + Lipids (inner) sweep the RIGHT semicircle, each filled proportional
+// to value/max. Reads directly off hud (the same live projection the shop/graph already trust).
+function drawPlayerRings(e){
+  if(!hud) return;
+  const hpFrac=clamp((hud.hp?.value||0)/Math.max(1,hud.hp?.max||1),0,1);
+  const res=id=>hud.resources?.find(r=>r.id===id);
+  const enRes=res('energy'), bioRes=res('biomass'), lipRes=res('lipids');
+  const enFrac=enRes?clamp(enRes.value/Math.max(1,enRes.max),0,1):0;
+  const bioFrac=bioRes?clamp(bioRes.value/Math.max(1,bioRes.max),0,1):0;
+  const lipFrac=lipRes?clamp(lipRes.value/Math.max(1,lipRes.max),0,1):0;
+  const r0=e.r+7, gap=4.4, width=3.2;
+  const ring=(radius,frac,rgb,ccw)=>{
+    const start=Math.PI/2, end=ccw?-Math.PI/2:Math.PI*1.5;
+    ctx.save(); ctx.lineCap='round';
+    ctx.strokeStyle='rgba(255,255,255,.14)'; ctx.lineWidth=width;
+    ctx.beginPath(); ctx.arc(e.x,e.y,radius,start,end,ccw); ctx.stroke();
+    if(frac>0.01){
+      const sweep=Math.PI*frac, fillEnd=ccw?start-sweep:start+sweep;
+      ctx.strokeStyle=`rgb(${rgb})`; ctx.lineWidth=width;
+      ctx.beginPath(); ctx.arc(e.x,e.y,radius,start,fillEnd,ccw); ctx.stroke();
+    }
+    ctx.restore();
+  };
+  ring(r0+gap*2, hpFrac, '255,140,168', false);
+  ring(r0+gap,   enFrac, RES_COLORS.energy.join(','), false);
+  ring(r0+gap*2, bioFrac, RES_COLORS.biomass.join(','), true);
+  ring(r0+gap,   lipFrac, RES_COLORS.lipids.join(','), true);
+}
 function drawEntities(){for(const e of projection.entities){if(e.sheltered)continue;if(!onScreen(e.x,e.y,e.r+70))continue;drawEntity(e)}}
 function drawEntity(e){
   const speed=clamp(Math.hypot(e.vx,e.vy)/260,0,1); const hp=clamp(e.hp/e.maxHp,0,1); const r=e.r; const ang=e.phase||0;
   if(e.feedIntent){ctx.strokeStyle='rgba(134,210,255,.38)';ctx.setLineDash([7,8]);ctx.lineWidth=2;ctx.beginPath();const fr=r+(e.organelles.cytostome||0)*20;ctx.arc(e.x,e.y,fr,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
   if(e.action==='rasp'){ctx.strokeStyle='rgba(255,180,110,.72)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,r+5,ang-.9,ang+.9);ctx.stroke()}
   if(e.repairIntent){ctx.strokeStyle='rgba(245,212,122,.55)';ctx.lineWidth=2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+10,0,Math.PI*2);ctx.stroke();ctx.setLineDash([])}
-  if(e.oxygen>e.oxygenTolerance && (e.y-K.WORLD.canopy)<400){ctx.strokeStyle='rgba(191,232,255,.70)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,r+4+Math.sin(world.t*14)*2,0,Math.PI*2);ctx.stroke()}
-  if(e.toxinCap>0&&e.toxins>e.toxinCap*.68){const tox=clamp((e.toxins/e.toxinCap-.68)/.32,0,1);ctx.save();ctx.globalAlpha=.42+.32*tox;ctx.strokeStyle='rgba(232,226,44,.76)';ctx.lineWidth=1.4+tox*1.4;ctx.setLineDash([2,5]);ctx.beginPath();ctx.arc(e.x,e.y,r+9+Math.sin(world.t*19)*3,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=`rgba(232,226,44,${.05+.10*tox})`;ctx.beginPath();ctx.arc(e.x,e.y,r+14,0,Math.PI*2);ctx.fill();ctx.restore()}
+  // O2/toxin overload used to draw a fast-pulsing ring here (14-19 rad/s — read as flashing); that
+  // signal now lives in bodyFill's slow duress-shade tint on the body itself instead.
   if(e.strain&&e.kind!=='player'){ctx.save();ctx.globalAlpha=.45+.3*Math.sin(world.t*4+e.x);ctx.strokeStyle=e.color;ctx.lineWidth=2;ctx.setLineDash([3,6]);ctx.beginPath();ctx.arc(e.x,e.y,r+7,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore()}
   if(e.marked>0){ctx.save();const spin=world.t*2.2;ctx.strokeStyle='#ff2d5a';ctx.lineWidth=2.4;ctx.globalAlpha=.5+.4*Math.abs(Math.sin(world.t*6));const rr=r+11;for(let q=0;q<4;q++){const a=spin+q*Math.PI/2;ctx.beginPath();ctx.arc(e.x,e.y,rr,a-.35,a+.35);ctx.stroke();ctx.beginPath();ctx.moveTo(e.x+Math.cos(a)*(rr-5),e.y+Math.sin(a)*(rr-5));ctx.lineTo(e.x+Math.cos(a)*(rr+5),e.y+Math.sin(a)*(rr+5));ctx.stroke();}ctx.restore();}
   if(e.warded>0){ctx.save();ctx.strokeStyle='#ff5dba';ctx.globalAlpha=.5+.35*Math.abs(Math.sin(world.t*7));ctx.lineWidth=2;const rr=r+5;ctx.beginPath();for(let q=0;q<7;q++){const a=world.t*.8+q/7*Math.PI*2;const rad=rr+(q%2?3:0);const x=e.x+Math.cos(a)*rad,y=e.y+Math.sin(a)*rad;if(q===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.closePath();ctx.stroke();ctx.restore();}
   if(e.ballast){ctx.save();ctx.fillStyle='rgba(191,232,255,.62)';for(let q=0;q<5;q++){const ph=(world.t*1.4+q*0.37)%1;const bx=e.x+Math.sin((q*2.1+world.t*3))*r*.5;const by=e.y-r-ph*(r+22);const br=1.6+ph*2.4;ctx.globalAlpha=.6*(1-ph);ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fill();}ctx.restore();}
   drawAppendages(e,ang);
   drawBody(e,ang,r,hp,speed);
-  if(e.kind==='player') drawInternalOrganelles(e,ang);
+  if(e.kind==='player'){ drawInternalOrganelles(e,ang); drawPlayerRings(e); }
   if(e.hp<e.maxHp*.98){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-r,e.y-r-10,r*2,4);ctx.fillStyle='#ff7897';ctx.fillRect(e.x-r,e.y-r-10,r*2*hp,4)}
 }
 function drawInternalOrganelles(e,ang){
@@ -1545,6 +1589,21 @@ function bodyFill(e){
     const freq=6+e.hit*18;
     const p=0.5+0.5*Math.sin(world.t*freq);
     return lerpColor(e.color,'#fff',0.25+0.55*p*e.hit);
+  }
+  // Slow "duress shades": O2/toxin overload no longer trips the fast hit-strobe above (see
+  // updateEnvironmentAndMetabolism) — instead a gentle low-frequency pulse tints the body itself,
+  // purple for O2 overload (matches the DAG oxygen pie's O2 wedge) or the toxin swirl palette for
+  // toxin overload (matches dagToxinTint), so the same physiological state reads as a pulse, not a flash.
+  const o2Excess=clamp(((e.oxygen||0)-(e.oxygenTolerance||0))/0.15,0,1);
+  const toxFrac=e.toxinCap>0?clamp(((e.toxins||0)-e.toxinCap*0.68)/(e.toxinCap*0.32),0,1):0;
+  if(o2Excess>0.02||toxFrac>0.02){
+    const p=0.5+0.5*Math.sin(world.t*2.4);
+    const base=hexRgb(e.color);
+    if(toxFrac>=o2Excess){
+      const tint=dagToxinTint(clamp((e.toxins||0)/Math.max(1,e.toxinCap||1),0,1));
+      return `rgb(${dagLerpRgb(base,tint,0.18+0.34*toxFrac*p)})`;
+    }
+    return `rgb(${dagLerpRgb(base,'168,120,255',0.18+0.34*o2Excess*p)})`;
   }
   return e.color;
 }
