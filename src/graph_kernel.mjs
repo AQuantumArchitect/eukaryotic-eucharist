@@ -322,11 +322,11 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
   cycleMinSeconds: 45,
   cycleMaxSeconds: 120,
   depthMin: 210,
-  depthMax: 2350,
-  structuralMean: 72,
-  structuralSpread: 22,
-  structuralMedian: 48,
-  structuralLogSpread: 0.72,
+  depthMax: 3000,
+  structuralMean: 96,
+  structuralSpread: 26,
+  structuralMedian: 78,
+  structuralLogSpread: 0.66,
   healthBaseFill: 0.99,
   healthSpread: 0.06,
   healthDepthLoad: 0.05,
@@ -993,6 +993,7 @@ export const ORGANELLES = Object.freeze({
 // fixed-recipe offerings — every resource buys/sells against lipids with up/down arrows. The old
 // repair/buy_*/detox offerings are gone; repair = buying HP, detox = selling toxins/O2.
 export const OFFERINGS = Object.freeze([
+  { id: 'basal_motility', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Basal Motility Motor', desc: 'The starter locomotion organ, buyable like any other — a spare motor for a body that lost one, or a second on top of the one you spawned with.', cost: { biomass: 6, lipids: 3 }, organelle: 'basal_motility', stackLimit: 3 },
   { id: 'membrane', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Cell Membrane', desc: 'Add one explicit membrane layer: more HP, more container surface, and more oxygen volume.', cost: { biomass: 12, lipids: 8 }, organelle: 'membrane', stackLimit: 8 },
   { id: 'membrane_intake', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Membrane Intake Pore', desc: 'Add one more feeding pore: more field flow without inventing a new rule.', cost: { biomass: 8, lipids: 4 }, organelle: 'membrane_intake', stackLimit: 6 },
   { id: 'anaerobic_processor', section: 'Tier 2A - General survival organs', theme: 'general', kind: 'organelle', name: 'Anaerobic Processor', desc: 'Add one more biomass-to-ATP organ flow. More processors mean more flow and more toxin waste.', cost: { biomass: 14, lipids: 5, enzymes: 1 }, organelle: 'anaerobic_processor', stackLimit: 8 },
@@ -1756,6 +1757,23 @@ export const ORGAN_GRAPH_EDGES = [
   // held), not passively like a processor — the DAG HUD contracts these springs live while active.
   ['basal_motility', 'energy'],
   ['rasping_lamella', 'energy'],
+  // General pass: input side of every other passive converter, so the graph reads as a real flow diagram
+  // (what a node eats, not just what it makes) rather than only showing half of each pipeline.
+  ['biomass', 'clean_processor'], ['biomass', 'virulent_processor'], ['biomass', 'catalytic_processor'],
+  ['enzymes', 'catalytic_processor'], ['biomass', 'hydrogenosome'],
+  ['biomass', 'lipogenic_processor'], ['energy', 'lipogenic_processor'],
+  ['biomass', 'oxidase_vesicle'], ['oxygen', 'oxidase_vesicle'],
+  ['energy', 'anabolic_vesicle'], ['lipids', 'lipolytic_vesicle'],
+  ['toxins', 'mineralizing_gland'], ['biomass', 'mineralizing_gland'],
+  ['toxins', 'chemosynthetic_vesicle'], ['biomass', 'chemosynthetic_vesicle'],
+  ['oxygen', 'mitochondrion'],
+  ['lipids', 'lipid_repair_loom'], ['energy', 'lipid_repair_loom'],
+  ['energy', 'toxin_launcher'], ['toxins', 'toxin_launcher'],
+  ['energy', 'dash_vacuole'],
+  ['spores', 'pheromone_gland'], ['energy', 'pheromone_gland'],
+  ['crystals', 'crystal_ward'], ['enzymes', 'phagosome'],
+  ['enzymes', 'enzyme_reserve'], ['enzyme_reserve', 'energy'],
+  ['spores', 'chemotaxis_cilia'],
 ];
 
 function clampCargo(entity) {
@@ -2930,7 +2948,24 @@ function updateScavengerBrain(world, e, dt) {
   // across the caste's comfortable column, strong at its light/O2 edge). Fleeing/mobbing damp comfort
   // so a scavenger can briefly bolt through its edge, but it always drifts back into comfortable water.
   const comfortW = (mode === 'flee' || mode === 'mob') ? 0.35 : 1.0;
-  const toward = norm(dxWrap(e.x, tx), (ty - e.y) + comfortSteerY(e) * comfortW);
+  // Anti-line separation: scavengers converging on the same food concentration shove apart — biased
+  // VERTICALLY — so they spread into a cloud around the patch instead of stacking into one flat line at
+  // a single depth (the "line at the ridge"). Cheap distance-gated neighbour scan.
+  let sepX = 0, sepY = 0;
+  if (mode !== 'flee') {
+    for (const o of world.entities) {
+      if (!o.alive || o.id === e.id || o.controller !== 'scavenger') continue;
+      const dx = dxWrap(e.x, o.x), dy = o.y - e.y;
+      const d2 = dx * dx + dy * dy;
+      const reach = e.r + o.r + 130;
+      if (d2 > 1e-3 && d2 < reach * reach) {
+        const d = Math.sqrt(d2), push = (reach - d) / reach;
+        sepX -= (dx / d) * push;
+        sepY -= (dy / d) * push * 2.4;   // vertical bias breaks the flat line into a vertical cloud
+      }
+    }
+  }
+  const toward = norm(dxWrap(e.x, tx) + sepX * 95, (ty - e.y) + comfortSteerY(e) * comfortW + sepY * 95);
   let sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * spMul : 0;
   // Same shared gradient-aware ATP price as the player and every hunter — see chargeThrustATP.
   if (sp > 0 && (Math.abs(toward.x) + Math.abs(toward.y) > 0.02)) {

@@ -319,7 +319,10 @@ function updateUI(){
 // instead of a hardcoded one, the same ethos the rest of the sim's ecology already follows.
 const DAG_VITAL_SINKS=['hp','energy','oxygen','dna'];
 const DAG_MINOR_SINKS=['biomass','lipids','toxins','gas','ballast','spores','enzymes','crystals'];
-const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals'};
+const DAG_SINK_LABEL={hp:'HP',energy:'ATP',oxygen:'O2',dna:'DNA',biomass:'biomass',lipids:'lipids',toxins:'toxins',gas:'gas',ballast:'ballast',spores:'spores',enzymes:'enzymes',crystals:'crystals',pressure:'pressure',sunlight:'sunlight'};
+// UI-only edges: environmental readouts (ambient pressure, sunlight) aren't real player resources, so
+// they don't belong in the kernel's ORGAN_GRAPH_EDGES — they're purely "what this organ's dial reacts to."
+const DAG_EXTRA_EDGES=[['gas','pressure'],['photosystem','sunlight']];
 const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
 // Resource nodes replace the removed bars, so they carry the same "duress" (red, something's wrong)
 // and "filling" (green pulse, actively gaining) reads the old vitals/chips gave — parity, not just decoration.
@@ -332,6 +335,20 @@ function dagSinkValue(id){
   if(!r) return {value:0,max:1,color:'158,240,189',duress:false};
   const duress = id==='energy' && (r.value/Math.max(1,r.max))<0.10;
   return {value:r.value,max:r.max,color:hexRgb(r.color),duress};
+}
+// Special environmental bubbles: only exist once the organ that makes them meaningful is online. Pressure
+// rides in on the gas bladder (Boyle's Law only matters once you have a tank to compress); sunlight is a
+// pure intensity readout, no numbers — the glow itself IS the reading.
+function dagActiveSpecialIds(){
+  const ids=[];
+  if(hud.ballast&&hud.ballast.hasOrgan) ids.push('pressure');
+  if(hud.depth&&hud.depth.photosynthetic) ids.push('sunlight');
+  return ids;
+}
+function dagSpecialValue(id){
+  if(id==='pressure') return {value:clamp(hud.pressure?.value??0,0,1), max:1, color:'176,140,255', duress:false};
+  if(id==='sunlight') return {value:clamp(hud.depth?.light??0,0,1), max:1, color:'245,212,122', duress:false, noNumber:true};
+  return {value:0,max:1,color:'158,240,189',duress:false};
 }
 function dagEnsureNode(id,kind,w,h,r){
   let n=dagNodes.get(id);
@@ -351,7 +368,15 @@ function dagEnsureNode(id,kind,w,h,r){
 function dagSinkRadius(id,v){
   if(id==='biomass'||id==='lipids'||id==='gas'){
     const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
-    return 13+frac*(80-13);
+    return 13+frac*(80-13); // literal tanks: empty = old baseline, full = well past the flat 2x standard
+  }
+  if(id==='energy'){
+    const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
+    return 18+frac*(90-18); // charged and swollen when full, a shrunken husk when empty
+  }
+  if(id==='hp'){
+    const frac=clamp((v&&v.max)?v.value/v.max:0,0,1);
+    return 90-frac*(90-18); // INVERTED: healthy reads small/calm, near-death balloons up as a warning
   }
   return DAG_VITAL_SINKS.includes(id)?38:26;
 }
@@ -412,9 +437,19 @@ function dagStepPhysics(ids,edges,w,h){
     n.x+=n.vx; n.y+=n.vy;
   }
 }
-function dagEdge(g,x1,y1,x2,y2,rgb,a){
+function dagEdge(g,x1,y1,x2,y2,r2,rgb,a){
   g.strokeStyle=`rgba(${rgb},${(a*0.35).toFixed(2)})`; g.lineWidth=4.2; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
   g.strokeStyle=`rgba(${rgb},${a.toFixed(2)})`; g.lineWidth=1.1; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  // Arrowhead at the destination end shows flow direction — push (organelle -> resource it produces) or
+  // pull (resource -> organelle consuming it) both read the same way: the arrow points where the matter goes.
+  const ang=Math.atan2(y2-y1,x2-x1);
+  const tipx=x2-Math.cos(ang)*(r2+3), tipy=y2-Math.sin(ang)*(r2+3);
+  const back=9;
+  const bx=tipx-Math.cos(ang)*back, by=tipy-Math.sin(ang)*back;
+  const lx=bx+Math.cos(ang+Math.PI/2)*back*0.42, ly=by+Math.sin(ang+Math.PI/2)*back*0.42;
+  const rx=bx+Math.cos(ang-Math.PI/2)*back*0.42, ry=by+Math.sin(ang-Math.PI/2)*back*0.42;
+  g.fillStyle=`rgba(${rgb},${a.toFixed(2)})`;
+  g.beginPath(); g.moveTo(tipx,tipy); g.lineTo(lx,ly); g.lineTo(rx,ry); g.closePath(); g.fill();
 }
 // The ovoid backdrop is purely a "here's where the graph lives" ground — dropped while the shop is open
 // so the graph can float visibly on top of the shop instead of hiding it behind a solid panel.
@@ -444,8 +479,10 @@ function drawDagSink(g,s,v){
   g.strokeStyle=`rgba(${rgb},.4)`; g.lineWidth=1; g.beginPath(); g.arc(s.x,s.y,s.r,0,Math.PI*2); g.stroke();
   g.fillStyle='rgba(255,255,255,.88)'; g.font='700 11px ui-sans-serif,system-ui'; g.textAlign='center';
   g.fillText(s.label, s.x, s.y+s.r+14);
-  g.fillStyle=off?'rgba(200,200,210,.6)':`rgb(${rgb})`; g.font='800 10px ui-monospace,monospace';
-  g.fillText(off?'—':fmt(v.value), s.x, s.y+4);
+  if(!v.noNumber){
+    g.fillStyle=off?'rgba(200,200,210,.6)':`rgb(${rgb})`; g.font='800 10px ui-monospace,monospace';
+    g.fillText(off?'—':fmt(v.value), s.x, s.y+4);
+  }
 }
 function drawDagOrg(g,o){
   const rgb = o.tier==='gate' ? '245,212,122' : '158,240,189';
@@ -467,16 +504,23 @@ function drawDagHud(){
   const g=dagCtx, w=innerWidth, h=dagHudH;
   const shopOpen=ui.shopOverlay.style.display==='flex';
   const sinkIds=DAG_VITAL_SINKS.concat(DAG_MINOR_SINKS);
+  const specialIds=dagActiveSpecialIds();
   const orgList=hud.organelles;
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
+  for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
+  for(const id of specialIds) dagEnsureNode(id,'sink',w,h,26);
   for(const o of orgList) dagEnsureNode(o.id,'org',w,h, o.graphRole==='modify'?26:17);
-  // prune organelles no longer owned (sold/lost) — sinks are permanent fixtures, never pruned
-  for(const [id,n] of dagNodes){ if(n.kind==='org' && !orgList.some(o=>o.id===id)) dagNodes.delete(id); }
+  // prune organelles no longer owned (sold/lost) and specials whose gating organ is gone — the fixed
+  // resource sinks are permanent fixtures and are never pruned.
+  for(const [id,n] of dagNodes){
+    if(n.kind==='org' && !orgList.some(o=>o.id===id)) dagNodes.delete(id);
+    if((id==='pressure'||id==='sunlight') && !specialIds.includes(id)) dagNodes.delete(id);
+  }
   const activeIds=[...dagNodes.keys()];
   // Edge endpoints can be organelle ids or resource/vital ids on either side (pipeline edges like
   // biomass->anaerobic_processor) — only keep edges where both ends currently exist as nodes.
-  const edges=K.ORGAN_GRAPH_EDGES
+  const edges=K.ORGAN_GRAPH_EDGES.concat(DAG_EXTRA_EDGES)
     .filter(([fromId,toId])=>dagNodes.has(fromId)&&dagNodes.has(toId))
     .map(([fromId,toId])=>[fromId,toId,dagEdgeActive(fromId,toId,lastCommand)]);
   dagStepPhysics(activeIds,edges,w,h);
@@ -485,9 +529,10 @@ function drawDagHud(){
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
     const a0=active?0.9:dagEdgeBaseAlpha(fromId,toId,orgList);
-    dagEdge(g,a.x,a.y,b.x,b.y,dagEdgeColor(fromId,toId,vals),a0);
+    dagEdge(g,a.x,a.y,b.x,b.y,b.r,dagEdgeColor(fromId,toId,vals),a0);
   }
   for(const id of sinkIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
+  for(const id of specialIds) drawDagSink(g,{...dagNodes.get(id),label:DAG_SINK_LABEL[id]},vals[id]);
   for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o}); }
 }
 
