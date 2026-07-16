@@ -1474,13 +1474,12 @@ function drawParticles(){
     else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
     ctx.restore()}
 }
-// Step-tracker-style vitals rings around the player's own body: Energy sweeps the LEFT semicircle,
-// Biomass (outer) + Lipids (inner) sweep the RIGHT semicircle, each filled proportional to value/max.
-// Reads directly off hud (the same live projection the shop/graph already trust). HP has no ring here
-// anymore — the DAG graph's own 'hp' sink node (pulsing under duress via the O2/toxin harm edges) is
-// the single HP readout now, not duplicated as a "normal health bar" on the body too.
+// Step-tracker-style vitals rings around the player's own body: HP (outer) + Energy (inner) sweep the
+// LEFT semicircle, Biomass (outer) + Lipids (inner) sweep the RIGHT semicircle, each filled proportional
+// to value/max. Reads directly off hud (the same live projection the shop/graph already trust).
 function drawPlayerRings(e){
   if(!hud) return;
+  const hpFrac=clamp((hud.hp?.value||0)/Math.max(1,hud.hp?.max||1),0,1);
   const res=id=>hud.resources?.find(r=>r.id===id);
   const enRes=res('energy'), bioRes=res('biomass'), lipRes=res('lipids');
   const enFrac=enRes?clamp(enRes.value/Math.max(1,enRes.max),0,1):0;
@@ -1499,6 +1498,7 @@ function drawPlayerRings(e){
     }
     ctx.restore();
   };
+  ring(r0+gap*2, hpFrac, '255,140,168', false);
   ring(r0+gap,   enFrac, RES_COLORS.energy.join(','), false);
   ring(r0+gap*2, bioFrac, RES_COLORS.biomass.join(','), true);
   ring(r0+gap,   lipFrac, RES_COLORS.lipids.join(','), true);
@@ -1550,7 +1550,9 @@ function drawEntity(e){
   drawAppendages(e,ang);
   drawBody(e,ang,r,hp,speed);
   if(e.kind==='player'){ drawInternalOrganelles(e,ang); drawPlayerRings(e); }
-  if(e.hp<e.maxHp*.98){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-r,e.y-r-10,r*2,4);ctx.fillStyle='#ff7897';ctx.fillRect(e.x-r,e.y-r-10,r*2*hp,4)}
+  // The classic overhead rectangle bar is for NPCs only now — the player has the HP ring instead
+  // (drawPlayerRings above), so drawing both was pure redundant clutter on the player's own body.
+  if(e.kind!=='player' && e.hp<e.maxHp*.98){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(e.x-r,e.y-r-10,r*2,4);ctx.fillStyle='#ff7897';ctx.fillRect(e.x-r,e.y-r-10,r*2*hp,4)}
 }
 function drawInternalOrganelles(e,ang){
   const org=e.organelles||{};
