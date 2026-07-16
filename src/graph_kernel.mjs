@@ -6050,8 +6050,17 @@ function spawnBrood(world, opts = {}) {
   return e;
 }
 
+// FIELD_ENV_COST: bestFieldFor's own comfort-gradient price for actually feeding where a field sits.
+// The FREE_HUNTERS guild's strong lipidBonus below can otherwise pull a poorly-O2/light-adapted hunter
+// (e.g. protozoan, an extreme-dark specialist) straight into the surface fat band with nothing pricing
+// the real physiological cost — unlike bestBodyTarget's prey-hunt decision (envCost there), this field
+// choice had NO comfort term at all. A hungrier body (huntDrive) discounts the cost, same pattern as
+// bestBodyTarget's riskDiscount — desperate bodies still risk it, comfortable ones don't have to.
+const FIELD_ENV_COST = 16;
 function bestFieldFor(entity, world) {
   let best = null, bestScore = -Infinity;
+  const drive = huntDrive(entity);
+  const envDiscount = clamp(0.15 + drive * 0.35, 0, 0.7);
   for (const f of world.fields) {
     const d = distWrap(entity.x, entity.y, f.x, f.y);
     if (d > 1300) continue; // far fields never win matter/(35+d); skip the reduce over stock
@@ -6061,7 +6070,8 @@ function bestFieldFor(entity, world) {
     // FAT is the mid predators' day-to-day food: a rising fat plume is calorie-dense and strongly
     // preferred by the hunter guild (which grazes it for upkeep between kills). Others value it mildly.
     const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : entity.controller === 'scavenger' ? 0.045 : 0.018); // scavengers prize rising fat — grazed on the ascent, spent on repair
-    const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus;
+    const envCost = comfortPain(entity, f.y) * FIELD_ENV_COST * (1 - envDiscount);
+    const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus - envCost;
     if (score > bestScore) { best = f; bestScore = score; }
   }
   return best;
@@ -6105,8 +6115,9 @@ function bestBodyTarget(entity, world, player) {
   const riskTolerance = 1 - Math.min(0.9, drive * 0.6); // hungrier ⇒ less deterred by big/tanky prey
   // FAT BAND: is there a banded fat slick anywhere near my own x, within reach of the surface? Computed
   // once per call (not per candidate below) — "predators munch the fat from below and then break through
-  // to grab scavengers or biomass." The existing sunCost term already prices the physiological risk of
-  // actually going up there; this only adds the PULL of a real, close opportunity on top of it.
+  // to grab scavengers or biomass." The envCost term below (comfortPain — light AND O2 together) already
+  // prices the real physiological risk of actually going up there; this only adds the PULL of a real,
+  // close opportunity on top of it.
   let nearFatBand = false;
   if (entity.y > WORLD.canopy + FAT_BAND_THICKNESS && entity.y < WORLD.canopy + 900) {
     for (const g of world.fields) {
@@ -6141,15 +6152,19 @@ function bestBodyTarget(entity, world, player) {
       : 0;
     const otherHpFill = other.hp / Math.max(1, oCapHp);
     const weak = 1.3 * logistic((0.55 - otherHpFill) * 10);
-    // Price the light at the prey's location before committing. Tier-2 predators
-    // may discount that cost for a close weak kill; deep lineages retain a much
-    // larger irreducible penalty above their 1–4% refuge.
-    const targetSun = sunExposure(entity, other.y);
+    // Price the FULL comfort gradient (light AND O2 together — the same comfortPain a body's own
+    // steering already reacts to, see comfortSteerY) at the prey's location before committing. Tier-2
+    // predators may discount that cost for a close weak kill; deep lineages retain a much larger
+    // irreducible penalty above their refuge. Was light-only (sunExposure); a hunter lured toward the
+    // fat band by fatBandPull below needs its OWN O2 fragility priced in too, or a poorly-O2-kitted
+    // caste (e.g. protozoan) gets pulled somewhere its gradient would otherwise never take it — "the
+    // comfort of the NPCs should always be the goal, hopefully they just react to the gradients."
+    const targetPain = comfortPain(entity, other.y);
     const weakOpportunity = (weak / 1.3) * Math.exp(-d / 220);
-    const sunDiscount = entity.controller === 'predator'
+    const riskDiscount = entity.controller === 'predator'
       ? clamp(0.18 + drive * 0.30 + weakOpportunity * 0.28, 0, 0.68)
       : clamp(0.05 + drive * 0.12 + weakOpportunity * 0.10, 0, 0.28);
-    const sunCost = targetSun * (entity.controller === 'predator' ? 10 : 20) * (1 - sunDiscount);
+    const envCost = targetPain * (entity.controller === 'predator' ? 10 : 20) * (1 - riskDiscount);
     // Live prey that strays close is aggravating — but a FELLOW HUNTER nearby does NOT trigger the
     // lock-on (that mutual proximity-aggro is what made clustered hunters dogpile each other). Only
     // non-guild bodies (the player, scavengers) provoke the reflex.
@@ -6178,11 +6193,12 @@ function bestBodyTarget(entity, world, player) {
     const commitBonus = (entity._targetRef === other)
       ? (0.6 + 3.2 * (1 - otherHpFill)) * Math.exp(-d / 300) : 0;
     // FAT BAND OPPORTUNITY: prey sitting on/above a fat band I'm lurking below is a real, close catch —
-    // "break through to grab scavengers or biomass to replicate." sunCost above already prices the real
-    // physiological risk of pushing up there; this is only the pull of the opportunity being worth it.
+    // "break through to grab scavengers or biomass to replicate." envCost above already prices the real
+    // physiological risk (light AND O2) of pushing up there; this is only the pull of the opportunity
+    // being worth it.
     const fatBandPull = (nearFatBand && other.y < entity.y && other.y < WORLD.canopy + FAT_BAND_THICKNESS * 3) ? 1.6 : 0;
     const score = reward + algaeBonus + weak + proximityAggro + starving + marked + commitBonus + fatBandPull
-      - risk - sunCost - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
+      - risk - envCost - guildTax - crowdTax - d / 280 - Math.abs(other.y - entity.depthHome) / 1150;
     if (score > bestScore) { best = other; bestScore = score; }
   }
   entity._preyScore = best ? bestScore : -Infinity;

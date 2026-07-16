@@ -200,7 +200,13 @@ let dagLongPressTimer=null;
 const DAG_TAP_MS=200, DAG_LONGPRESS_MS=650, DAG_MOVE_TOLERANCE=16;
 function dagHitTest(clientX,clientY){
   const dr=dagCanvas.getBoundingClientRect();
-  const localX=clientX-dr.left-dagOffX, localY=clientY-dr.top-dagOffY;
+  // Un-rotate the raw tap around the same anchor drawDagHud rotates the graph around, before mapping
+  // into the physics sim's local coordinate space — inverse of the g.rotate(dagRotation) draw transform.
+  const rawX=clientX-dr.left, rawY=clientY-dr.top;
+  const dx=rawX-dagAnchorX, dy=rawY-dagAnchorY;
+  const c=Math.cos(-dagRotation), s=Math.sin(-dagRotation);
+  const screenX=dagAnchorX+dx*c-dy*s, screenY=dagAnchorY+dx*s+dy*c;
+  const localX=screenX-dagOffX, localY=screenY-dagOffY;
   let best=null,bestD=Infinity;
   // Collapsed: only the membrane dot is actually drawn, so it's the only thing tappable — every other
   // node still exists in dagNodes (physics keeps running underneath) but is invisible and untouchable.
@@ -474,6 +480,13 @@ const dagNodes=new Map(); // id -> {x,y,vx,vy,kind:'sink'|'org',r,...}
 // position — recomputed every frame in drawDagHud, read by the pointer hit-test (dagHitTest) so canvas
 // clicks map back into the physics sim's local coordinate space correctly.
 let dagOffX=0, dagOffY=0;
+// "the basal mobility should pull the mobility motor to drag the membrane... this should somewhat spin
+// the graph during play" — the linear per-node drag (DAG_MOTILITY_DRAG_K) never actually reads as
+// rotation on a damped force-directed layout, so the whole open graph is spun as a rigid body around the
+// player anchor instead: dagRotation eases toward the player's heading while under power, drawn via a
+// canvas rotate transform (see drawDagHud) and un-rotated again in dagHitTest so taps still land right.
+let dagRotation=0, dagAnchorX=0, dagAnchorY=0;
+const DAG_ROTATION_EASE=0.05;
 // Resource nodes replace the removed bars, so they carry the same "filling" (green pulse, actively
 // gaining) read the old vitals/chips gave. O2's old standalone red-flash is gone — that harm now reads
 // as a contracting HP<->O2 edge instead (see dagEdgeActiveness); HP keeps its own duress, now ALSO
@@ -1018,6 +1031,19 @@ function drawDagHud(){
     dagOffX=worldToScreenX(dagPlayer.x)-membraneNode.x;
     dagOffY=(dagPlayer.y-camera.y)-membraneNode.y;
   }
+  dagAnchorX=membraneNode?membraneNode.x+dagOffX:dagAnchorX;
+  dagAnchorY=membraneNode?membraneNode.y+dagOffY:dagAnchorY;
+  // Ease dagRotation toward the player's actual heading only while genuinely under power (motorRamp>0
+  // and moving with real speed) — coasting/idle holds the last heading rather than snapping to 0, so a
+  // drift-to-stop doesn't visibly un-spin the graph.
+  if(dagPlayer && (hud.motorRamp||0)>0.04){
+    const speed=Math.hypot(dagPlayer.vx||0,dagPlayer.vy||0);
+    if(speed>3){
+      const target=Math.atan2(dagPlayer.vy,dagPlayer.vx);
+      let d=target-dagRotation; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI;
+      dagRotation+=d*Math.min(1,DAG_ROTATION_EASE*(hud.motorRamp||0)*6);
+    }
+  }
   g.clearRect(0,0,w,h);
   // Collapsed: draw only membrane (still locked to the player via dagOffX/dagOffY) as the persistent
   // "tap here to reopen" affordance — everything else (backdrop, sinks, other orgs, edges) is skipped. The
@@ -1029,6 +1055,9 @@ function drawDagHud(){
     }
     return;
   }
+  // The whole open graph spins as one rigid body around the player anchor — dagHitTest applies the exact
+  // inverse of this same transform so taps still land on the visually-rotated nodes.
+  g.save(); g.translate(dagAnchorX,dagAnchorY); g.rotate(dagRotation); g.translate(-dagAnchorX,-dagAnchorY);
   for(const [fromId,toId,active] of edges){
     const a=dagNodes.get(fromId), b=dagNodes.get(toId); if(!a||!b) continue;
     const base=dagEdgeBaseAlpha(fromId,toId,orgList);
@@ -1038,6 +1067,7 @@ function drawDagHud(){
   for(const id of sinkIds){ const n=dagNodes.get(id); drawDagSink(g,{...n,x:n.x+dagOffX,y:n.y+dagOffY,label:DAG_SINK_LABEL[id]},vals[id]); }
   for(const id of specialIds){ const n=dagNodes.get(id); drawDagSink(g,{...n,x:n.x+dagOffX,y:n.y+dagOffY,label:DAG_SINK_LABEL[id]},vals[id]); }
   for(const o of orgList){ const n=dagNodes.get(o.id); if(n) drawDagOrg(g,{...n,...o,x:n.x+dagOffX,y:n.y+dagOffY,activity:orgActivity[o.id]||0}); }
+  g.restore();
 }
 
 function updateActionButtons(actions){
@@ -1444,12 +1474,13 @@ function drawParticles(){
     else if(p.kind==='crystals'){ctx.beginPath();ctx.moveTo(0,-11);ctx.lineTo(7,-3);ctx.lineTo(5,8);ctx.lineTo(-5,8);ctx.lineTo(-7,-3);ctx.closePath();ctx.fill();ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.55)';ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(0,8);ctx.stroke();}
     ctx.restore()}
 }
-// Step-tracker-style vitals rings around the player's own body: HP (outer) + Energy (inner) sweep the
-// LEFT semicircle, Biomass (outer) + Lipids (inner) sweep the RIGHT semicircle, each filled proportional
-// to value/max. Reads directly off hud (the same live projection the shop/graph already trust).
+// Step-tracker-style vitals rings around the player's own body: Energy sweeps the LEFT semicircle,
+// Biomass (outer) + Lipids (inner) sweep the RIGHT semicircle, each filled proportional to value/max.
+// Reads directly off hud (the same live projection the shop/graph already trust). HP has no ring here
+// anymore — the DAG graph's own 'hp' sink node (pulsing under duress via the O2/toxin harm edges) is
+// the single HP readout now, not duplicated as a "normal health bar" on the body too.
 function drawPlayerRings(e){
   if(!hud) return;
-  const hpFrac=clamp((hud.hp?.value||0)/Math.max(1,hud.hp?.max||1),0,1);
   const res=id=>hud.resources?.find(r=>r.id===id);
   const enRes=res('energy'), bioRes=res('biomass'), lipRes=res('lipids');
   const enFrac=enRes?clamp(enRes.value/Math.max(1,enRes.max),0,1):0;
@@ -1468,7 +1499,6 @@ function drawPlayerRings(e){
     }
     ctx.restore();
   };
-  ring(r0+gap*2, hpFrac, '255,140,168', false);
   ring(r0+gap,   enFrac, RES_COLORS.energy.join(','), false);
   ring(r0+gap*2, bioFrac, RES_COLORS.biomass.join(','), true);
   ring(r0+gap,   lipFrac, RES_COLORS.lipids.join(','), true);
