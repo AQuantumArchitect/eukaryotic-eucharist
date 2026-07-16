@@ -347,6 +347,42 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
   healthVeteranLoad: 0.025,
   traitSpread: 0.22
 });
+// STEADY-STATE STAMP (burn-in): the OBSERVED equilibrium HP-fill and ATP(energy)-fill per lineage,
+// measured by burnin.mjs over the last half of a player-free run. New arrivals (spawn / immigration)
+// draw their starting HP and charge from these distributions instead of a wild uniform guess, so a
+// fresh body already looks like an equilibrium member and the world barely lurches at t=0. Empty
+// entries fall back to the old uniform random. Re-run `node burnin.mjs` and paste the emitted
+// STEADY_STATE after any dynamics change that moves the equilibrium.
+const STEADY_STATE = Object.freeze({
+  // <lineage>: { hpFill, energyFill, depthMean, depthSd, n } — measured by burnin.mjs (12min × 2 seeds,
+  // sampled over the equilibrium half). n/depth document the steady shape (for seed retuning); the spawn
+  // sampler reads hpFill/energyFill. The physiology is real: photosynthetic algae and scraping-by oxic
+  // scavengers carry almost no ATP, hunters carry real charge, scavengers live wounded.
+  algae:             { hpFill: { mean: 0.761, sd: 0.166 }, energyFill: { mean: 0.105, sd: 0.194 }, depthMean: 411,  depthSd: 133, n: 70 },
+  deep_bloom:        { hpFill: { mean: 0.596, sd: 0.247 }, energyFill: { mean: 0.760, sd: 0.257 }, depthMean: 4053, depthSd: 298, n: 16 },
+  oxic_scavenger:    { hpFill: { mean: 0.479, sd: 0.273 }, energyFill: { mean: 0.084, sd: 0.176 }, depthMean: 2454, depthSd: 472, n: 20 },
+  abyssal_scavenger: { hpFill: { mean: 0.770, sd: 0.208 }, energyFill: { mean: 0.252, sd: 0.198 }, depthMean: 6928, depthSd: 774, n: 6 },
+  predator:          { hpFill: { mean: 0.809, sd: 0.145 }, energyFill: { mean: 0.379, sd: 0.330 }, depthMean: 3342, depthSd: 231, n: 5 },
+  protozoan:         { hpFill: { mean: 0.931, sd: 0.163 }, energyFill: { mean: 0.578, sd: 0.342 }, depthMean: 5403, depthSd: 933, n: 5 },
+  metazoan:          { hpFill: { mean: 0.632, sd: 0.244 }, energyFill: { mean: 0.545, sd: 0.329 }, depthMean: 5351, depthSd: 910, n: 3 },
+  brood:             { hpFill: { mean: 0.677, sd: 0.121 }, energyFill: { mean: 0.083, sd: 0.119 }, depthMean: 6764, depthSd: 723, n: 1 },
+  swarm_agent:       { hpFill: { mean: 0.945, sd: 0.148 }, energyFill: { mean: 0.088, sd: 0.149 }, depthMean: 6826, depthSd: 997, n: 8 },
+});
+// Map a body to its STEADY_STATE lineage key (keyed on controller + trophicRole, both set at makeSoftBody
+// time; deepBloom is not yet set there, so we read trophicRole for the deep mats).
+function lineageKey(entity) {
+  const c = entity.controller, role = entity.trophicRole;
+  if (c === 'algae') return role === 'deep_toxic_bloom' ? 'deep_bloom' : 'algae';
+  if (c === 'scavenger') return role === 'abyssal_scavenger' ? 'abyssal_scavenger' : 'oxic_scavenger';
+  return c;
+}
+// A starting fill (0..1) for a spawning body's HP or ATP, sampled from the burned-in equilibrium
+// distribution for its lineage. Returns null when no observed sample exists (caller keeps its default).
+function steadyFill(world, entity, field) {
+  const dist = STEADY_STATE[lineageKey(entity)]?.[field];
+  if (!dist) return null;
+  return clamp(gaussian(world.rng, dist.mean, dist.sd), 0.05, 1.0);
+}
 // Resource fields drift by what they're made of, so matter stratifies in the column:
 // heavy biomass slurry sinks (faster the more biomass it holds — big falls plummet),
 // buoyant lipids float up toward the canopy, and volatile ATP/toxins diffuse outward into
@@ -1698,7 +1734,11 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
   };
   // Graph-strict initialization: HP and capacities are derived from organelles.
   body.maxHp = caps(body).hp;
-  body.hp = opts.hp == null ? body.maxHp : Math.min(opts.hp, body.maxHp);
+  // HP: an explicit opts.hp wins; otherwise start at the burned-in equilibrium HP-fill for this lineage
+  // (so the seed and every arrival begin at their steady wound level, not a jarring full bar), or full HP
+  // when no observed sample exists yet.
+  if (opts.hp != null) body.hp = Math.min(opts.hp, body.maxHp);
+  else { const hFill = steadyFill(world, body, 'hpFill'); body.hp = body.maxHp * (hFill != null ? hFill : 1); }
   // Randomized starting charge for every NPC at spawn / immigration / rescue-wall injection — bodies
   // arrive at varied vigour (some flush, some near-dry and desperate to feed) instead of uniformly topped
   // off. Range 0-100% for the abundant, food-driven castes (scavengers, algae). The fission HUNTER guild
@@ -1706,8 +1746,9 @@ function makeSoftBody(world, kind, x, y, opts = {}) {
   // near-zero spawn starves before it can hunt or divide — literal 0% collapses the whole predator layer.
   // The player is exempt entirely (early Yuki refills; a 0-ATP spawn would strand it dead in the water).
   if (body.kind !== 'player') {
+    const eFill = steadyFill(world, body, 'energyFill');
     const floor = HUNTER_GUILD.has(body.controller) ? 0.35 : 0;
-    body.cargo.energy = caps(body).energy * (floor + (1 - floor) * world.rng());
+    body.cargo.energy = caps(body).energy * (eFill != null ? eFill : floor + (1 - floor) * world.rng());
   }
   clampCargo(body);
   return body;
@@ -5154,7 +5195,7 @@ function spawnTick(world, dt) {
   const producerMass = algaeProducerMass(world);
   const algaeHazard = algaeBirthHazard(world, algaeN, producerMass);
   if (algaeN < ALGAE_EMERGENCY_CAP && world.rng() < 1 - Math.exp(-algaeHazard * dt)) {
-    { const at = yukiTendrilSpawn(world); const born = spawnAlgae(world, { mature: false, x: at.x, y: at.y }); born.hp = caps(born).hp * rand(world, 0.40, 1.0); }  // bud off Yuki's tendrils at varied vigour (40-100% HP)
+    { const at = yukiTendrilSpawn(world); spawnAlgae(world, { mature: false, x: at.x, y: at.y }); }  // bud off Yuki's tendrils at burned-in vigour (HP-fill sampled in makeSoftBody)
     world.stats.algaeBirths += 1;
     world.events.push({ type: 'algae_birth', controller: 'algae' });
   }
@@ -5205,7 +5246,7 @@ function spawnTick(world, dt) {
     // hungry scavenger target hogs every immigration slot and the deep hunters (proto/meta, thin fission
     // base) go extinct before the floor ever fires; (3) oxic scavengers top off toward their soft target.
     if (abyssalScavN < abyssalTarget) {
-      { const s = spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true }); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
+      spawnScavenger(world, { ...entrySpawn(world, 'abyssal_scavenger'), abyssal: true }); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
@@ -5218,7 +5259,7 @@ function spawnTick(world, dt) {
       world.events.push({ type: 'immigrate', controller: want });
     }
     else if (scavN < scavengerTarget(world)) {
-      { const s = spawnScavenger(world, entrySpawn(world, 'scavenger')); s.hp = caps(s).hp * rand(world, 0.25, 1.0); }  // random HP on immigration
+      spawnScavenger(world, entrySpawn(world, 'scavenger')); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
     }
