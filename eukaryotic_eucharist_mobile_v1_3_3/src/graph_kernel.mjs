@@ -362,7 +362,7 @@ const BALLAST_SINK_VY = 70;       // px/s — a dropped drop-weight brick: dense
 const LIPID_SURFACE_DECAY = 0;    // NO decay — a lipid slick pools and holds until eaten
 const LIPID_MAX_AGE = 1e9;        // lipids never age out — a plume holds until eaten
 const FAT_PLUME_RISE = 28;        // px/s: the return arm — buoyant fat climbs out of the abyss
-const FAT_VENT_RATE = 0.0035;     // frac/s of standing DEEP biomass that decomposes into rising fat
+const FAT_VENT_RATE = 0.0012;     // frac/s of standing DEEP biomass that decomposes into rising fat — kept LOW so the floor pile mostly accumulates for the big bottom-feeders to eat and haul OUT, rather than routing to an ungrazeable surface fat pool (only a modest fraction becomes rising plumes)
 const FAT_PLUME_QUANTUM = 30;     // vent releases a plume once this much fat has accumulated in a field (fewer, richer plumes)
 const LIPID_ATP_YIELD = 5.0;      // ATP per unit fat a hunter oxidizes — fat is calorie-dense day-to-day fuel
 const HUNTER_LIPID_BURN = 6.0;    // max fat/s a hunter burns for upkeep (spares its biomass belly for the cleave)
@@ -429,6 +429,36 @@ const ORGAN_CATEGORY = {
   neuro_barb: 'weapons', seeker_gland: 'weapons', necrosis_gland: 'weapons', phagocyte_maw: 'weapons',
   orbital_spores: 'weapons', gas_injector: 'weapons', combustion_vesicle: 'weapons',
   pheromone_gland: 'swarm', fission_bud: 'swarm',
+};
+
+// DAG HUD: does this organelle MODIFY the body's graph (anchors a raw new capacity, or gates a whole new
+// mechanic/verb) or merely TUNE one that another organelle already established (a rate/fraction/multiplier
+// riding on someone else's mechanic)? Kept as its own table rather than folded into ORGANELLES so this
+// still-settling classification stays independently reviewable — not yet load-bearing for any mechanic,
+// purely a rendering distinction for the DAG HUD for now, but named so it can grow into one.
+export const ORGAN_GRAPH_ROLE = {
+  membrane: 'modify', basal_motility: 'modify', membrane_intake: 'modify', anaerobic_processor: 'modify',
+  cytostome: 'tune', selective_membrane: 'tune', charge_cytostome: 'modify', flagella: 'tune',
+  cleavage_furrow: 'modify', lance_bristle: 'modify', storage_vacuole: 'modify', biomass_vacuole: 'modify',
+  lipid_vacuole: 'modify', toxin_vacuole: 'modify', atp_reservoir: 'modify', exotic_vacuole: 'modify',
+  dna_memory_vesicle: 'modify', lipid_repair_loom: 'modify', membrane_hardening: 'tune',
+  oxygen_tolerance: 'tune', oxygen_vacuole: 'modify', oxygen_store: 'modify', jettison_vesicle: 'modify',
+  dash_vent: 'tune', gas_gland: 'tune', pressure_bladder: 'tune', ballast_siphon: 'tune',
+  aerocyst: 'modify', catalase_vesicle: 'tune', countercurrent_gill: 'tune', hydrogenosome: 'modify',
+  photolytic_vacuole: 'tune', ballast_stone: 'modify', lipid_bladder: 'tune', chemosynthetic_vesicle: 'modify',
+  gas_injector: 'modify', barophilic_sheath: 'modify', photosystem: 'modify', rasping_lamella: 'modify',
+  toxin_launcher: 'modify', toxin_cloud: 'modify', dash_vacuole: 'modify', clean_processor: 'modify',
+  virulent_processor: 'modify', lipogenic_processor: 'modify', oxidase_vesicle: 'modify',
+  anabolic_vesicle: 'modify', lipolytic_vesicle: 'modify', mineralizing_gland: 'modify',
+  catalytic_processor: 'modify', velocity_lance: 'tune', saw_lance: 'tune', siphon_rasp: 'tune',
+  spore_toxin_launcher: 'modify', combustion_vesicle: 'modify', leech_rasp: 'tune', leech_lance: 'tune',
+  rupture_auger: 'tune', adrenal_vesicle: 'tune', thorn_coat: 'modify', corrosive_pellicle: 'modify',
+  discharge_vesicle: 'modify', cryo_vesicle: 'modify', chemotaxis_cilia: 'modify', phagocyte_maw: 'modify',
+  necrosis_gland: 'modify', volatile_vacuole: 'modify', seeker_gland: 'modify', harpoon_spine: 'modify',
+  neuro_barb: 'modify', orbital_spores: 'modify', fission_bud: 'modify', nuclease_vesicle: 'modify',
+  spore_jet: 'tune', phagosome: 'modify', crystal_ward: 'modify', enzyme_reserve: 'modify',
+  pheromone_gland: 'modify', mitochondrion: 'modify', eucharist_archive: 'modify', companion_cell: 'modify',
+  multicell_chassis: 'modify',
 };
 // Total organelle instances (every copy) owned in a category, minus the exempt capacity racks.
 function categoryCount(entity, cat) {
@@ -733,7 +763,7 @@ export const ORGANELLES = Object.freeze({
   rasping_lamella: {
     name: 'Rasping Lamella', tier: 1, action: 'rasp', stackable: true, max: 5,
     desc: 'One active overlap-shred membrane. Damage comes only while rasping and only through overlap.',
-    stats: { dps: 12.5, energyCost: 1.6, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
+    stats: { dps: 12.5, energyCost: 4.2, vulnerabilityBonus: 0.16, rupturePower: 0.72 }
   },
   toxin_launcher: {
     name: 'Toxic Launcher', tier: 2, action: 'acid', stackable: true, max: 3,
@@ -803,7 +833,7 @@ export const ORGANELLES = Object.freeze({
   siphon_rasp: {
     name: 'Siphon Rasp', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'rasp',
     desc: 'A parasitic shredding membrane. While rasping, it drains a share of the victim\'s biomass and lipids straight into your cargo.',
-    stats: { dps: 8.0, energyCost: 2.2, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
+    stats: { dps: 8.0, energyCost: 5.5, vulnerabilityBonus: 0.16, rupturePower: 0.72, stealFraction: 0.2 }
   },
   spore_toxin_launcher: {
     name: 'Sporo-Toxic Launcher', tier: 3, action: 'sporeshot', stackable: true, max: 3, category: 'launcher',
@@ -819,7 +849,7 @@ export const ORGANELLES = Object.freeze({
   leech_rasp: {
     name: 'Leech Lamella', tier: 3, action: 'rasp', stackable: true, max: 5, category: 'leech',
     desc: 'A parasitic feeding membrane. Deals almost no damage, but while rasping it siphons biomass, lipids, and a modest ATP trickle straight out of the host — the algae-parasite\'s core organ.',
-    stats: { dps: 2.5, energyCost: 1.4, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
+    stats: { dps: 2.5, energyCost: 3.6, vulnerabilityBonus: 0.12, rupturePower: 0.40, leechRate: 2.4 }
   },
   leech_lance: {
     name: 'Leech Proboscis', tier: 3, action: null, stackable: true, max: 6, category: 'leech',
@@ -938,7 +968,7 @@ export const ORGANELLES = Object.freeze({
     name: 'Integrated Mitochondrion', tier: 'gate', action: null,
     desc: 'Not purchased. Achieved through Yuki\'s Eucharist. Turns oxygen and lipids into high ATP.',
     stackable: true, max: 4,
-    stats: { lipidBurn: 2.8, oxygenBurn: 0.18, energyMaxBonus: 42 }
+    stats: { lipidBurn: 4.5, oxygenBurn: 0.30, energyMaxBonus: 42 }
   },
   eucharist_archive: {
     name: 'Eucharist Archive', tier: 3, action: null,
@@ -1683,6 +1713,35 @@ function capsCompute(entity) {
     ballast: storage * BALLAST_BRICK_PER_STORAGE  // solid waste-brick capacity — no dedicated organ yet, ties to general storage like everything else (purely organ-derived, no hidden floor)
   };
 }
+
+// DAG HUD: organelle -> resource/vital node it feeds, hand-transcribed from capsCompute above (cap
+// fan-in) plus the PROCESSORS fermentation loop and the handful of hand-rolled production organs
+// (biomass/lipid/crystal converters) — the clearest, most legible resource-producing relationships in
+// the kernel. Not exhaustive (pure rate/multiplier tuners without their own production line, e.g.
+// membrane_hardening, are intentionally left edge-less — they still appear as graph nodes, just
+// unconnected, since their effect isn't "feeds a resource").
+export const ORGAN_GRAPH_EDGES = [
+  ['membrane', 'hp'], ['membrane_hardening', 'hp'], ['multicell_chassis', 'hp'],
+  ['storage_vacuole', 'energy'], ['mitochondrion', 'energy'], ['atp_reservoir', 'energy'],
+  ['anaerobic_processor', 'energy'], ['clean_processor', 'energy'], ['virulent_processor', 'energy'],
+  ['catalytic_processor', 'energy'], ['hydrogenosome', 'energy'], ['oxidase_vesicle', 'energy'],
+  ['chemosynthetic_vesicle', 'energy'],
+  ['dna_memory_vesicle', 'dna'],
+  ['membrane', 'oxygen'], ['oxygen_store', 'oxygen'], ['countercurrent_gill', 'oxygen'], ['photolytic_vacuole', 'oxygen'],
+  ['storage_vacuole', 'biomass'], ['biomass_vacuole', 'biomass'], ['multicell_chassis', 'biomass'],
+  ['anabolic_vesicle', 'biomass'], ['lipolytic_vesicle', 'biomass'], ['photosystem', 'biomass'],
+  ['storage_vacuole', 'lipids'], ['lipid_vacuole', 'lipids'], ['mitochondrion', 'lipids'], ['lipogenic_processor', 'lipids'],
+  ['storage_vacuole', 'toxins'], ['toxin_vacuole', 'toxins'], ['toxin_launcher', 'toxins'], ['spore_toxin_launcher', 'toxins'],
+  ['anaerobic_processor', 'toxins'], ['clean_processor', 'toxins'], ['virulent_processor', 'toxins'],
+  ['catalytic_processor', 'toxins'], ['hydrogenosome', 'toxins'],
+  ['exotic_vacuole', 'spores'],
+  ['exotic_vacuole', 'crystals'], ['mineralizing_gland', 'crystals'],
+  ['exotic_vacuole', 'enzymes'],
+  ['oxygen_vacuole', 'gas'], ['pressure_bladder', 'gas'], ['gas_gland', 'gas'], ['ballast_siphon', 'gas'],
+  ['anaerobic_processor', 'gas'], ['clean_processor', 'gas'], ['virulent_processor', 'gas'],
+  ['catalytic_processor', 'gas'], ['hydrogenosome', 'gas'],
+  ['storage_vacuole', 'ballast'],
+];
 
 function clampCargo(entity) {
   const c = caps(entity);
@@ -3210,11 +3269,11 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const lipidFill = clamp((e.cargo.lipids || 0) / Math.max(1, caps(e).lipids), 0, 1);
       const burnDrive = (0.10 + 1.4 * Math.pow(lipidFill, 1.3)) * (1 - atpFill);
       const lipidBurn = Math.min(e.cargo.lipids, ORGANELLES.mitochondrion.stats.lipidBurn * mito * burnDrive * dt);
-      const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.12);
+      const oxygenBurn = Math.min(e.oxygen, ORGANELLES.mitochondrion.stats.oxygenBurn * mito * dt, lipidBurn * 0.20);
       if (oxygenBurn > 0.001) {
         e.cargo.lipids -= lipidBurn;
         e.oxygen -= oxygenBurn;
-        e.cargo.energy += lipidBurn * 3.2 + oxygenBurn * 70;
+        e.cargo.energy += lipidBurn * 2.2 + oxygenBurn * 32;   // leaner ATP yield: the aerobic engine now COSTS more fat+O2 per ATP (drains the fat pool instead of banking a windfall)
         e.cargo.toxins = Math.max(0, (e.cargo.toxins || 0) - oxygenBurn * 5);
       }
     } else {
@@ -4764,10 +4823,15 @@ function populationTick(world, dt) {
     if (e.controller === 'scavenger') {
       const cap = caps(e);
       const starved = (e.cargo.biomass || 0) < cap.biomass * 0.10 && (e.cargo.energy || 0) < cap.energy * 0.10;
+      // A big benthic bottom-feeder that has GORGED on the floor pile emigrates with a full belly —
+      // drifting off the map carrying that biomass OUT of the column. This is the demand-driven matter
+      // SINK for biomass surplus: they immigrate when the floor piles up, leave once full, and what they
+      // carry is gone (no corpse). The relief valve that keeps the closed loop from silting up.
+      const gorged = e.trophicRole === 'abyssal_scavenger' && (e.cargo.biomass || 0) > cap.biomass * 0.80;
       const overPressure = Math.max(0, (scavN - scavTarget) / Math.max(1, scavTarget));
-      if (starved) {
+      if (starved || gorged) {
         e._emigrate += dt;
-        if (e._emigrate > 4) { e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller }); }
+        if (e._emigrate > (gorged ? 3 : 4)) { e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller, full: gorged }); }
       } else e._emigrate = 0;
       if (e.alive && overPressure > 0 && world.rng() < overPressure * 0.18 * dt) {
         e.alive = false; scavN--; (emigrants ||= []).push(e); world.stats.emigrations += 1; world.events.push({ type: 'emigrate', entityId: e.id, controller: e.controller });
@@ -5044,8 +5108,12 @@ function spawnScavenger(world, opts = {}) {
   const abyssal = !!opts.abyssal;
   const organelles = { membrane: 1, basal_motility: 1, membrane_intake: 1, charge_cytostome: 1, anaerobic_processor: 1, storage_vacuole: 1, exotic_vacuole: 1 };
   if (!abyssal) organelles.oxygen_tolerance = 6; // the oxic caste breathes the bright shallows; the abyssal clone omits this and is confined deep
+  // The abyssal caste is a BIG bottom-feeder: a wide mouth and a huge belly to swallow the whale-fall
+  // pile and haul it OUT of the column. It immigrates when the floor biomass piles up (deepMatter, see
+  // spawnTick) and emigrates once GORGED (populationTick) — a demand-driven matter sink for surplus.
+  else { organelles.membrane = 3; organelles.membrane_intake = 2; organelles.storage_vacuole = 3; organelles.biomass_vacuole = 5; }
   const e = makeSoftBody(world, 'npc', x, y, {
-    r: rand(world, 11, 18) * (abyssal ? 2 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
+    r: rand(world, 11, 18) * (abyssal ? 2.4 : 1), color: abyssal ? '#6f97a8' : '#8ef19e', controller: 'scavenger',
     trophicRole: abyssal ? 'abyssal_scavenger' : 'anaerobic_scavenger', depthHome: y,
     organelles, cargo: { biomass: rand(world, 2, 12), energy: rand(world, 5, 18), lipids: rand(world, 0, 6) }, oxygen: oxygenAt(y)
   });
@@ -5911,7 +5979,7 @@ export function getHudProjection(world, entityId = world.playerId) {
     depth: { value: Math.max(0, e.y - WORLD.canopy), max: WORLD.h - WORLD.canopy, zone: zoneName(e.y), light: env.light, externalOxygen: env.oxygen, photosynthetic: orgCount(e, 'photosystem') > 0 },
     pressure: { value: env.pressure, label: 'Pressure' },
     resources: RESOURCES.map(r => ({ id: r, label: r === 'energy' ? 'ATP' : r, value: e.cargo[r] || 0, max: c[r] ?? 99, color: COLORS[r] || '#fff' })),
-    organelles: Object.entries(e.organelles).map(([id, count]) => ({ id, count, name: ORGANELLES[id]?.name || id, tier: ORGANELLES[id]?.tier || 1, action: ORGANELLES[id]?.action || null, desc: ORGANELLES[id]?.desc || '', category: ORGANELLES[id]?.category || null })),
+    organelles: Object.entries(e.organelles).map(([id, count]) => ({ id, count, name: ORGANELLES[id]?.name || id, tier: ORGANELLES[id]?.tier || 1, action: ORGANELLES[id]?.action || null, desc: ORGANELLES[id]?.desc || '', category: ORGANELLES[id]?.category || null, graphRole: ORGAN_GRAPH_ROLE[id] || 'tune' })),
     graphStats: { caps: c, hpSource: 'Cell Membrane count × membrane HP + graph armor/chassis', storageSource: 'Storage Vacuole / Exotic Vesicle Rack / DNA Memory Vesicle counts' },
     metabolism: { anaerobicProcessorLevel: orgCount(e, 'anaerobic_processor'), anaerobicRate: orgCount(e, 'anaerobic_processor') * ORGANELLES.anaerobic_processor.stats.rate, energyStarved: (e.cargo.energy || 0) <= 0.01 },
     actions: getAvailableActions(world, entityId),
