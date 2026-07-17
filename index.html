@@ -45,7 +45,11 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .bodyHead small{color:var(--muted);font-weight:800;letter-spacing:0;text-transform:none}
 /* Organelle cards: compact collapsed row (name + ×N + ⊕ + cost); TAP the card to expand its detail. */
 .offer.organelle{cursor:pointer;min-height:auto}
-.offer.organelle .oTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.offer.organelle .oTop{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+/* Secondary acquisition buttons (bare graft / +RNA / Express) sit smaller and cooler than the primary
+   Print/Buy, so the three routes read as a hierarchy rather than three equal shouts. */
+.oBuy.alt{padding:5px 8px;font-size:9px;font-weight:900;border-color:rgba(158,240,189,.32);background:rgba(158,240,189,.09);color:#cfeedd}
+.oBuy.alt:hover{background:rgba(158,240,189,.18)}
 .offer.organelle .oName{font-weight:950;font-size:12px;color:#fff;line-height:1.15}
 .offer.organelle .ownBadge{display:inline-block;margin-left:6px;font-size:10px;font-weight:950;color:#9ef0bd;border:1px solid rgba(158,240,189,.4);border-radius:99px;padding:0 6px}
 .offer.organelle .oSub{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px}
@@ -55,6 +59,8 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
 .offer.organelle .oDetail{display:none;margin-top:7px;border-top:1px solid rgba(255,255,255,.08);padding-top:6px;color:var(--muted);font-size:10px;line-height:1.34}
 .offer.organelle .oDetail .meta{margin-top:4px;color:#9fd0ff;font-weight:800}
 .offer.organelle .oDetail .catNote{font-size:9px;font-weight:900;color:#f5d47a;opacity:.9;margin-top:5px}
+.offer.organelle .oDetail .oAlts{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+.offer.organelle .oDetail .oAltsLabel{font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);opacity:.8;width:100%}
 .offer.organelle.open{grid-column:1/-1}
 .offer.organelle.open .oDetail{display:block}
 /* The ⊕ graft/buy button — a 1-CLICK buy that needs no expand. */
@@ -119,6 +125,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
   </div>
   <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1 id="shopTitle">Yuki <small style="font-size:11px;font-weight:800;color:var(--muted)">— sequence DNA · grow organs · Eucharist</small></h1></div><div class="close" id="closeShop">Clos<b class="ckey">e</b></div></div><div id="shopGuide" class="shopGuide"></div><div id="shopExchange" class="shopExchange"></div><div id="shopWarn" class="shopWarn" style="display:none"></div><div id="bodyHead" class="bodyHead"><span>Your Body <small id="bodyCount"></small></span></div><div id="shopBody"></div></div></div>
   <div class="gameOver" id="gameOver"><div class="box card"><h1>Membrane Cleaved</h1><p>The world did not reset. Your corpse bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
+  <div class="gameOver" id="wipeConfirm"><div class="box card"><h1>Wipe everything?</h1><p>This erases every DNA unlock permanently — Yuki's grafts return to locked, first-run state. This cannot be undone.</p><button id="wipeCancel" style="background:rgba(255,255,255,.14);color:#eae7ff;margin-right:8px">Cancel</button><button id="wipeConfirmBtn">Wipe everything</button></div></div>
   <div class="focusGate" id="focusGate"><h2>Click to play</h2><p>Click anywhere to sink in and take the controls</p></div>
 </div>
 <script type="module">
@@ -130,7 +137,7 @@ const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
 const dagCanvas = document.getElementById('dagHud');
 const dagCtx = dagCanvas.getContext('2d');
 const ui = {
-  dagHud: el('dagHud'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn'), graphToggle: el('graphToggle'), dagShopChips: el('dagShopChips')
+  dagHud: el('dagHud'), status: el('status'), controls: el('controls'), prompt: el('prompt'), shopOverlay: el('shopOverlay'), shopGuide: el('shopGuide'), shopExchange: el('shopExchange'), shopWarn: el('shopWarn'), bodyCount: el('bodyCount'), shopBody: el('shopBody'), closeShop: el('closeShop'), shopFab: el('shopFab'), toast: el('toast'), actions: el('actions'), joy: el('joy'), knob: el('knob'), gameOver: el('gameOver'), respawn: el('respawn'), wipeConfirm: el('wipeConfirm'), wipeCancel: el('wipeCancel'), wipeConfirmBtn: el('wipeConfirmBtn'), graphToggle: el('graphToggle'), dagShopChips: el('dagShopChips')
 };
 function el(id){return document.getElementById(id)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -163,11 +170,11 @@ if(window.self !== window.top){
   window.addEventListener('blur',show);
   window.addEventListener('focus',hide);
 }
-function resetWorld(seed = Math.floor(Math.random()*1e9)){
+function resetWorld(seed = Math.floor(Math.random()*1e9), wipeDNA = false){
   currentSeed = seed;
-  // A full reset: new seeded ecology, a fresh genome (re-rolled organelle potencies),
-  // and a wiped Yuki shop (all exotic unlocks re-locked).
-  world = K.createWorld({seed: currentSeed, fresh: true});
+  // P: fast reset — new seeded ecology, DNA unlocks kept. Shift+P (confirmFullWipe below): the actually
+  // destructive action — also wipes every DNA unlock, re-locking Yuki's grafts.
+  world = K.createWorld({seed: currentSeed, fresh: true, wipeDiscoveries: wipeDNA});
   projection = K.getRenderProjection(world);
   hud = K.getHudProjection(world);
   closeShop(true);
@@ -175,8 +182,9 @@ function resetWorld(seed = Math.floor(Math.random()*1e9)){
   didGameOver=false;
   pointer.down=false; pointer.right=false;
   buttons={feed:false,repair:false,rasp:false,dash:false,acid:false,sporeshot:false,harpoon:false,cloud:false,mark:false,engulf:false,ward:false,jettison:false,flame:false,divide:false,compact:false};
-  toast('Reborn from the froth — a fresh genome. Yuki\'s deeper grafts are sealed until you earn them again.');
+  toast(wipeDNA ? 'Full wipe — Yuki\'s grafts are sealed until you earn them again.' : 'Reborn from the froth — DNA unlocks kept.');
 }
+function confirmFullWipe(){ ui.wipeConfirm.style.display='flex'; }
 
 // dagHudH used to be a dedicated top band (~46% of viewport); the DAG HUD is now a full-viewport overlay
 // (the membrane node locks to the player's actual on-screen position, which sits well below where that old
@@ -198,15 +206,39 @@ addEventListener('resize',resize,{passive:true}); resize();
 let dagPressState=null; // {nodeId, startX, startY, startTime}
 let dagLongPressTimer=null;
 const DAG_TAP_MS=200, DAG_LONGPRESS_MS=650, DAG_MOVE_TOLERANCE=16;
+// The body-graph's CORE node id — the inner tank the whole graph anchors/collapses/toggles/hangs on, and
+// the only node shown when collapsed. Prefers the storage vacuole (K.CORE_ORGAN, the expanding cavity),
+// falls back to membrane then any owned organ so a malformed body never orphans the layout. Every one of
+// the graph's former hardcoded 'membrane' anchor sites routes through this — membrane is now just armor.
+function coreNodeId(){
+  const orgs=(hud&&hud.organelles)||[];
+  if(orgs.some(o=>o.id===K.CORE_ORGAN)) return K.CORE_ORGAN;
+  if(orgs.some(o=>o.id==='membrane')) return 'membrane';
+  return orgs.length?orgs[0].id:K.CORE_ORGAN;
+}
+// A CONTAINER is a core node that HOLDS organelles — the unit the build menu scopes to. Today there is
+// exactly ONE: 'self', the player's own cell (core = the storage-vacuole tank; contents = every owned organ).
+// FORWARD SEAM (Tier 3 — DEFERRED, built here only in SHAPE): a colony segment / archived cell becomes a
+// SECOND container of the identical shape — { id: seg.id, coreOrgan: K.CORE_ORGAN, organelles: <projected via
+// K.__test.colonyOrgs(seg)> } — folded into the host by the same caps().oc() merge the sim already runs. So
+// the menu/graph code that consumes containers is already container-count-agnostic. Rendering colony as nested
+// nodes, a live second container, and the T3 hot-swap BUY are all out of scope this pass; only the shape is set.
+function buildContainers(){
+  return [{ id:'self', coreOrgan:K.CORE_ORGAN, organelles:(hud&&hud.organelles)||[] }];
+}
+// Which container a tapped/owned node belongs to. Every organelle currently lives in 'self'; when a second
+// container exists this resolves a node to its owning segment instead — the menu then scopes to that container.
+function containerForNode(nodeId){ return 'self'; }
 function dagHitTest(clientX,clientY){
   const dr=dagCanvas.getBoundingClientRect();
   // The graph is no longer drawn through a rotation transform (the flagella swing moves node positions
   // directly), so a tap maps straight into the physics sim's local space: just undo the player-lock offset.
   const localX=(clientX-dr.left)-dagOffX, localY=(clientY-dr.top)-dagOffY;
   let best=null,bestD=Infinity;
-  // Collapsed: only the membrane dot is actually drawn, so it's the only thing tappable — every other
+  // Collapsed: only the CORE dot is actually drawn, so it's the only thing tappable — every other
   // node still exists in dagNodes (physics keeps running underneath) but is invisible and untouchable.
-  const candidates=graphOpen ? dagNodes : (dagNodes.has('membrane') ? [['membrane',dagNodes.get('membrane')]] : []);
+  const core=coreNodeId();
+  const candidates=graphOpen ? dagNodes : (dagNodes.has(core) ? [[core,dagNodes.get(core)]] : []);
   for(const [id,n] of candidates){
     const d=Math.hypot(localX-n.x, localY-n.y);
     if(d<=n.r && d<bestD){ best=id; bestD=d; }
@@ -253,11 +285,9 @@ let graphOpen=true;
 function dagToggleOpen(){ graphOpen=!graphOpen; }
 ui.graphToggle.onclick=dagToggleOpen;
 
-// Shared Affordable/Owned/New filter-chip component — same markup and click semantics reused by BOTH
-// the Yuki shop panel and the graph's shop-on-graph chip row, so they're genuinely the same control, not
-// two lookalikes. Each surface keeps its OWN state instance (see shopFilter / dagFilter) since their
-// sensible defaults differ — the shop panel defaults to "browse what's affordable," the graph defaults
-// Owned to true since owned nodes already always appear on the graph regardless of any toggle.
+// Shared Affordable/Owned/New filter-chip component — same markup and click semantics, wired to the ONE
+// shared `buildFilter` object by BOTH the Yuki shop panel and the graph's chip row. Toggling a chip on
+// either surface mutates the same state, so the two build surfaces can never drift out of sync.
 function filterChipsHTML(state){
   const mk=(key,label)=>`<button class="mgrToggle${state[key]?' on':''}" data-fkey="${key}">${state[key]?'✓':'○'} ${label}</button>`;
   return mk('affordableOnly','Affordable')+mk('ownedOnly','Owned')+mk('newOnly','New');
@@ -267,28 +297,63 @@ function wireFilterChips(container,state,rerender){
   for(const b of container.querySelectorAll('[data-fkey]')) b.onpointerup=e=>{e.preventDefault();state[b.dataset.fkey]=!state[b.dataset.fkey];rerender();};
 }
 
-// Shop-on-graph: which ORGAN_CATEGORY bucket's unlocked-unowned organelles show as shadow nodes right
-// now. null = no category selected. There's no separate Yuki-proximity gate here (buy/remove via the
-// graph works anywhere). dagFilter.newOnly has a graph-specific meaning: browse unlocked-unowned
-// organelles from EVERY category at once, ignoring the selected category chip (on the shop panel "New"
-// instead just means "organs you've never bought" WITHIN whatever's already showing).
-let dagShopCategory=null;
-// affordableOnly defaults OFF here (unlike the shop panel) — the established shop-on-graph behavior
-// from last round shows unaffordable-but-unlocked organelles as dimmer shadows on purpose ("an
-// unaffordable-today organelle is still unlocked"); the toggle just makes that filterable now.
-const dagFilter={affordableOnly:false, ownedOnly:true, newOnly:false};
-const DAG_SHOP_CATEGORIES=['feeding','metabolism','structure','oxygen','movement','weapons','swarm'];
+// ── UNIFIED BUILD TAXONOMY ────────────────────────────────────────────────────────────────────
+// ONE category list, ONE filter state, ONE classifier drive BOTH build surfaces — the shop-on-graph chip
+// row AND the Yuki modal — so there's no longer a DAG_SHOP_CATEGORIES vs SHOP_GROUPS pair to keep in sync.
+// Categories mirror the kernel's ORGAN_CATEGORY (feeding…swarm) plus two synthetic Yuki-only buckets:
+// 'eucharist' (the mitochondrial sacrament) and 'archive' (Tier-3 forms / colony). graph:true = the
+// category has real buildable shadow nodes and earns a chip on the graph; eucharist/archive are
+// modal-only transactions (no graph shadow to tap).
+const BUILD_CATEGORIES=[
+  {key:'feeding',    label:'Feeding & Intake',            short:'Feed',    sub:'pores · feeding · ingestion · DNA digestion', graph:true},
+  {key:'metabolism', label:'Metabolism & Fuel',           short:'Metab',   sub:'ATP ⇄ lipids ⇄ crystals ⇄ gas · ribosomes',   graph:true},
+  {key:'structure',  label:'Structure, Storage & Defense',short:'Struct',  sub:'tanks · armour · self-repair',                 graph:true},
+  {key:'oxygen',     label:'Oxygen & Buoyancy',           short:'Oxygen',  sub:'bask · rise · dive · jettison',                graph:true},
+  {key:'movement',   label:'Movement',                    short:'Move',    sub:'thrust · dash · grip',                         graph:true},
+  {key:'weapons',    label:'Weapons',                     short:'Weapons', sub:'lances · rasps · launchers · glands',          graph:true},
+  {key:'swarm',      label:'Swarm & Colony',              short:'Swarm',   sub:'pheromone swarms & symbiotic cells',           graph:true},
+  {key:'eucharist',  label:'Mitochondrial Eucharist',     short:'Euchar',  sub:'host-readiness gate — oxygen becomes power',   graph:false},
+  {key:'archive',    label:'Tier 3 — DNA Information',     short:'Tier 3',  sub:'archived forms · chassis · mito stacks',       graph:false},
+];
+const GRAPH_CATEGORIES=BUILD_CATEGORIES.filter(c=>c.graph);
+// Organs the kernel's ORGAN_CATEGORY leaves unclassified, resolved by hand: the two capacity racks are
+// structure; cleavage_furrow (a DNA-exotic division organ) rides with the swarm/colony reproduction family.
+const EXTRA_CATEGORY={exotic_vacuole:'structure', dna_memory_vesicle:'structure', cleavage_furrow:'swarm'};
+const EUCHARIST_IDS=new Set(['mitochondrial_eucharist']);
+const ARCHIVE_IDS=new Set(['multicell_chassis','eucharist_archive','mitochondrial_stack']);
+// The single source of truth for "which system does this offering belong to" — used by the graph shadow
+// nodes, the modal sections, and both chip rows. Handles organelles (kernel category), crab raw-DNA
+// (buy_dna_<org> → its organ's system), the sacrament, and colony/attach / Tier-3 forms. The Tier-3 section
+// wins over an offering's eucharist KIND, so the mito-stack/archive forms group under Tier 3 (as before)
+// while the actual Eucharist GATE sacrament (not a Tier-3 section) stays in its own bucket.
+function buildCategoryOf(o){
+  if(ARCHIVE_IDS.has(o.id)||o.kind==='colony'||(o.section&&o.section.includes('Tier 3'))) return 'archive';
+  if(EUCHARIST_IDS.has(o.id)||o.kind==='sacrament'||o.kind==='eucharist') return 'eucharist';
+  if(o.id&&o.id.startsWith('buy_dna_')) return K.__test.ORGAN_CATEGORY[o.id.slice(8)]||'archive';
+  return o.funcCategory||(o.organelle&&K.__test.ORGAN_CATEGORY[o.organelle])||EXTRA_CATEGORY[o.organelle]||'structure';
+}
+
+// Shop-on-graph state: which category's unlocked-unowned organelles surface as shadow nodes (null = none),
+// plus the ONE shared build filter read by BOTH the graph and the modal — same labels, same meaning
+// everywhere now: Affordable = buildable right now · Owned = only organs you carry (on the graph this hides
+// shadows, leaving just your body) · New = browse every unlocked-unowned organ you've never built.
+let buildCategory=null;
+const buildFilter={affordableOnly:false, ownedOnly:false, newOnly:false};
 function buildDagShopChips(){
-  const cats=DAG_SHOP_CATEGORIES.map(c=>`<button class="dagChip${c===dagShopCategory?' on':''}" data-cat="${c}">${c}</button>`).join('');
-  ui.dagShopChips.innerHTML=filterChipsHTML(dagFilter)+cats;
-  wireFilterChips(ui.dagShopChips,dagFilter,buildDagShopChips);
+  const cats=GRAPH_CATEGORIES.map(c=>`<button class="dagChip${c.key===buildCategory?' on':''}" data-cat="${c.key}">${c.short}</button>`).join('');
+  ui.dagShopChips.innerHTML=filterChipsHTML(buildFilter)+cats;
+  wireFilterChips(ui.dagShopChips,buildFilter,refreshBuildSurfaces);
   for(const b of ui.dagShopChips.querySelectorAll('[data-cat]')){
     b.onclick=()=>{
-      dagShopCategory = dagShopCategory===b.dataset.cat ? null : b.dataset.cat;
+      buildCategory = buildCategory===b.dataset.cat ? null : b.dataset.cat;
       buildDagShopChips();
     };
   }
 }
+// The graph chip row and the modal both toggle the ONE shared buildFilter, so a change on either surface
+// must repaint the other's chip glyphs. Behaviour is already live (drawDagHud reads buildFilter each frame);
+// this just keeps the ✓/○ in sync. renderGuide/renderShop only run when the modal is actually open.
+function refreshBuildSurfaces(){ buildDagShopChips(); if(document.body.classList.contains('shopping')){ renderGuide(); renderShop(); } }
 buildDagShopChips();
 
 // Tap: shadow (first copy = DNA transcription) or owned-not-maxed organelle (repeat = cheap RNA copy)
@@ -296,18 +361,22 @@ buildDagShopChips();
 // in-progress builds just toast. Tier-3 sacraments still transact at Yuki via doBuy. Long-press: owned
 // organelle -> remove. Membrane is excluded from both (it's the open/closed toggle target instead).
 dagOnTap=(nodeId)=>{
-  if(nodeId==='membrane'){ dagToggleOpen(); return; }
+  if(nodeId===coreNodeId()){ dagToggleOpen(); return; }
   const proj=K.getYukiOfferings(world).find(o=>o.organelle===nodeId);
   if(!proj) return;
   if(proj.kind!=='organelle'){ doBuy(proj.id, proj.kind); return; } // Tier-3 sacrament — still bought
-  // A node actively being grown in can't also start a second build — one at a time; the progress ring
-  // already tells the player it's on its way.
-  if(hud.manufacturing){ toast(hud.manufacturing.organelle===nodeId?('Already growing — '+Math.round(hud.manufacturing.progress*100)+'% done.'):'One build at a time — finish the current graft first.'); return; }
   if(proj.maxed){ toast('That organ is already at its limit.'); return; }
-  doManufacture(proj.id);
+  // ONE canonical primary action, shared with the shop card (buildRoutes/primaryBuild): PRINT (hold the RNA
+  // recipe + a ribosome) → EXPRESS at the rack → cheap bare graft → +RNA graft. A tap fires the first
+  // available route; the rest become the card's "other ways to build" overflow. One build at a time — a
+  // node mid-print can't start another.
+  const act=primaryBuild(proj);
+  if(!act){ toast(proj.genuineLock?((proj.reasons&&proj.reasons[0])||'Locked — sequence its gene first.'):'Not enough matter for a graft.'); return; }
+  if(act.id.startsWith('print_')&&hud.manufacturing){ toast(hud.manufacturing.organelle===nodeId?('Already printing — '+Math.round(hud.manufacturing.progress*100)+'% done.'):'One build at a time — finish the current print first.'); return; }
+  doBuy(act.id, act.kind);
 };
 dagOnLongPress=(nodeId)=>{
-  if(nodeId==='membrane') return;
+  if(nodeId===coreNodeId()) return;
   if(hud.organelles.some(o=>o.id===nodeId)) doRemove(nodeId);
 };
 
@@ -318,7 +387,7 @@ addEventListener('keydown',e=>{
     if(ui.shopOverlay.style.display==='flex') closeShop();
     else if(hud?.nearYuki||hud?.nearCrab) openShop();
   }
-  if(k==='p') resetWorld();
+  if(k==='p'){ if(e.shiftKey) confirmFullWipe(); else resetWorld(); }
   if(k==='o') dagToggleOpen();
   if(k==='k') { K.killPlayer(world); toast('You burst your own membrane — your corpse blooms into a feeding field.'); }
   if(e.key==='Escape') closeShop();
@@ -333,6 +402,7 @@ addEventListener('mouseup',e=>{if(e.button===2)pointer.right=false;else pointer.
 addEventListener('pointerup',e=>{if(e.button===2)pointer.right=false;else pointer.down=false; dagPressEnd(e);});
 addEventListener('blur',()=>{pointer.down=false;pointer.right=false; dagPressCancel();});
 ui.closeShop.onclick=closeShop; ui.shopFab.onclick=()=>{ if(ui.shopOverlay.style.display==='flex') closeShop(); else if(hud?.nearYuki||hud?.nearCrab) openShop(); else toast('Reach a Yuki tendril — or the crab merchant — to commune.')}; ui.respawn.onclick=()=>{ui.gameOver.style.display='none';didGameOver=false};
+ui.wipeCancel.onclick=()=>{ui.wipeConfirm.style.display='none';}; ui.wipeConfirmBtn.onclick=()=>{ui.wipeConfirm.style.display='none'; resetWorld(undefined, true);};
 
 function setupJoy(){
   const joy=ui.joy, knob=ui.knob;
@@ -695,6 +765,7 @@ function dagEdgeWidth(fromId,toId,active){
   return base*(1+active*1.6);
 }
 function dagStepPhysics(ids,edges,w,h){
+  const core=coreNodeId(); // the tank node the whole layout anchors/hangs/swings on (was hardcoded 'membrane')
   for(let i=0;i<ids.length;i++){
     const a=dagNodes.get(ids[i]);
     for(let j=i+1;j<ids.length;j++){
@@ -726,7 +797,7 @@ function dagStepPhysics(ids,edges,w,h){
   // both how far a resource hangs and how hard it tugs communicate "how much," not just direction.
   // Deliberately excludes toxins: they contribute zero weight or lift in the current kernel, full stop.
   const dagHangPlayer=world.entities.find(e=>e.id===world.playerId);
-  const dagHangMembrane=dagNodes.get('membrane');
+  const dagHangMembrane=dagNodes.get(core);
   if(dagHangPlayer&&dagHangMembrane){
     const mb=K.__test.massBreakdown(dagHangPlayer);
     for(const [id,magnitude,sign] of [['biomass',mb.biomass,1],['ballast',mb.ballast,1],['oxygen',mb.oxygen,-1],['lipids',mb.lipids,-1]]){
@@ -742,13 +813,13 @@ function dagStepPhysics(ids,edges,w,h){
   // the radius vector out from membrane and push along its perpendicular (tangent) — a real force in the
   // layout, not a rigid canvas rotation, so springs/home-Y still tug back and it reads as an organic swing
   // rather than a turntable. Scales with flagella count and live motor (motorRamp); coasting settles it.
-  const swingMem=dagNodes.get('membrane');
+  const swingMem=dagNodes.get(core);
   const swingFlag=hud.organelles.find(o=>o.id==='flagella');
   const swingN=swingFlag?swingFlag.count:0;
   if(swingMem&&swingN>0&&(hud.motorRamp||0)>0.01){
     const spin=DAG_SWING_K*swingN*(hud.motorRamp||0);
     for(const id of ids){
-      if(id==='membrane') continue;
+      if(id===core) continue;
       const n=dagNodes.get(id);
       const dx=n.x-swingMem.x, dy=n.y-swingMem.y, d=Math.hypot(dx,dy)||1;
       // tangent = radius rotated 90°; force fades in over the first ~60px so nodes hugging the centre
@@ -759,8 +830,8 @@ function dagStepPhysics(ids,edges,w,h){
   }
   for(const id of ids){
     const n=dagNodes.get(id);
-    if(id==='membrane'){
-      // Strong spring tying membrane to the player's on-screen position — the whole point of this pass:
+    if(id===core){
+      // Strong spring tying the CORE tank node to the player's on-screen position — the whole point of this pass:
       // replaces the rigid uniform-offset lock. The player anchor IS membrane's home, so it gets NO
       // home-Y/centre bias. basal_motility then shoves membrane off the anchor in the swim direction and
       // the spring reels it back — so the graph leans/trails through its edge springs as you move (a living
@@ -940,8 +1011,8 @@ function drawDagShadowOrg(g,o){
   // it, instead of the flat translucent-ghost read a browsing (not-yet-started) shadow gets.
   const r=building ? o.r*(0.3+0.7*building.progress) : o.r;
   const rgb='158,240,189';
-  // Organs are grown in-body — "ready" means buildable (not gated + have the exotics), not lipid-affordable.
-  const affordable=o.kind==='organelle'?!!o.buildable:organState(o)==='ready';
+  // "ready" now means ANY acquisition route is open (graft/graft+RNA/express/print) — organState folds them.
+  const affordable=organState(o)==='ready';
   const a=building ? (0.35+0.5*building.progress) : (affordable?0.55:0.22);
   g.setLineDash([4,4]);
   g.strokeStyle=`rgba(${rgb},${a})`; g.lineWidth=1.6;
@@ -954,9 +1025,12 @@ function drawDagShadowOrg(g,o){
     // visual language (radial fill from top) so it reads immediately as "in progress."
     g.strokeStyle='rgba(158,240,189,.85)'; g.lineWidth=2.6;
     g.beginPath(); g.arc(o.x,o.y,r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*building.progress); g.stroke();
-  } else if(o.offering&&(o.offering.buildCostText||o.offering.costText)){
+  } else if(o.offering&&(o.offering.graftCostText||o.offering.buildCostText||o.offering.costText)){
+    // Browsing a shadow shows the cheapest way IN: its RNA print cost if you already hold the recipe,
+    // otherwise the bare-graft lipid price (the entry point for an organ you don't yet know how to print).
+    const of=o.offering, ctext=(of.hasRNA&&of.buildCostText)?of.buildCostText:(of.graftCostText||of.buildCostText||of.costText);
     g.fillStyle=`rgba(${rgb},${affordable?0.85:0.4})`; g.font='800 8px ui-monospace,monospace'; g.textAlign='center';
-    g.fillText(o.offering.buildCostText||o.offering.costText, o.x, o.y+3);
+    g.fillText(ctext, o.x, o.y+3);
   }
   const pressT=dagPressProgress(o.id);
   if(pressT>0){
@@ -1021,6 +1095,9 @@ function drawDagOrg(g,o){
   }
   if(modify){ g.fillStyle='rgba(255,255,255,.8)'; g.font='700 9px ui-sans-serif,system-ui'; g.textAlign='center'; g.fillText(o.name, o.x, o.y+r+12); }
   if(o.count>1){ g.fillStyle='rgba(255,255,255,.92)'; g.font='800 9px ui-monospace,monospace'; g.textAlign='center'; g.fillText('x'+o.count, o.x, o.y+3); }
+  // RNA recipe held (somatic — this cell can reprint this organ). A small teal quill at the node's shoulder;
+  // its absence on an owned organ means you bought a BARE graft and can't reprint it without a recipe.
+  if(o.rna){ g.fillStyle='rgba(127,255,224,.92)'; g.font='800 8px ui-monospace,monospace'; g.textAlign='center'; g.fillText('✎', o.x+r*0.82, o.y-r*0.72); }
   // Long-press confirmation ring: fills clockwise from top as the hold approaches the commit threshold —
   // the only feedback telling you "keep holding" vs "let go now" before it auto-fires.
   const pressT=dagPressProgress(o.id);
@@ -1050,21 +1127,22 @@ function drawDagHud(){
   // category — it's a real in-progress process, not a browsing preview, so it can't be hidden by tapping a
   // different chip mid-build.
   const manufacturingTarget = hud.manufacturing ? K.getYukiOfferings(world).find(o=>o.organelle===hud.manufacturing.organelle) : null;
-  // dagFilter.newOnly browses every category at once (ignoring the selected chip); dagFilter.affordableOnly
-  // additionally drops 'unaff' previews, leaving only genuinely-graftable-right-now shadows.
-  const shadowScope = dagFilter.newOnly || dagShopCategory;
+  // buildFilter.newOnly browses every category at once (ignoring the selected chip); buildFilter.affordableOnly
+  // additionally drops 'unaff' previews, leaving only genuinely-graftable-right-now shadows; buildFilter.ownedOnly
+  // suppresses shadows entirely, decluttering the graph down to just your own body. Same shared filter the modal reads.
+  const shadowScope = !buildFilter.ownedOnly && (buildFilter.newOnly || buildCategory);
   const shadowCandidates = (shadowScope ? K.getYukiOfferings(world).filter(o=>
-    o.organelle && organState(o)!=='lock' && (!dagFilter.affordableOnly || organState(o)==='ready')
-    && (dagFilter.newOnly || K.__test.ORGAN_CATEGORY[o.organelle]===dagShopCategory) && !hud.organelles.some(x=>x.id===o.organelle)
+    o.organelle && organState(o)!=='lock' && (!buildFilter.affordableOnly || organState(o)==='ready')
+    && (buildFilter.newOnly || buildCategoryOf(o)===buildCategory) && !hud.organelles.some(x=>x.id===o.organelle)
   ) : [])
     .concat(manufacturingTarget && !hud.organelles.some(x=>x.id===manufacturingTarget.organelle) ? [manufacturingTarget] : [])
     .filter((o,i,arr)=>arr.findIndex(x=>x.organelle===o.organelle)===i)
     .map(o=>({...o, id:o.organelle, graphRole:K.ORGAN_GRAPH_ROLE[o.organelle]||'tune', count:0, shadow:true, offering:o,
       manufacturing: hud.manufacturing&&hud.manufacturing.organelle===o.organelle ? hud.manufacturing : null}));
-  // dagFilter.ownedOnly, when turned off, hides owned nodes from the graph — except membrane, which
-  // must always stay present (it's what dagOffX/dagOffY, the player-lock, is computed from).
-  const ownedShown = dagFilter.ownedOnly ? hud.organelles : hud.organelles.filter(o=>o.id==='membrane');
-  const orgList=ownedShown.concat(shadowCandidates);
+  // Owned nodes ARE your body — always drawn; the collapse toggle (graphOpen) is what declutters to just the
+  // core tank, and buildFilter.ownedOnly hides the unowned shadows above. The core is always in hud.organelles.
+  const dagCore=coreNodeId();
+  const orgList=hud.organelles.concat(shadowCandidates);
   const vals={}; for(const id of sinkIds) vals[id]=dagSinkValue(id);
   for(const id of specialIds) vals[id]=dagSpecialValue(id);
   for(const id of sinkIds) dagEnsureNode(id,'sink',w,h, dagSinkRadius(id,vals[id]));
@@ -1103,12 +1181,16 @@ function drawDagHud(){
     const n=dagNodes.get(o.id); if(!n) continue;
     n.r=dagOrgBaseSize(o)*(1+(orgActivity[o.id]||0)*0.9);
   }
+  // Tank swell: the CORE storage vacuole visibly bulges with its biomass-slurry fill — this is the
+  // "expanding tank" read (purely visual; caps math is unchanged). Reuses the biomass sink value already
+  // computed above; the mass-hang force already drags biomass onto this same node.
+  { const coreN=dagNodes.get(dagCore); if(coreN&&vals.biomass){ const fill=clamp(vals.biomass.value/Math.max(1,vals.biomass.max),0,1); coreN.r*=(1+0.6*fill); } }
   // Membrane's spring target = the player's live on-screen position (camera keeps the player near centre).
   // Set BEFORE the physics step so dagStepPhysics can spring membrane toward it this same frame. The graph
   // now lives directly in screen coordinates — no rigid translate — so nodes draw at their own positions
   // (dagOffX/dagOffY stay 0) and membrane tracks the player through a real spring, not a hard lock.
   const dagPlayer=world.entities.find(e=>e.id===world.playerId);
-  const membraneNode=dagNodes.get('membrane');
+  const membraneNode=dagNodes.get(dagCore);
   if(dagPlayer){ dagAnchorTX=worldToScreenX(dagPlayer.x); dagAnchorTY=dagPlayer.y-camera.y; dagAnchorHas=true; }
   else dagAnchorHas=false;
   dagStepPhysics(activeIds,edges,w,h);
@@ -1119,7 +1201,7 @@ function drawDagHud(){
   // physics sim above still runs every frame regardless, so nothing jumps/pops when it reopens.
   if(!graphOpen){
     if(membraneNode){
-      const mo=orgList.find(o=>o.id==='membrane');
+      const mo=orgList.find(o=>o.id===dagCore);
       if(mo) drawDagOrg(g,{...membraneNode,...mo,x:membraneNode.x+dagOffX,y:membraneNode.y+dagOffY,activity:0});
     }
     return;
@@ -1150,20 +1232,6 @@ function updateActionButtons(actions){
 }
 function updateControls(actions){const map=new Map(actions.map(a=>[a.id,a]));const hasLance=hud.organelles.some(o=>['lance_bristle','velocity_lance','saw_lance','leech_lance'].includes(o.id));const acid=map.get('acid');const spore=map.get('sporeshot');const rasp=map.get('rasp');const harp=map.get('harpoon');const rows=[['WASD',hud.ballast?.hasOrgan?'Swim · hold W to raise your gas target (rise), S to squeeze it down (dive)':'Swim',true],['F / RMB','Feed fields',true],['Q','Lipid repair',!!map.get('repair')],['LMB / Click','Fire ALL weapons at once — rasp + every launcher/gland you carry',true],['Mouse','Aim · lance faces attention',hasLance],['R / X',acid?acid.label:'Toxic Launcher',!!acid],['J','Flamethrower (O2 + lipids + toxins)',!!map.get('flame')],['C','Sporo-toxic gun',!!spore],['Z','Harpoon spine',!!harp],['G','Mark for the swarm',!!map.get('mark')],['B','Engulf (enzyme)',!!map.get('engulf')],['H','Crystal ward',!!map.get('ward')],['V','Toxin cloud',!!map.get('cloud')],['Shift','Dash',!!map.get('dash')],['T','Drop ballast bricks (or biomass if none carried) — shed weight, cheap',!!map.get('jettison')],['U','Compact waste — drains most of your toxins into permanent ballast (biomass + ATP cost)',!!map.get('compact')],['M','Divide — gorge on fat, then cleave into a clone',!!map.get('divide')],['K','Self-lysis',true],['P','Reset world',true],['O','Toggle body graph',true],['E','Yuki graft chamber',hud.nearYuki]];ui.controls.innerHTML=rows.filter(r=>r[2]).map(r=>`<div><span class="key">${r[0]}</span>${r[1]}</div>`).join('')}
 function toast(msg){ui.toast.textContent=msg;ui.toast.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>ui.toast.style.display='none',1600)}
-// Function-based shop groups: [title, subtitle, [offering ids]]. Each system merges its
-// basic bought organs with the DNA-gated exotics of the same function. Order = top→bottom.
-const SHOP_GROUPS=[
-  ['Feeding & Intake','intake pores, selective feeding, corpse-charge ingestion, field-vacuum, DNA digestion',['membrane_intake','selective_membrane','charge_cytostome','cytostome','chemotaxis_cilia','nuclease_vesicle']],
-  ['Metabolism & Fuel','biomass ⇄ ATP ⇄ lipids ⇄ crystals ⇄ gas flows · ribosomes grow new organs',['organ_manufacturing','algal_ribosome','anaerobic_processor','oxidase_vesicle','anabolic_vesicle','lipolytic_vesicle','mineralizing_gland','clean_processor','virulent_processor','catalytic_processor','lipogenic_processor','hydrogenosome','countercurrent_gill','chemosynthetic_vesicle','lipid_bladder','enzyme_reserve']],
-  ['Structure, Storage & Defense','membranes, general + per-fluid tanks, armor, self-repair',['membrane','storage_vacuole','biomass_vacuole','lipid_vacuole','toxin_vacuole','atp_reservoir','exotic_vacuole','dna_memory_vesicle','membrane_hardening','lipid_repair_loom','thorn_coat','corrosive_pellicle','crystal_ward','volatile_vacuole','barophilic_sheath']],
-  ['Oxygen & Buoyancy','bask · ferment gas to rise · flood ballast to dive · jettison to escape',['photosystem','oxygen_vacuole','oxygen_store','oxygen_tolerance','jettison_vesicle','gas_gland','pressure_bladder','ballast_siphon','aerocyst','catalase_vesicle','photolytic_vacuole','ballast_stone']],
-  ['Movement','thrust, dash, burst-vent, biomass grip',['basal_motility','flagella','dash_vacuole','spore_jet','dash_vent','pseudopod_anchor']],
-  ['Weapons','lances, rasps, launchers, glands',['lance_bristle','rasping_lamella','toxin_launcher','phagosome','velocity_lance','saw_lance','rupture_auger','siphon_rasp','leech_rasp','leech_lance','spore_toxin_launcher','toxin_cloud','harpoon_spine','adrenal_vesicle','discharge_vesicle','cryo_vesicle','neuro_barb','seeker_gland','necrosis_gland','phagocyte_maw','orbital_spores','gas_injector']],
-  ['Swarm & Colony','pheromone swarms & symbiotic cells',['pheromone_gland','fission_bud','companion_grazer','companion_lancer','companion_hunter']],
-  ['Mitochondrial Eucharist','host-readiness gate — oxygen becomes power',['mitochondrial_eucharist']],
-  ['Tier 3 — DNA Information','archived forms, chassis & mitochondrial stacks',['mitochondrial_stack','eucharist_archive','multicell_chassis']],
-  ['Other','',[]]
-];
 let shopLeaveArmed=false;
 // How stressed is the body right now? Drives the shop's leave-warning banner + the hard
 // close gate. atpLow (<10% ATP) is the blocker; toxin/O2 stress is a softer detox reminder.
@@ -1232,20 +1300,20 @@ function renderShop(){
   }
   const bhEl=document.getElementById('bodyHead'); if(bhEl) bhEl.style.display='none';
   const inBar=o=>o.kind==='exchange'||o.kind==='sequence';
-  let rest=offers.filter(o=>!inBar(o));
-  if(shopFilter.affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can graft right now
-  if(shopFilter.ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
-  if(shopFilter.newOnly) rest=rest.filter(o=>orgCardCount(o)===0);           // only organs you've never bought
-  const buckets=SHOP_GROUPS.map(()=>[]);
-  const groupOf=id=>{if(id&&id.startsWith('buy_dna_')){const org=id.slice(8);for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(org))return i;}for(let i=0;i<SHOP_GROUPS.length;i++)if(SHOP_GROUPS[i][2].includes(id))return i;if(id&&id.startsWith('attach_'))return SHOP_GROUPS.findIndex(g=>g[0].includes('Tier 3'));return SHOP_GROUPS.length-1;};
-  for(const o of rest) buckets[groupOf(o.id)].push(o);
+  let rest=offers.filter(o=>!inBar(o) && !(o.kind==='organelle'&&o.undiscovered)); // undiscovered exotics are found in the world (crab DNA), not browsed here
+  if(buildFilter.affordableOnly) rest=rest.filter(o=>organState(o)==='ready'); // only what you can build right now
+  if(buildFilter.ownedOnly) rest=rest.filter(o=>orgCardCount(o)>0);           // only organs you already carry
+  if(buildFilter.newOnly) rest=rest.filter(o=>orgCardCount(o)===0);           // only organs you've never built
+  // ONE taxonomy: bucket every offering by buildCategoryOf (same classifier the graph chips use).
+  const buckets={}; for(const c of BUILD_CATEGORIES) buckets[c.key]=[];
+  for(const o of rest){ (buckets[buildCategoryOf(o)]||buckets.archive).push(o); }
   // Order within a system: your owned+affordable grafts, then new affordable, then can't-afford, then locked, maxed last.
   const rank=o=>{const s=organState(o);if(s==='maxed')return 5;if(s==='lock')return 4;if(s==='unaff')return 3;return orgCardCount(o)>0?0:1;};
   const keepScroll=ui.shopBody.scrollTop;
   const total=(hud&&hud.organelles)?hud.organelles.reduce((s,o)=>s+o.count,0):0;
   const types=(hud&&hud.organelles)?hud.organelles.length:0;
   if(ui.bodyCount) ui.bodyCount.textContent=`— ${types} types · ${total} organelles · ⊕ to graft · tap for details`;
-  let html=SHOP_GROUPS.map((gd,i)=>{const items=buckets[i];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const isT3=gd[0].includes('Tier 3');const libHtml=isT3&&hud.cellLibrary&&hud.cellLibrary.length>0?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp${i}"><div class="sectionTitle"><span>${gd[0]}</span><small>${gd[1]}</small></div>${libHtml}<div class="grid">${items.map(organCard).join('')}</div></section>`}).join('');
+  let html=BUILD_CATEGORIES.map(c=>{const items=buckets[c.key];if(!items.length)return '';items.sort((a,b)=>rank(a)-rank(b));const libHtml=(c.key==='archive'&&hud.cellLibrary&&hud.cellLibrary.length>0)?renderLibraryPreview(hud.cellLibrary):'';return `<section class="section" id="grp_${c.key}"><div class="sectionTitle"><span>${c.label}</span><small>${c.sub}</small></div>${libHtml}<div class="grid">${items.map(organCard).join('')}</div></section>`}).join('');
   if(hud.colony&&hud.colony.length>0){html+=`<section class="section"><div class="sectionTitle"><span>Colony</span><small>attached cells</small></div><div class="grid">${hud.colony.map(s=>{const p=Math.round((s.hp/Math.max(1,s.maxHp))*100);return `<div class="offer organelle maxed"><div class="oTop"><div class="oName">${s.label}</div></div><div style="height:4px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:7px;overflow:hidden"><div style="height:100%;width:${p}%;background:#7fffe0;border-radius:99px"></div></div></div>`}).join('')}</div></section>`;}
   const bodyHeadHTML=`<div class="bodyHead bodyHeadInline"><span>Your Body <small>— ${types} types · ${total} organelles · ⊕ to graft · tap for details</small></span></div>`;
   const seqHTML=seqOffers.length?`<div class="seqTop">${seqOffers.map(offerCard).join('')}</div>`:'';
@@ -1260,9 +1328,21 @@ function renderShop(){
   for(const btn of ui.shopBody.querySelectorAll('.oRemove[data-remove]')) btn.onpointerup=e=>{e.preventDefault();e.stopPropagation();doRemove(btn.dataset.remove);};
   for(const card of ui.shopBody.querySelectorAll('.offer.organelle,.offer.sacrament,.offer.colony')) card.onclick=e=>{if(e.target.closest('.oBuy'))return;card.classList.toggle('open');};
 }
-// Organs are GROWN in-body now (manufacturing is the only build path) — route the shop-list ⊕ on any
-// organelle card into a build. Tier-3 sacraments/exchanges/sequencing still transact at Yuki.
-function doBuy(id,kind){if(kind==='organelle'){doManufacture(id);return;}const res=K.buyOffering(world,id);if(res.ok){if(kind==='dna')toast('Raw gene acquired — carry it up to Yuki and sequence it to unlock the recipe.');else if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');renderShop();}else toast(res.reason||'Locked.');}
+// Three acquisition routes dispatch off the button's id PREFIX (not the card kind): print_ = manufacture
+// from a held RNA recipe; buy_graft_/buy_rna_/express_ = kernel buyOffering branches; everything else
+// (sacrament/exchange/sequence/dna) transacts as before. See organCard for who emits which id.
+function doBuy(id,kind){
+  if(id.startsWith('print_')){ doManufacture(id.slice(6)); return; }
+  const res=K.buyOffering(world,id);
+  if(res.ok){
+    if(id.startsWith('buy_graft_'))toast('Graft accepted — the organelle is yours, but you hold no recipe to reprint it.');
+    else if(id.startsWith('buy_rna_'))toast('Graft + RNA — recipe learned. You can print more of this yourself now.');
+    else if(id.startsWith('express_'))toast('Gene expressed — RNA ready. Print it on biomass at your ribosome.');
+    else if(kind==='dna')toast('Raw gene acquired — carry it up to Yuki and sequence it to unlock the recipe.');
+    else if(kind!=='sequence')toast(kind==='sacrament'?'Eucharist begun.':'Graft accepted — the body inflames.');
+    renderShop();
+  } else toast(res.reason||'Locked.');
+}
 function doRemove(orgId){const res=K.removeOrganelle(world,orgId);if(res.ok){toast('Graft undone.');renderShop();}else toast(res.reason||'Cannot remove.');}
 function doManufacture(id){const res=K.startManufacturing(world,id);if(res.ok){toast(res.first?'Transcribing the gene — the body pulls hard on biomass.':'Translating a copy — quick, cheap RNA work.');renderShop();}else toast(res.reason||'Cannot grow that here.');}
 // One row of the lipid exchange counter: name · amount · fill bar · ▼ sell (→lipids) · ▲ buy (lipids→).
@@ -1290,13 +1370,38 @@ function doTrade(res,dir){const r=K.tradeAtYuki(world,res,dir);if(r.ok){renderSh
 function orgCardCount(o){if(!hud||!o.organelle)return 0;const oc=hud.organelles.find(x=>x.id===o.organelle);return oc?oc.count:0;}
 // Tri-state so the three cases READ differently (not just in text): ready to graft (affordable),
 // unlocked-but-can't-afford (you own the recipe, just need matter), and locked (DNA-gated / undiscovered).
-function organState(o){if(o.maxed)return 'maxed';if(!o.locked)return 'ready';const onlyMoney=o.reasons&&o.reasons.length&&o.reasons.every(r=>r.startsWith('needs '));return onlyMoney?'unaff':'lock';}
+function organState(o){
+  if(o.maxed)return 'maxed';
+  // Organelles now have three acquisition routes (buy graft / buy graft+RNA / print from a held recipe), so
+  // "ready" means ANY of them is available right now: a gate-clear organ you can afford a graft for, or one
+  // you already hold RNA for (printable). genuineLock (undiscovered/prereq) is the only hard lock.
+  if(o.kind==='organelle'){ if(o.genuineLock) return 'lock'; return (o.graftBuyable||o.rnaBuyable||o.hasRNA||o.expressable)?'ready':'unaff'; }
+  if(!o.locked)return 'ready';
+  const onlyMoney=o.reasons&&o.reasons.length&&o.reasons.every(r=>r.startsWith('needs '));return onlyMoney?'unaff':'lock';
+}
+// The acquisition routes for an organelle offering, in the ONE canonical priority a single tap follows:
+// PRINT (hold the RNA recipe + a ribosome) → EXPRESS (rack) → bare graft (cheap lipids) → +RNA graft (pricier,
+// also teaches the recipe). Each carries an `enabled` flag. primaryBuild = the first enabled route — what a
+// graph tap fires AND the card's one visible button; the rest become the card's "other ways to build" overflow.
+// Graph and modal share this, so the primary action is identical on both surfaces.
+function buildRoutes(o){
+  const hasRibosome=!!(hud&&hud.organelles&&hud.organelles.some(x=>x.id==='organ_manufacturing'));
+  const cnt=orgCardCount(o);
+  const lipOf=c=>(c&&c.lipids!=null)?c.lipids:null;
+  const r=[];
+  if(o.hasRNA&&hasRibosome) r.push({id:'print_'+o.id, kind:'organelle', label:cnt>0?'⊕ Print +1':'⊕ Print', title:`Print from your RNA recipe — ${o.buildCostText||'biomass'}`, enabled:true});
+  if(o.expressable) r.push({id:'express_'+o.organelle, kind:'express', label:'✎ Express', title:'Express the known gene to RNA at your DNA rack — free, fills a slot; then print on biomass', enabled:true});
+  const gLip=lipOf(o.graftCost);
+  r.push({id:'buy_graft_'+o.organelle, kind:'organelle', label:`graft${gLip!=null?` ${gLip}ℓ`:''}`, title:`Cheap graft (${o.graftCostText||'—'}): the organelle only, no recipe to reprint`, enabled:!!o.graftBuyable});
+  if(!o.hasRNA){ const rLip=lipOf(o.rnaGraftCost); r.push({id:'buy_rna_'+o.organelle, kind:'organelle', label:`+RNA${rLip!=null?` ${rLip}ℓ`:''}`, title:`Graft + RNA recipe (${o.rnaGraftCostText||'—'}): the organelle AND the ability to print more`, enabled:!!o.rnaBuyable}); }
+  return r;
+}
+function primaryBuild(o){ if(o.kind!=='organelle'||o.maxed||o.genuineLock) return null; return buildRoutes(o).find(x=>x.enabled)||null; }
 function organCard(o){
   const st=organState(o), cnt=orgCardCount(o), theme=o.theme?` theme-${o.theme}`:'';
   let head;
   if(o.requiresDiscovery){const c=CAT_COLOR[o.category]||'#f5d47a';const unlocked=o.undiscovered?'':'<span class="cat" style="border-color:rgba(158,240,189,.5);color:#9ef0bd;margin-left:4px">◈ unlocked</span>';const pot=(!o.undiscovered&&o.potency)?`<span class="cat" style="border-color:${c}66;color:${c};margin-left:4px">${Math.round(o.potency*100)}%</span>`:'';const upg=(o.carriedPotency&&(!o.potency||o.carriedPotency>o.potency))?`<span class="cat" style="border-color:rgba(143,227,122,.6);color:#8fe37a;margin-left:4px">▲ carried — sequence to ${o.potency?'upgrade':'unlock'}</span>`:'';head=`<span class="cat" style="border-color:${c}66;color:${c}">exotic · ${o.category||'trait'}</span>${unlocked}${pot}${upg}`;}
   else head=`<span class="cat">${o.kind}</span>`;
-  const catLabel={feeding:'Feeding',metabolism:'Metabolism',structure:'Structure',oxygen:'Oxygen/Buoyancy',movement:'Movement',weapons:'Weapons',swarm:'Swarm'};
   // Organs are GROWN in-body now (no graft trauma), and the cost inverts: the FIRST copy is a biomass-heavy
   // DNA transcription, repeats are cheap RNA translations. Membrane is the exception — its armour layers
   // still escalate (φ). No more category-Fibonacci "inflate exotic cost" note.
@@ -1304,34 +1409,43 @@ function organCard(o){
   // The mitochondrion is the one violently GRAFTED organ — warn how hard integration will tear, and flag it
   // red if it would leave you critical, so the player enters incubation at full health.
   const mitoWarn=(o.mitoTear!=null)?`<div class="initiation" style="color:${o.mitoRisk?'#ff6b6b':'#ff9db0'};opacity:1">⚠ integration TEARS ~${o.mitoTear} HP${o.mitoRisk?' — you may not survive it, heal to full first':` (→ ~${o.mitoHpAfter} HP)`}</div>`:'';
-  const meta=[cnt>1?`×${cnt} copies`:'',o.funcCategory?`system: ${o.funcCategory}`:'',o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ');
-  let btn;
+  const rnaTag=o.hasRNA?' · recipe: RNA held':'';
+  const meta=[cnt>1?`×${cnt} copies`:'',o.funcCategory?`system: ${o.funcCategory}`:'',o.category?`trait: ${o.category}`:''].filter(Boolean).join(' · ')+ (o.kind==='organelle'?rnaTag:'');
+  // ONE primary action up top (buildRoutes/primaryBuild — the exact route a graph tap fires); the OTHER
+  // routes fold into the expandable detail as "other ways to build", so the card shows a single decision
+  // while every acquisition path stays reachable a tap away.
+  let btn, altHtml='';
   if(st==='maxed')btn=`<span class="oBuy maxed">✓ maxed</span>`;
-  else if(o.kind==='organelle'){ // grown in-body — buildable whenever it's not gated + you have the exotics
-    if(o.buildable)btn=`<button class="oBuy" data-id="${o.id}">⊕ ${cnt>0?'Grow +1':'Grow'}</button>`;
-    else if(o.genuineLock)btn=`<span class="oBuy lockicon">🔒</span>`;
-    else btn=`<button class="oBuy dis" data-id="${o.id}">⊕ Grow</button>`; // only missing an exotic material
+  else if(o.kind==='organelle'){
+    if(o.genuineLock){ btn=`<span class="oBuy lockicon">🔒</span>`; }
+    else {
+      const routes=buildRoutes(o);
+      const prim=routes.find(r=>r.enabled)||routes[0];
+      const alts=routes.filter(r=>r!==prim);
+      btn=prim?`<button class="oBuy${prim.enabled?'':' dis'}" data-id="${prim.id}" title="${prim.title}">${prim.label}</button>`:'';
+      if(alts.length) altHtml=`<div class="oAlts"><span class="oAltsLabel">other ways to build</span>${alts.map(a=>`<button class="oBuy alt${a.enabled?'':' dis'}" data-id="${a.id}" title="${a.title}">${a.label}</button>`).join('')}</div>`;
+    }
   }
   else if(st==='ready')btn=`<button class="oBuy" data-id="${o.id}">⊕ Buy</button>`;
   else if(st==='unaff')btn=`<button class="oBuy dis" data-id="${o.id}">⊕ Buy</button>`;
   else btn=`<span class="oBuy lockicon">🔒</span>`;
   const badge=cnt>0?`<span class="ownBadge">×${cnt}</span>`:'';
   const removeBtn=(cnt>0&&o.organelle)?`<button class="oRemove" data-remove="${o.organelle}" title="Reabsorb one copy — reclaims some of its biomass">−</button>`:'';
-  const cost=(o.buildCostText||o.costText)?`<span class="oCost">${o.buildCostText||o.costText}</span>`:'';
+  const cost=(o.kind==='organelle')
+    ? ((o.hasRNA&&o.buildCostText)?`<span class="oCost">print ${o.buildCostText}</span>`:'')
+    : ((o.buildCostText||o.costText)?`<span class="oCost">${o.buildCostText||o.costText}</span>`:'');
   const reason=(st==='lock'||st==='unaff')&&o.reasons&&o.reasons.length?`<div class="oReason ${st}">${o.reasons[0]}</div>`:'';
-  return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${removeBtn}${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${buildNote}${mitoWarn}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
+  return `<div class="offer organelle ${st}${theme}" data-kind="${o.kind}" data-id="${o.id}"><div class="oTop"><div class="oName">${o.name}${badge}</div>${removeBtn}${btn}</div><div class="oSub">${head}${cost}</div>${reason}<div class="oDetail">${o.desc||''}${buildNote}${altHtml}${mitoWarn}${meta?`<div class="meta">${meta}</div>`:''}</div></div>`;
 }
-// Stage guidance line in the shop — surfaces the authoritative stage objective on touch + desktop.
-// Store manager bar (replaces the old stage-guidance text): a toggle to show only what you can afford,
-// plus quick-jump chips to each populated shop category.
-const shopFilter={affordableOnly:true, ownedOnly:false, newOnly:false};
-const CAT_SHORT=['Feed','Metab','Struct','Oxygen','Move','Weapons','Swarm','Euchar','Tier 3','Other'];
+// Store manager bar: the SHARED build filter (same buildFilter object the graph chips toggle) plus
+// quick-jump chips to each populated section — chips and sections both keyed off the ONE BUILD_CATEGORIES
+// taxonomy, so there's nothing left to keep in sync with the graph.
 function renderGuide(){
   if(!ui.shopGuide) return;
-  const chips=SHOP_GROUPS.map((g,i)=>ui.shopBody.querySelector('#grp'+i)?`<button class="mgrCat" data-grp="${i}">${CAT_SHORT[i]||g[0].slice(0,6)}</button>`:'').join('');
-  ui.shopGuide.innerHTML=filterChipsHTML(shopFilter)+`<div class="mgrCats">${chips}</div>`;
-  wireFilterChips(ui.shopGuide,shopFilter,()=>{renderGuide();renderShop();});
-  for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
+  const chips=BUILD_CATEGORIES.filter(c=>ui.shopBody.querySelector('#grp_'+c.key)).map(c=>`<button class="mgrCat" data-grp="${c.key}">${c.short}</button>`).join('');
+  ui.shopGuide.innerHTML=filterChipsHTML(buildFilter)+`<div class="mgrCats">${chips}</div>`;
+  wireFilterChips(ui.shopGuide,buildFilter,refreshBuildSurfaces);
+  for(const b of ui.shopGuide.querySelectorAll('.mgrCat')) b.onpointerup=e=>{e.preventDefault();const sec=ui.shopBody.querySelector('#grp_'+b.dataset.grp);if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});};
 }
 function renderLibraryPreview(library){const attachedIds=new Set((hud.colony||[]).map(s=>s.id));const cards=library.map(bp=>{const attached=attachedIds.has(bp.id);const orgs=Object.entries(bp.organelles).filter(([,v])=>v>0).map(([k,v])=>v>1?`${k}×${v}`:k).join(', ');return `<div style="border:1px solid rgba(214,162,255,.28);border-radius:10px;padding:8px 10px;background:rgba(214,162,255,.055);margin-bottom:5px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:950;color:#d6a2ff">${bp.label}</span>${attached?'<span style="font-size:9px;color:#7fffe0;border:1px solid rgba(127,255,224,.4);border-radius:99px;padding:1px 6px">attached</span>':''}</div><div style="font-size:9px;color:#aeb1c7;margin-top:2px">${orgs}</div></div>`}).join('');return `<div style="margin-bottom:12px;padding:10px;border:1px solid rgba(214,162,255,.18);border-radius:12px;background:rgba(214,162,255,.03)"><div style="font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#d6a2ff;margin-bottom:7px">Archived Forms</div>${cards}</div>`}
 function offerCard(o){const state=o.locked?'lock':'ready';const out=o.kind==='exchange'?` out-${o.output||exchangeMainOutput(o)}`:'';const theme=o.theme?` theme-${o.theme}`:'';if(o.kind==='exchange'){const need=exchangeNeed(o);const urgent=need>0.55?' urgent':'';const rec=o._rec?' rec':'';return `<div class="offer exchange${out}${theme} ${state}${urgent}${rec}" style="--need:${need.toFixed(3)}" data-kind="exchange" data-id="${o.id}">${o._rec?'<span class="recTag">◉ recommended</span>':''}${exchangeCard(o)}</div>`}if(o.kind==='sequence'){return `<div class="offer sequence ${state}" data-kind="sequence" data-id="${o.id}">${sequenceCard(o)}</div>`}return `<div class="offer ${o.kind}${theme} ${state}" data-kind="${o.kind}" data-id="${o.id}">${graftCard(o)}</div>`}
@@ -1520,7 +1634,7 @@ function drawHazards(){
     const life=clamp(1-h.age/h.maxAge,0,1); ctx.save(); ctx.globalAlpha=.85*life;
     const base=hexRgb(h.color);
     const fire=h.kind==='flame'||h.kind==='blast';
-    const solid=h.kind==='toxic_projectile'||h.kind==='spore_projectile'||h.kind==='seeker'||h.kind==='harpoon'||h.kind==='mark_blob';
+    const solid=h.kind==='toxic_projectile'||h.kind==='spore_projectile'||h.kind==='seeker'||h.kind==='harpoon'||h.kind==='mark_blob'||h.kind==='ballast_pellet';
     if(fire){
       // Combustion: a white-hot core bleeding to orange and dark smoke, flickering per-frame.
       const flick=0.82+0.18*Math.sin(world.t*40+h.x*0.5+h.y*0.3);
