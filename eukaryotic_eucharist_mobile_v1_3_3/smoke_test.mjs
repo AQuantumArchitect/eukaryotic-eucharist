@@ -592,19 +592,25 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(Math.abs(drops[0].potency - 1.2) < 1e-6, 'the drop carries the individual\'s potency');
 }
 
-// Grafting is a gritty initiation: installing an organ spikes toxins and tears HP.
+// Tier-2 organs are GROWN in-body now — manufacturing is the only build path. Buying a plain organelle at
+// Yuki is refused, and growing one in carries NO graft-initiation trauma (a body that built itself over
+// several seconds already paid a real, felt cost). Graft trauma still lives on the Tier-3 sacraments.
 { const w = K.createWorld({ seed: 1201 });
   const p = K.getPlayer(w);
   p.cargo.biomass = 60; p.cargo.lipids = 40; p.cargo.energy = 40; p.cargo.enzymes = 4; p.cargo.toxins = 0;
   p.hp = K.getHudProjection(w).hp.max; // full HP
   const hpBefore = p.hp, toxBefore = p.cargo.toxins || 0;
-  const res = K.buyOffering(w, 'membrane'); // a plain organelle graft
-  assert(res.ok, 'membrane graft succeeds with stock');
-  assert(p.hp < hpBefore, 'grafting damages HP (initiation trauma)');
-  assert(hpBefore - p.hp >= K.__test.GRAFT_INITIATION.hpMin - 1e-6, 'HP hit is at least the trauma floor');
-  assert((p.cargo.toxins || 0) === toxBefore, 'grafting no longer adds toxins (Yuki is gentle) — only an HP tear');
-  assert(w.events.some(e => e.type === 'graft_trauma'), 'a graft_trauma event fires on graft');
-  assert(p.hp >= 1, 'graft trauma never kills outright (clamped to 1)');
+  const bought = K.buyOffering(w, 'membrane'); // a plain organelle graft — now refused
+  assert(!bought.ok, 'buying a plain Tier-2 organelle at Yuki is refused (manufacturing is the only path)');
+  const grown = K.startManufacturing(w, 'membrane');
+  assert(grown.ok, 'manufacturing a membrane layer starts with stock on hand');
+  let guard = 0;
+  while (p.manufacturing && guard++ < 1000) K.__test.stepManufacturing(w, p, 0.1);
+  assert(!p.manufacturing && K.__test.caps, 'the in-body build completes');
+  assert(p.organelles.membrane === 2, 'the grown membrane layer is installed');
+  assert(p.hp >= hpBefore - 1e-6, 'growing an organ in-body tears no HP (no initiation trauma)');
+  assert((p.cargo.toxins || 0) === toxBefore, 'growing an organ adds no toxins');
+  assert(!w.events.some(e => e.type === 'graft_trauma'), 'no graft_trauma fires from manufacturing');
 }
 
 // Ballast is target-seeking: S/down is a fast, direct valve (vents gas immediately); W/up only sets a

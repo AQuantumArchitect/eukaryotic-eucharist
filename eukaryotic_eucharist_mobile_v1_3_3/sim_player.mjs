@@ -255,8 +255,13 @@ export class PolicyPlayer {
     }
     if (plan.buyable.length) {
       const id = plan.buyable[0];
-      if (K.buyOffering(world, id).ok) {
-        this._buys++; this.mark(world.t, 'buy', id);
+      // Tier-2 organs are GROWN in-body now (manufacturing is the only build path); Tier-3 sacraments +
+      // companions still transact at Yuki. Route by the offering's kind.
+      const off = K.getYukiOfferings(world).find(o => o.id === id);
+      const grow = off && off.kind === 'organelle';
+      const res = grow ? K.startManufacturing(world, id) : K.buyOffering(world, id);
+      if (res.ok) {
+        this._buys++; this.mark(world.t, grow ? 'grow' : 'buy', id);
         if (id === 'mitochondrial_eucharist') this.mark(world.t, 'eucharist_begin', 'incubating');
         return true;
       }

@@ -30,6 +30,12 @@ const LINEAGES = {
 // pooled samples per lineage across all seeds/frames
 const pool = {};
 for (const name of Object.keys(LINEAGES)) pool[name] = { hp: [], energy: [], depth: [], n: [] };
+// Deep-pile matter (fields below deepTop+1500 — the same bucket that baits the Horseshroomba Crab)
+// sampled across the equilibrium half, so a fresh world can start WITH that pile already there instead
+// of waiting for photosynthesis to build it up from zero.
+const deepPileSamples = [];
+const totalMatterSamples = [];
+const DEEP_BUCKET_Y = K.WORLD.deepTop + 1500;
 
 const steps = Math.round((MINUTES * 60) / DT);
 const sampleFrom = Math.round(steps * 0.5);      // start sampling at the halfway mark (past the settle)
@@ -51,6 +57,10 @@ for (const seed of SEEDS) {
           pool[name].depth.push(e.y);
         }
       }
+      let deepPile = 0, totalM = 0;
+      for (const f of world.fields) { totalM += (f._matter || 0); if (f.y > DEEP_BUCKET_Y) deepPile += (f._matter || 0); }
+      deepPileSamples.push(deepPile);
+      totalMatterSamples.push(totalM);
     }
   }
 }
@@ -76,4 +86,8 @@ for (const name of Object.keys(LINEAGES)) {
     `${s.energyFill.mean.toFixed(2)}+/-${s.energyFill.sd.toFixed(2)}         ` +
     `${String(s.depthMean).padStart(5)}+/-${String(s.depthSd).padStart(4)}   [${s.samples}]`);
 }
+const deepPile = { mean: Math.round(mean(deepPileSamples)), sd: Math.round(std(deepPileSamples)) };
+const totalMatter = { mean: Math.round(mean(totalMatterSamples)), sd: Math.round(std(totalMatterSamples)) };
+console.log(`\nDEEP PILE (fields y>${DEEP_BUCKET_Y}, baits the crab): ${deepPile.mean} +/- ${deepPile.sd}   TOTAL FIELD MATTER: ${totalMatter.mean} +/- ${totalMatter.sd}`);
 console.log(`\nSTEADY_STATE ${JSON.stringify(steady)}`);
+console.log(`DEEP_PILE ${JSON.stringify(deepPile)}`);
