@@ -1520,7 +1520,7 @@ function drawWorld(){
   drawSandyFloor();
   // Small depth ticks retain navigation without drawing ecological borders.
   ctx.strokeStyle='rgba(255,255,255,.055)'; ctx.lineWidth=1; ctx.font='bold 11px system-ui'; ctx.fillStyle='rgba(255,255,255,.17)';
-  for(let y=K.WORLD.canopy+520;y<K.WORLD.h;y+=520){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(42,y);ctx.stroke();ctx.fillText('Z '+Math.round(y-K.WORLD.canopy),48,y+4)} /* s3-mf-gfx-column-v1 */ ctx.fillText((y<K.WORLD.canopy+200)?'LIGHT':(y<K.WORLD.canopy+1100)?'O2':(y<K.WORLD.ruptureTop+400)?'FLOW':'DEEP', 108, y+4);
+  for(let y=K.WORLD.canopy+520;y<K.WORLD.h;y+=520){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(42,y);ctx.stroke();ctx.fillText('Z '+Math.round(y-K.WORLD.canopy),48,y+4); /* s3-mf-gfx-column-v1 */ ctx.fillText((y<K.WORLD.canopy+200)?'LIGHT':(y<K.WORLD.canopy+1100)?'O2':(y<K.WORLD.ruptureTop+400)?'FLOW':'DEEP', 108, y+4)}
 }
 // The abyss floor: a sandy bed the sinking whale-fall biomass settles onto (the same band
 // updateFields() treats as "at floor" for slowed decay). Rippled dunes, no hard water/sand seam.
