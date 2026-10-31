@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eukaryotic Eucharist — a graph-strict cell ecology</title>
+<meta name="description" content="Browser games about single cells in a vertical water column. Every ability is an organelle; every body is a graph. Mecha Fish!, the classic build, and an immune-incursion prototype.">
+<meta property="og:title" content="Eukaryotic Eucharist — a graph-strict cell ecology">
+<meta property="og:description" content="Swim the gradients, feed from fields, graft organs. Play in the browser.">
+<meta property="og:image" content="screenshots/mecha_fish.jpg">
+<style>
+:root{--bg:#070914;--panel:#0d1122;--line:rgba(255,255,255,.09);--text:#eef0ff;--muted:#a3a9c9;--accent:#9ef0bd;--warm:#f3cf7a}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 700px at 50% -10%,#18304a 0%,var(--bg) 60%);color:var(--text);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent)}
+main{max-width:1080px;margin:0 auto;padding:56px 22px 72px}
+header h1{font-size:clamp(30px,5vw,48px);line-height:1.1;margin:0 0 12px;letter-spacing:-.01em}
+header p{color:var(--muted);max-width:720px;margin:0 0 8px;font-size:18px}
+.hero{display:grid;grid-template-columns:1.25fr 1fr;gap:28px;align-items:center;margin:40px 0 18px;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px}
+.hero img{width:100%;border-radius:14px;display:block}
+.hero h2{margin:0 0 6px;font-size:28px}
+.tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--warm);margin-bottom:8px}
+.hero p{color:var(--muted);margin:0 0 14px}
+.btn{display:inline-block;background:var(--accent);color:#08140d;font-weight:800;text-decoration:none;padding:11px 20px;border-radius:999px;margin:4px 8px 4px 0}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;border-bottom:1px solid var(--line)}
+.card div{padding:16px 18px 18px}
+.card h3{margin:0 0 6px;font-size:20px}
+.card p{color:var(--muted);margin:0 0 12px;font-size:15px}
+section{margin-top:52px}
+section h2{font-size:22px;margin:0 0 10px}
+section p,section li{color:var(--muted)}
+.versions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.versions a{border:1px solid var(--line);border-radius:999px;padding:6px 12px;text-decoration:none;color:var(--text);font-size:14px}
+.versions a:hover,.btn.ghost:hover{border-color:var(--accent)}
+code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:6px;font-size:14px}
+footer{margin-top:56px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:18px}
+@media(max-width:780px){.hero,.grid{grid-template-columns:1fr}main{padding-top:36px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Eukaryotic Eucharist</h1>
+  <p>Browser games about single cells in a vertical water column. Every ability is an organelle, every body is a graph, and every death becomes food for the column.</p>
+</header>
+
+<div class="hero">
+  <img src="screenshots/mecha_fish.jpg" alt="Mecha Fish! — the player fish among algae, scavengers and predators in twilight water">
+  <div>
+    <span class="tag">Latest · v1.3.3</span>
+    <h2>Mecha Fish!</h2>
+    <p>You are a mechanical fish in a deep water column. Survive by swimming the light, oxygen and flow gradients, feeding your tanks from drifting fields, and grafting organs onto your hull at Yuki's canopy dock. The biggest world and the richest ecology. Best on desktop.</p>
+    <a class="btn" href="mecha-fish/">Play Mecha Fish!</a>
+    <a class="btn ghost" href="https://github.com/AQuantumArchitect/eukaryotic-eucharist">Source</a>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <img src="screenshots/classic_v1_3_2.jpg" alt="Classic build with numeric HP, ATP, depth and oxygen HUD">
+    <div>
+      <span class="tag">Classic · v1.3.2</span>
+      <h3>Eukaryotic Eucharist</h3>
+      <p>The last build before the column expansion: a smaller world and a lighter simulation (about 5× cheaper per step), with a plain numeric HUD. Plays well on phones.</p>
+      <a class="btn" href="classic/">Play classic</a>
+    </div>
+  </div>
+  <div class="card">
+    <img src="screenshots/mecha_fish_hull_graph.jpg" alt="The hull graph: organelles wired to the resources they feed">
+    <div>
+      <span class="tag">How it works</span>
+      <h3>The hull graph</h3>
+      <p>Press <code>O</code> in Mecha Fish to see your body as what it is in the kernel: organelles wired to the tanks and vitals they feed. Near Yuki the same graph is the shop.</p>
+      <a class="btn ghost" href="mecha-fish/">Open it in game</a>
+    </div>
+  </div>
+  <div class="card">
+    <img src="screenshots/immune_incursion.jpg" alt="Immune incursion prototype: tissue with bacteria and an organ dock">
+    <div>
+      <span class="tag">Prototype</span>
+      <h3>Immune Incursion</h3>
+      <p>A small sibling game that flips the camera: you are the host's immune system. Detect, deploy organs, clear the incursion, remember the strain. An early prototype with a headless Python kernel.</p>
+      <a class="btn" href="immune/">Try the prototype</a>
+    </div>
+  </div>
+  <div class="card" id="archive">
+    <img src="screenshots/v1_0.jpg" alt="Version 1.0, the first oxygen-ecology build">
+    <div>
+      <span class="tag">Archive</span>
+      <h3>Every version, playable</h3>
+      <p>Each snapshot from v1.0 onward is kept as it shipped, with its own kernel and design notes, so you can watch the design change.</p>
+      <div class="versions">
+        <a href="versions/v1_0/">v1.0</a><a href="versions/v1_0_1/">v1.0.1</a><a href="versions/v1_1_1/">v1.1.1</a>
+        <a href="versions/v1_2_0/">v1.2.0</a><a href="versions/v1_2_1/">v1.2.1</a><a href="versions/v1_2_2/">v1.2.2</a>
+        <a href="versions/v1_3_0/">v1.3.0</a><a href="versions/v1_3_1/">v1.3.1</a><a href="versions/v1_3_2/">v1.3.2</a>
+        <a href="versions/v1_3_3/">v1.3.3</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2>Graph-strict design</h2>
+  <p>The rule all of this follows: <strong>every function is an organelle, and bodies act only through organs.</strong> There are no hidden stats. Movement, feeding, storage, attacks and oxygen tolerance all come from parts a body actually carries, so the player, the algae, the scavengers and the predators all run on the same rules. The kernel (<code>src/graph_kernel.mjs</code>) owns the whole simulation (fields, bodies, metabolism, death bloom, the shop), and <code>index.html</code> only renders it. Kernel smoke tests run headless in Node.</p>
+  <ul>
+    <li>Plain ES modules, no build step, no dependencies. It runs from any static file server.</li>
+    <li>Resources are fields in the water, not coins. Death blooms into terrain that feeds the column.</li>
+    <li>A <a href="https://github.com/AQuantumArchitect/eukaryotic-eucharist-godot-spike">Godot 4.5 port</a> renders the same JS kernel through <code>JavaScriptBridge</code>, as an engine-integration experiment.</li>
+  </ul>
+</section>
+
+<footer>
+  Controls: WASD / arrows to swim, F or right mouse to feed, E for Yuki, O for the hull graph. Touch controls appear on phones.
+  · <a href="https://github.com/AQuantumArchitect/eukaryotic-eucharist">GitHub</a>
+</footer>
+</main>
+</body>
+</html>

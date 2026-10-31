@@ -23,3 +23,4 @@ deploy/web/
 # Tuning run outputs (regenerable; kept locally)
 **/tune*_out/
 **/__pycache__/
+_site/
