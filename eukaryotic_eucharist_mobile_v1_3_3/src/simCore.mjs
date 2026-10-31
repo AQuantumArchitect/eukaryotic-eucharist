@@ -98,6 +98,7 @@ const STRAINS = Object.freeze({
     { org: 'countercurrent_gill', tint: '#7fd6d0' },
     { org: 'pressure_bladder', tint: '#8fd0c8' },
     { org: 'ballast_siphon', tint: '#7fc0d6' },
+    { org: 'ballast_squeezer', tint: '#7fb0c8' }, // grazer castes carry squeezers; without a strain this offering was unobtainable
     { org: 'oxidase_vesicle', tint: '#ffd6a0' },
     { org: 'anabolic_vesicle', tint: '#ffe0b0' },
     { org: 'phagosome', tint: '#ffb37a' }

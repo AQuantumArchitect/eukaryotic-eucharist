@@ -23,9 +23,10 @@ assert(player.cargo.energy > 0.20, 'idle full biomass should net-generate ATP');
 assert(player.cargo.biomass < hud.graphStats.caps.biomass, 'fermentation consumes biomass');
 
 // DNA (and exotics) are swept up like coins — no feeding action — but only with storage room.
-player.organelles.dna_memory_vesicle = 1;
+player.organelles.dna_memory_vesicle = 1; player._capsEpoch = -1;
 hud = K.getHudProjection(world);
-assert(hud.resources.find(r => r.id === 'dna').max === 1, 'one DNA vesicle gives one DNA slot');
+// DNA rack capacity is geometric: 2^n records at n vesicles (see capsCompute).
+assert(hud.resources.find(r => r.id === 'dna').max === 2, 'one DNA vesicle gives two DNA slots (2^n rack)');
 player.x = 500; player.y = 1300; player.cargo.dna = 0;
 world.particles.push({ id: 'test_dna_pre_mito', kind: 'dna', x: 500, y: 1300, value: 1, vx: 0, vy: 0, age: 0, maxAge: 999, color: '#fff' });
 K.step(world, {}, 1 / 60);
@@ -76,8 +77,8 @@ assert(wD.discoveredSources.size === 0, 'no discoveries at world start (Node, no
 
 // A fresh player arrives through the same nursery band as an immigrating scavenger.
 assert(pD.x >= 0 && pD.x <= K.WORLD.w, 'player immigration x is inside the world');
-assert(pD.y >= K.WORLD.nurseryTop && pD.y <= K.WORLD.nurseryTop + 580,
-  'player immigrates through the scavenger nursery band');
+assert(pD.y >= K.WORLD.nurseryTop - 100 && pD.y <= K.WORLD.nurseryTop + 1500,
+  'player immigrates through the broad oxic slab scavengers arrive in');
 assert(!K.nearYuki(wD, pD), 'player must travel to Yuki after immigrating');
 
 // Feeding on strain DNA carries a SAMPLE tagged with that individual's rolled potency.
@@ -490,10 +491,10 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 
 // A FULL DNA store cannot pick up more — storage is the investment / the constraint.
 { const w = K.createWorld({ seed: 6363 }); const p = K.getPlayer(w);
-  p.organelles.dna_memory_vesicle = 1; p.cargo.dna = 1; // full
+  p.organelles.dna_memory_vesicle = 1; p._capsEpoch = -1; p.cargo.dna = K.__test.caps(p).dna; // full (2^1 slots)
   w.particles.push({ id: 'up', kind: 'dna', x: p.x, y: p.y, value: 1, vx: 0, vy: 0, age: 0, maxAge: 999, color: '#fff', source: 'saw_lance', potency: 1.3 });
   K.step(w, {}, 1 / 60);
-  assert(!p.carriedStrains.has('saw_lance') && p.cargo.dna === 1, 'a full DNA store blocks pickup — invest in storage or be choosier on the way down'); }
+  assert(!p.carriedStrains.has('saw_lance') && p.cargo.dna === K.__test.caps(p).dna, 'a full DNA store blocks pickup — invest in storage or be choosier on the way down'); }
 
 // Nuclease Vesicle: junk strands digest to biomass on pickup, never taking a DNA slot.
 { const w = K.createWorld({ seed: 6565 }); const p = K.getPlayer(w);
@@ -577,7 +578,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   const by0 = bioField.y, ly0 = lipField.y;
   for (let i = 0; i < 180; i++) K.step(w, {}, 1 / 60);
   assert(bioField.y > by0 + 5, 'a biomass-heavy field sinks over time');
-  assert(lipField.y < ly0 - 2, 'a lipid-heavy field floats up over time');
+  assert(lipField.y < ly0 - 0.5, 'a lipid-heavy field floats up over time (slowly: LIPID_RISE_* was cut 8x)');
 }
 
 // A mutant ALWAYS sheds its tagged gene when killed (guaranteed harvest, no drop-roll).
@@ -618,11 +619,11 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 // directly from the key press.
 { const w = K.createWorld({ seed: 1301 });
   const p = K.getPlayer(w);
-  p.organelles.oxygen_vacuole = 2; p._capsEpoch = -1; p.ballastGas = 0.5; p.cargo.energy = K.__test.caps(p).energy;
-  const gas0 = p.ballastGas;
+  p.organelles.oxygen_vacuole = 2; p._capsEpoch = -1; p.oxygen = 0.5; p.cargo.energy = K.__test.caps(p).energy;
+  const gas0 = p.oxygen;
   // ANALOG vent: hold S / down → GRADUALLY vents ballast gas (sink), not a binary flood-dump.
   for (let i = 0; i < 18; i++) K.step(w, { moveY: 1 }, 1 / 60);
-  const gasVented = K.getPlayer(w).ballastGas;
+  const gasVented = K.getPlayer(w).oxygen;
   assert(gasVented < gas0, 'holding DOWN gradually vents ballast gas (sink)');
   assert(gasVented > 0.15, 'a short vent does NOT dump the whole reserve — it trims (analog)');
   // Hold W / up → immediately raises the TARGET (an intent), not the gas itself. Venting above already
@@ -633,7 +634,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   // Give it real time + biomass to ferment toward that target — the tank actually follows.
   p.cargo.biomass = Math.max(p.cargo.biomass, 40);
   for (let i = 0; i < 60 * 6; i++) K.step(w, { moveY: -1 }, 1 / 60);
-  assert(K.getPlayer(w).ballastGas > gasVented, 'given time, fermentation gradually fills the tank toward the target');
+  assert(K.getPlayer(w).oxygen > gasVented, 'given time, fermentation gradually fills the tank toward the target');
 }
 { const w = K.createWorld({ seed: 1302 });
   const p = K.getPlayer(w);
@@ -645,7 +646,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 // GRADIENT-TRAVERSAL COST MODEL: descending your own weight gradient is free/cheap, climbing against
 // it costs real ATP — for the player AND for every NPC brain, via the same shared functions.
 { const run = (orgs, biomass, vy) => { const w = K.createWorld({ seed: 1310 }); const p = K.getPlayer(w);
-    p.organelles = orgs; p._capsEpoch = -1; p.cargo.biomass = biomass; p.cargo.energy = 30; p.ballastGas = 0.1;
+    p.organelles = orgs; p._capsEpoch = -1; p.cargo.biomass = biomass; p.cargo.energy = 30; p.oxygen = 0.1;
     const e0 = p.cargo.energy;
     for (let i = 0; i < 60; i++) K.step(w, { moveY: vy }, 1 / 60);
     return e0 - p.cargo.energy; };
@@ -662,7 +663,7 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   // offgas behavior — so both runs start from an explicitly satisfied target for a clean comparison.)
   const runBio = (vy) => { const w = K.createWorld({ seed: 1311 }); const p = K.getPlayer(w);
     p.organelles = { membrane: 1, oxygen_vacuole: 1, storage_vacuole: 1, anaerobic_processor: 2 }; p._capsEpoch = -1;
-    p.cargo.biomass = 40; p.cargo.energy = K.__test.caps(p).energy; p.ballastGas = 0.1; p.gasTarget = 0.1;
+    p.cargo.biomass = 40; p.cargo.energy = K.__test.caps(p).energy; p.oxygen = 0.1; p.gasTarget = 0.1;
     const b0 = p.cargo.biomass;
     for (let i = 0; i < 60; i++) K.step(w, { moveY: vy }, 1 / 60);
     return b0 - p.cargo.biomass; };
@@ -852,18 +853,18 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   b.hp = hpB0; a.cargo.toxins = tox; const hpB1 = b.hp; K.__test.overlapAura(w, a, b, 1); const full = hpB1 - b.hp;
   assert(full > empty * 2.5, `corrosive pellicle scales with stored toxins (empty ${empty.toFixed(1)} vs full ${full.toFixed(1)})`); }
 
-// O2/ballast SPLIT: fermentation makes ballast gas; buoyancy comes from gas, not O2.
+// Fermentation makes buoyant gas. The old separate ballastGas pool was merged into oxygen.
 { const w = K.createWorld({ seed: 7401 }); const p = K.getPlayer(w);
   p.organelles.oxygen_vacuole = 3; p.organelles.anaerobic_processor = 2; p.organelles.storage_vacuole = 4; p._capsEpoch = -1;
-  p.cargo.biomass = 60; p.cargo.energy = 0; p.ballastGas = 0;
+  p.cargo.biomass = 60; p.cargo.energy = 0; p.oxygen = 0;
   const buoy0 = K.__test.buoyancy(p);
   K.step(w, {}, 0.3); // ferment biomass → ATP + gas
-  assert(p.ballastGas > 0, 'fermentation inflates the ballast with gas');
+  assert(p.oxygen > 0, 'fermentation inflates the bladder with gas');
   assert(K.__test.buoyancy(p) > buoy0, 'buoyancy rises as ballast gas accumulates'); }
 
 // Buoyancy is gas-only: a bladder-less body has just BASE_BUOYANCY, and O2 gives NO lift.
 { const w = K.createWorld({ seed: 7402 }); const p = K.getPlayer(w);
-  p.organelles.oxygen_vacuole = 0; p.oxygen = 1.0; p.ballastGas = 0; p._capsEpoch = -1;
+  p.organelles.oxygen_vacuole = 0; p.oxygen = 1.0; p._capsEpoch = -1;
   assert(Math.abs(K.__test.buoyancy(p) - 2.0) < 1e-6, 'no bladder → buoyancy is just BASE_BUOYANCY (2.0); O2 is not a balloon'); }
 
 // Jettison Vesicle: a VALVE, not a thruster — eject biomass → lose cargo + structural mass, spill a
@@ -886,13 +887,19 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   p.cargo.toxins = 20; p.cargo.biomass = 100; p.cargo.energy = 50; p.cargo.ballast = 0;
   const st = K.ORGANELLES.waste_compactor.stats;
   assert(K.__test.compactWaste(w, p), 'compact fires with enough biomass/ATP');
-  assert(Math.abs(p.cargo.toxins - 20 * (1 - st.toxinFrac)) < 1e-6, 'drains exactly toxinFrac of current toxins — geometric, not fixed');
-  assert(Math.abs(p.cargo.biomass - (100 - st.biomassCost)) < 1e-6, 'costs a fixed slug of biomass regardless of toxin level');
-  assert(Math.abs(p.cargo.energy - (50 - st.energyCost)) < 1e-6, 'costs a fixed slug of ATP');
+  assert(!K.__test.compactWaste(w, p), 'one pulse at a time — re-firing mid-pulse is a no-op');
+  for (let t = 0; t < st.pulseDuration + 0.1 && p.compacting; t += 1 / 60) K.__test.stepWasteCompaction(w, p, 1 / 60);
+  assert(!p.compacting, 'the pulse completes after pulseDuration');
+  assert(Math.abs(p.cargo.toxins - 20 * (1 - st.toxinFrac)) < 0.05, 'drains exactly toxinFrac of current toxins — geometric, not fixed');
+  assert(Math.abs(p.cargo.biomass - (100 - st.biomassCost)) < 0.05, 'costs a fixed slug of biomass regardless of toxin level');
+  assert(Math.abs(p.cargo.energy - (50 - st.energyCost)) < 0.05, 'costs a fixed slug of ATP');
   assert(p.cargo.ballast > 0, 'produces ballast');
-  assert(!K.__test.compactWaste(w, p), 'cooldown blocks an immediate re-fire — spammable, not free every frame');
+  assert(!K.__test.compactWaste(w, p), 'cooldown (started on completion) blocks an immediate re-fire');
   assert(K.__test.caps(p).ballast === Infinity, 'ballast capacity is uncapped by design — the closest thing a body has to an age');
-  for (let i = 0; i < 200; i++) { p.cooldowns.compact = 0; p.cargo.biomass = 200; p.cargo.energy = 200; K.__test.compactWaste(w, p); }
+  for (let i = 0; i < 200; i++) {
+    p.cooldowns.compact = 0; p.cargo.biomass = 200; p.cargo.energy = 200; p.cargo.toxins = 20; K.__test.compactWaste(w, p);
+    for (let t = 0; t < st.pulseDuration + 0.1 && p.compacting; t += 0.05) K.__test.stepWasteCompaction(w, p, 0.05);
+  }
   assert(p.cargo.ballast > 500, 'ballast climbs with no ceiling across many presses'); }
 
 // Weight formula: the biomass half of every brick is weight-neutral (matches biomassWeight's own
@@ -912,13 +919,13 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(K.__test.ventBiomass(w, p), 'jettison fires with ballast carried');
   assert(p.cargo.ballast === 0, 'jettison drops the FULL carried ballast in one go — a decisive drop-weight release');
   assert(p.cargo.biomass === bm0, 'ballast-first: biomass cargo is untouched while bricks are still carried');
-  assert(w.fields.some(f => f.sourceKind === 'ballast_drop'), 'jettisoned ballast spawns its own dense field');
-  w.fields = w.fields.filter(f => f.sourceKind === 'ballast_drop'); // isolate from ambient food fields, which would merge with and skew the comparison field
-  const ballastField = w.fields.find(f => f.sourceKind === 'ballast_drop');
+  const pellets = w.particles.filter(pt => pt.kind === 'ballast');
+  assert(pellets.length >= 1, 'jettisoned ballast drops as discrete pellets');
+  assert(!w.fields.some(f => f.sourceKind === 'jettison'), 'dropped bricks leave no feed-field (processed waste, not food)');
   const biomassField = K.__test.spawnResourceField(w, p.x, p.y, { biomass: 8 }, { sourceKind: 'jettison' });
-  const by0 = ballastField.y, bmy0 = biomassField.y;
+  const py0 = pellets[0].y, bmy0 = biomassField.y;
   for (let i = 0; i < 30; i++) K.stepEcology(w, 1 / 60);
-  assert((ballastField.y - by0) > (biomassField.y - bmy0) * 3, 'a dropped brick sinks much harder/faster than an equivalent loose-meat field'); }
+  assert((pellets[0].y - py0) > (biomassField.y - bmy0) * 3, 'a dropped pellet sinks much harder/faster than an equivalent loose-meat field'); }
 
 // Jettison falls back to the original biomass valve once no ballast bricks are carried.
 { const w = K.createWorld({ seed: 7407 }); const p = K.getPlayer(w);
@@ -949,26 +956,26 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 
 // ── New ballast / respiration organs ────────────────────────────────────────
 // Gas Gland: ferments lift-gas faster.
-{ const A = () => { const w = K.createWorld({ seed: 8801 }); const p = K.getPlayer(w); p.organelles.oxygen_vacuole = 1; p.organelles.anaerobic_processor = 1; p.organelles.storage_vacuole = 4; p._capsEpoch = -1; p.cargo.biomass = 60; p.ballastGas = 0; return { w, p }; };
-  const a = A(); K.step(a.w, {}, 0.1); const base = a.p.ballastGas;
-  const b = A(); b.p.organelles.gas_gland = 3; b.p._capsEpoch = -1; K.step(b.w, {}, 0.1); const boosted = b.p.ballastGas;
+{ const A = () => { const w = K.createWorld({ seed: 8801 }); const p = K.getPlayer(w); p.organelles.oxygen_vacuole = 1; p.organelles.anaerobic_processor = 1; p.organelles.storage_vacuole = 4; p._capsEpoch = -1; p.cargo.biomass = 60; p.oxygen = 0; return { w, p }; };
+  const a = A(); K.step(a.w, {}, 0.1); const base = a.p.oxygen;
+  const b = A(); b.p.organelles.gas_gland = 3; b.p._capsEpoch = -1; K.step(b.w, {}, 0.1); const boosted = b.p.oxygen;
   assert(boosted > base * 1.5, 'gas gland ferments lift-gas markedly faster'); }
 
 // Pressure Bladder: more ballast-gas capacity.
 { const w = K.createWorld({ seed: 8802 }); const p = K.getPlayer(w);
-  p.organelles.oxygen_vacuole = 1; p._capsEpoch = -1; const cap0 = K.__test.caps(p).ballastGas;
+  p.organelles.oxygen_vacuole = 1; p._capsEpoch = -1; const cap0 = K.__test.caps(p).oxygen;
   p.organelles.pressure_bladder = 3; p._capsEpoch = -1;
-  assert(K.__test.caps(p).ballastGas > cap0 + 0.5, 'pressure bladder raises ballast-gas capacity'); }
+  assert(K.__test.caps(p).oxygen > cap0 + 0.5, 'pressure bladder raises gas (O2 pool) capacity'); }
 
 // Ballast Siphon: vents gas faster while flooded.
-{ const S = () => { const w = K.createWorld({ seed: 8803 }); const p = K.getPlayer(w); p.organelles.oxygen_vacuole = 3; p._capsEpoch = -1; p.ballastGas = 1.0; p.ballast = true; return { w, p }; };
-  const a = S(); K.step(a.w, { moveY: 1 }, 1 / 60); const drop0 = 1.0 - a.p.ballastGas;
-  const b = S(); b.p.organelles.ballast_siphon = 3; b.p._capsEpoch = -1; K.step(b.w, { moveY: 1 }, 1 / 60); const drop1 = 1.0 - b.p.ballastGas;
+{ const S = () => { const w = K.createWorld({ seed: 8803 }); const p = K.getPlayer(w); p.organelles.oxygen_vacuole = 3; p._capsEpoch = -1; p.oxygen = 1.0; p.ballast = true; return { w, p }; };
+  const a = S(); K.step(a.w, { moveY: 1 }, 1 / 60); const drop0 = 1.0 - a.p.oxygen;
+  const b = S(); b.p.organelles.ballast_siphon = 3; b.p._capsEpoch = -1; K.step(b.w, { moveY: 1 }, 1 / 60); const drop1 = 1.0 - b.p.oxygen;
   assert(drop1 > drop0 * 1.5, 'ballast siphon dumps gas faster while flooded'); }
 
 // Aerocyst: flat, always-on buoyancy floor.
 { const w = K.createWorld({ seed: 8804 }); const p = K.getPlayer(w);
-  p.organelles.oxygen_vacuole = 1; p.ballastGas = 0.1; p._capsEpoch = -1; const b0 = K.__test.buoyancy(p);
+  p.organelles.oxygen_vacuole = 1; p.oxygen = 0.1; p._capsEpoch = -1; const b0 = K.__test.buoyancy(p);
   p.organelles.aerocyst = 2; p._capsEpoch = -1;
   assert(K.__test.buoyancy(p) > b0 + 10, 'aerocyst adds a flat lift floor (rigid gas float)'); }
 
@@ -987,9 +994,9 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
 // Hydrogenosome: ferments biomass → ATP + a gush of lift-gas (no light).
 { const w = K.createWorld({ seed: 8807 }); const p = K.getPlayer(w);
   p.organelles.anaerobic_processor = 0; p.organelles.hydrogenosome = 2; p.organelles.oxygen_vacuole = 2; p.organelles.storage_vacuole = 4; p._capsEpoch = -1;
-  p.cargo.biomass = 40; p.cargo.energy = 0; p.ballastGas = 0;
+  p.cargo.biomass = 40; p.cargo.energy = 0; p.oxygen = 0;
   K.step(w, {}, 0.2);
-  assert(p.cargo.energy > 0 && p.ballastGas > 0, 'hydrogenosome makes both ATP and lift-gas from biomass'); }
+  assert(p.cargo.energy > 0 && p.oxygen > 0, 'hydrogenosome makes both ATP and lift-gas from biomass'); }
 
 // Photolytic Vacuole: banks extra O2 fuel in the light.
 { const P = () => { const w = K.createWorld({ seed: 8808 }); const p = K.getPlayer(w); p.organelles.photosystem = 1; p.organelles.oxygen_store = 3; p._capsEpoch = -1; p.oxygen = 0.1; p.y = K.WORLD.canopy + 50; return { w, p }; };
@@ -1072,29 +1079,25 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(K.__test.flamePulse(w, p, 1, 0) === false, 'no oxidizer → the flamethrower cannot fire');
 }
 
-// Fibonacci category-cost escalation: an organ's price climbs (1,1,2,3,5,8…) with how many organs you
-// own in the same functional category. Per Part C (reversed from the earlier "only exotics scale"),
-// the WHOLE cost escalates now — lipids climb right alongside the signature exotic (and toxins, for a
-// double-cost venom organ) — not just the exotic portion. Capacity racks and companions stay exempt;
-// membrane keeps its own φ curve; rack caps are now 13.
+// Copy-curve pricing (replaced the old Fibonacci category escalation): the FIRST copy of an organ is
+// the expensive "DNA" price (FIRST_COPY_MULT), every repeat is the cheap "RNA" copy (RNA_COPY_FRAC).
+// Exotics stay authored per copy; matter is folded into a lipid sticker price; membrane keeps its own
+// φ curve; capacity racks cap at 13.
 { const w = K.createWorld({ seed: 6001 }); const p = K.getPlayer(w);
   const EXO = ['spores', 'enzymes', 'crystals'];
   const cost = (id) => { const o = K.getYukiOfferings(w).find(x => x.id === id); return o ? o.cost : null; };
   const offer = (id) => K.getYukiOfferings(w).find(x => x.id === id);
   const set = (orgs) => { p.organelles = { ...orgs }; p._capsEpoch = -1; };
-  // double-1 Fibonacci start on the Weapons category (toxin_launcher base = 1 crystal)
-  set({}); assert(cost('toxin_launcher').crystals === 1, 'weapon exotic base = 1 (own 0 in category)');
-  set({ lance_bristle: 1 }); const t1 = cost('toxin_launcher'); assert(t1.crystals === 1, 'double-1: 2nd organ in a category still base');
-  set({ lance_bristle: 2 }); assert(cost('toxin_launcher').crystals === 2, '3rd organ in category → ×2');
-  set({ lance_bristle: 5 }); const t8 = cost('toxin_launcher');
-  assert(t8.crystals === 8, '6th organ in category → ×8 (fib)');
-  assert(!('biomass' in t8), 'biomass is off the price list (lipid currency)');
-  assert(t8.lipids > t1.lipids, 'the lipid portion escalates too now, not just the signature exotic');
-  assert(t8.toxins === t1.toxins * 8, 'venom double-cost: the toxin surcharge escalates in lockstep with the exotic (fib)');
+  set({}); const t0 = cost('toxin_launcher'); assert(t0.crystals === 1, 'weapon exotic base = 1 crystal');
+  set({ lance_bristle: 5 }); const t5 = cost('toxin_launcher');
+  assert(t5.crystals === 1 && t5.lipids === t0.lipids, 'owning other organs in the same category no longer escalates the price');
+  assert(!('biomass' in t5), 'biomass is off the price list (lipid currency)');
+  set({ toxin_launcher: 1 }); const tRepeat = cost('toxin_launcher');
+  assert(tRepeat.lipids < t0.lipids, 'a repeat copy is cheaper than the first (DNA first, RNA repeats)');
+  assert(tRepeat.crystals === t0.crystals, 'exotics stay authored per copy');
   // exotic-free organ never gains an exotic cost, but still counts toward its category tally
   set({ photosystem: 5 });
   const ps = cost('photosystem'); assert(!EXO.some(k => k in ps), 'exotic-free organ never gains an exotic cost');
-  assert(cost('catalase_vesicle').enzymes === 8, 'exotic-free oxygen organs still inflate the oxygen category (×8)');
   // membrane keeps its own whole-cost φ scaling and has no exotic key
   set({ membrane: 1 }); const m1 = cost('membrane');
   set({ membrane: 3 }); const mb = cost('membrane');
@@ -1238,12 +1241,12 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
     const w = K.createWorld({ seed: 6203 });
     const young = T.spawnAlgae(w, { mature: false });
     assert(K.orgCount(young, 'flagella') === 0, 'algae carry no flagella (ballast-only vertical motion)');
-    young.ballastGas = T.caps(young).ballastGas; young.cargo.biomass = 10; young.biomassMass = 10;
+    young.oxygen = T.caps(young).oxygen; young.cargo.biomass = 10; young.biomassMass = 10;
     assert(T.buoyancy(young) > T.biomassWeight(young), 'a lean gas-full bloom is buoyant (rises to the light)');
     const fat = T.spawnAlgae(w, { mature: true, biomass: 160 });
-    fat.biomassMass = 160; fat.ballastGas = T.caps(fat).ballastGas * 0.45;
+    fat.biomassMass = 160; fat.oxygen = T.caps(fat).oxygen * 0.45;
     assert(T.biomassWeight(fat) > T.buoyancy(fat), 'a fat bloom at partial gas still sinks deeper');
-    fat.ballastGas = T.caps(fat).ballastGas;
+    fat.oxygen = T.caps(fat).oxygen;
     assert(T.buoyancy(fat) > T.biomassWeight(fat), 'a fully inflated fat bloom can return upward');
   }
 
@@ -1266,13 +1269,16 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
     const pred = T.spawnPredator(w, { x: 400, y: 1900 });
     assert(K.hasOrg(pred, 'cleavage_furrow'), 'predators carry the fission organelle');
     const cap = T.caps(pred);
+    pred.hp = cap.hp; // fissionReady also gates on a healthy body (hp >= 60%)
     pred.cargo.lipids = cap.lipids; pred.cargo.biomass = cap.biomass; pred.cargo.energy = cap.energy;
-    assert(T.fissionReady(pred), 'a gorged (fat) hunter is ready to divide');
+    assert(T.fissionReady(pred), 'a gorged, healthy hunter is ready to divide');
     const n0 = w.entities.length;
     T.doFission(w, pred);
     assert(w.entities.length === n0 + 1, 'fission produces one daughter cell');
-    assert(pred.cargo.energy === 0, 'fission drains the parent\'s ATP');
-    assert(pred.cargo.lipids <= cap.lipids * 0.2, 'the parent is left at lean reserves');
+    const furrow = K.ORGANELLES.cleavage_furrow.stats;
+    assert(pred.cargo.energy <= cap.energy * furrow.chargeKeep + 1e-6, 'fission burns the parent\'s ATP down to a swim-spark (chargeKeep)');
+    assert(pred.cargo.biomass <= cap.biomass * furrow.childReserve + 1e-6, 'the parent\'s belly is spent building the daughter');
+    assert(pred.cargo.lipids < cap.lipids, 'freed fat is split with the daughter');
     const kid = w.entities[w.entities.length - 1];
     assert(kid.controller === 'predator' && K.hasOrg(kid, 'cleavage_furrow'), 'the daughter is a copy of the parent lineage');
   }
@@ -1306,19 +1312,21 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
     assert(pred.cargo.energy > 0, 'the predator harvests the kill\'s charge into its reservoir');
   }
 
-  // Fission has TWO paths: a full ATP reservoir (fast) OR a full fat reserve (robust floor). Either
-  // alone (with a healthy body and a little biomass) triggers a division.
+  // Commanded fission is GORGING: a full ATP reservoir AND a full biomass belly, on a healthy body.
+  // Fat alone no longer earns a division (lipids are day-to-day fuel, not construction mass).
   {
     const w = clearFroth(K.createWorld({ seed: 6311 }));
     const cap = () => T.caps(a);
     const a = T.spawnPredator(w, { x: 400, y: 1900 });
+    a.hp = cap().hp;
+    a.cargo.biomass = cap().biomass; a.cargo.energy = cap().energy; a.cargo.lipids = 0;
+    assert(T.fissionReady(a), 'full ATP + full belly earns a division, even with no fat');
     a.cargo.biomass = cap().biomass * 0.5;
-    a.cargo.energy = cap().energy; a.cargo.lipids = 0;   // ATP path only
-    assert(T.fissionReady(a), 'a full ATP reservoir alone earns a division (the fast path)');
-    a.cargo.energy = 0; a.cargo.lipids = cap().lipids;   // fat path only
-    assert(T.fissionReady(a), 'a full fat reserve alone earns a division (the robust floor)');
-    a.cargo.lipids = cap().lipids * 0.3;                 // neither full
-    assert(!T.fissionReady(a), 'a half-charged, half-fat hunter is NOT ready — one reserve must be full');
+    assert(!T.fissionReady(a), 'a full ATP reservoir alone is not enough — the belly must be full too');
+    a.cargo.biomass = cap().biomass; a.cargo.energy = 0; a.cargo.lipids = cap().lipids;
+    assert(!T.fissionReady(a), 'a full fat reserve does not substitute for ATP');
+    a.cargo.energy = cap().energy; a.hp = cap().hp * 0.5;
+    assert(!T.fissionReady(a), 'a badly wounded hunter does not divide');
   }
 
   // The player carries the furrow (pinned to the "predator type") and divides on command into a
