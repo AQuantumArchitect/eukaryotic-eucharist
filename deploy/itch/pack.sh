@@ -5,9 +5,9 @@ WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
 LATEST=$(ls -d "$WORKSPACE"/eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1)
 VERSION=$(basename "$LATEST")
 OUT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ZIP="$OUT_DIR/eukaryotic_eucharist.zip"
+ZIP="$OUT_DIR/mecha_fish.zip"
 
-echo "Packaging $VERSION for itch.io..."
+echo "Packaging $VERSION as Mecha Fish! for itch.io..."
 rm -f "$ZIP"
 
 python3 - <<PYEOF

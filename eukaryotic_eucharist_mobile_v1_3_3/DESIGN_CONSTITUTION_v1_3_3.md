@@ -1,5 +1,8 @@
 # Design Constitution v1.3.3 — Predator Flow and Eucharist Balance
 
+Player-facing product name: **Mecha Fish!** (`DESIGN_CONSTITUTION_MECHA_FISH.md`).
+Sim laws below still bind.
+
 This branch preserves the v1.3 strict graph rule: every function is an organelle, every capacity is graph-derived, and bodies attack only through organs.
 
 ## Flow law

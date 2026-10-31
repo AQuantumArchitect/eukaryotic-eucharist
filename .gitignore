@@ -16,3 +16,10 @@ scratchpad/
 
 # Separate GitHub Pages publishing repo (its own .git)
 deploy/web/
+
+# Local agent state
+.claude/
+
+# Tuning run outputs (regenerable; kept locally)
+**/tune*_out/
+**/__pycache__/

@@ -11,7 +11,9 @@
 // tick's events, never accumulated. We inspect world.events after EVERY stepEcology() call (every 0.05s),
 // not just on sampling ticks, or arrive/depart events would be silently missed between samples.
 //
-// Usage: node export_umwelt_tape.mjs <seed> <targetGenerations=8> [outDir]
+// Usage: node export_umwelt_tape.mjs <seed> <targetGenerations=8> [outDir] [paramsJsonOrPath]
+//   paramsJsonOrPath: an inline JSON object of PARAM_SPEC overrides, or a path to a .json file of them.
+//   Omitted ⇒ default ecology (byte-identical to the pre-Phase-2 exporter).
 import * as K from './src/graph_kernel.mjs';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -19,6 +21,17 @@ import * as path from 'node:path';
 const SEED = Number(process.argv[2] || 11);
 const TARGET_GENERATIONS = Number(process.argv[3] || 8);
 const OUT_DIR = process.argv[4] || `umwelt_data/seed_${SEED}`;
+// Optional tuned parameters (Phase-2 auto-tuning seam). Accept inline JSON or a file path.
+function loadParams(arg) {
+  if (!arg) return undefined;
+  const txt = arg.trim().startsWith('{') ? arg : fs.readFileSync(arg, 'utf8');
+  const p = JSON.parse(txt);
+  const known = new Set(K.PARAM_SPEC.map(s => s.name));
+  const unknown = Object.keys(p).filter(k => !known.has(k));
+  if (unknown.length) console.error(`[params] ignoring keys not in PARAM_SPEC: ${unknown.join(', ')}`);
+  return p;
+}
+const PARAMS = loadParams(process.argv[5]);
 
 const DT = 0.05;
 const COARSE_S = 5;   // guild/physiology/matter cadence
@@ -49,7 +62,7 @@ function tsIso(simSeconds) { return new Date((EPOCH_S + simSeconds) * 1000).toIS
 const rows = [];
 function emit(simSeconds, sensorId, value) { rows.push([tsIso(simSeconds), sensorId, String(value), null]); }
 
-const world = K.createEcologyWorld({ seed: SEED });
+const world = K.createEcologyWorld({ seed: SEED, params: PARAMS });
 const generations = [];
 let genIndex = 0;
 let crabAlive = false;
@@ -157,6 +170,7 @@ const manifest = {
   seed: SEED, dt: DT, coarse_cadence_s: COARSE_S, fine_cadence_s: FINE_S,
   sim_seconds_total: world.t, rows: rows.length, hit_safety_cap: hitCap,
   start: tsIso(0), sensor_ids: sensorIds, generations,
+  params: PARAMS || null,   // Phase-2 provenance: the tuned overrides this tape was produced under (null = defaults)
 };
 fs.writeFileSync(path.join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
