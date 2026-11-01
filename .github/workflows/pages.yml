@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Kernel smoke tests (every build) + immune incursion unit tests
-        run: tools/kernel_tests.sh
+        run: node tools/kernel_tests.mjs
       - name: Install headless Chromium
         run: |
           pip install playwright==1.54.0
@@ -36,7 +36,7 @@ jobs:
       - name: Browser smoke (every build boots and renders without a page error)
         run: python tools/browser_smoke.py
       - name: Build site
-        run: tools/build_site.sh
+        run: node tools/build_site.mjs
       - name: Browser smoke (built site)
         run: python tools/browser_smoke.py _site --seconds 2
       - uses: actions/upload-pages-artifact@v3

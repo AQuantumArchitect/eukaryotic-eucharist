@@ -35,6 +35,14 @@ CANVAS_PROBE = """() => {
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    # Windows' registry-backed mimetype table commonly reports .mjs as text/plain. Browsers reject
+    # module scripts with that type, so make the static test server match GitHub Pages explicitly.
+    extensions_map = {
+        **http.server.SimpleHTTPRequestHandler.extensions_map,
+        ".js": "text/javascript",
+        ".mjs": "text/javascript",
+    }
+
     def log_message(self, *args):
         pass
 
@@ -94,6 +102,12 @@ def main():
             page = browser.new_page(viewport={"width": w, "height": h})
             errors = []
             page.on("pageerror", lambda e: errors.append(str(e)[:200]))
+            page.on(
+                "console",
+                lambda m: errors.append(f"console error: {m.text[:200]}")
+                if m.type == "error" and not m.text.startswith("Failed to load resource:")
+                else None,
+            )
             page.on("requestfailed", lambda r: errors.append(f"request failed: {r.url}"))
             page.goto(f"{base}/{b}/", wait_until="load", timeout=60000)
             time.sleep(1.5)

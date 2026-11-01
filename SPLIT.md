@@ -1,6 +1,7 @@
 # Split — two games, one tree
 
-The WSL folder name stays `eukarayotic_eucharist`. Two player products live here.
+The canonical checkout is the Windows folder
+`C:\Users\Luke Spooner\ws-win\eukaryotic-eucharist`. Two player products live here.
 The organ-param / harmonic gym is a sibling, not a third player game.
 
 ## Mecha Fish! — the winner
@@ -23,7 +24,7 @@ Home: `immune_incursion/`. Player face `index.html`. Packed as
 
 ## Do not
 
-- Rename this WSL folder.
+- Move canonical development back to the retired WSL checkout.
 - Butler-push either zip.
 - Invent an itch slug or LIVE URL.
 - Vendor either game into Semantica3.

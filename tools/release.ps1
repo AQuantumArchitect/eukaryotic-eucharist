@@ -1,13 +1,13 @@
 <#
-  tools/release.ps1 - build ONE game from a clean, tagged commit and push it to itch.
+  tools/release.ps1 - build the pinned HTML reference from a clean, tagged commit and push it to itch.
 
   Usage (PowerShell, from anywhere):
-    .\tools\release.ps1 -Channel windows            # build + push
-    .\tools\release.ps1 -Channel windows -DryRun    # build only, no push
-    .\tools\release.ps1 -Channel windows -AllowUntagged -DryRun   # test build
+    .\tools\release.ps1 -Channel html            # build + push
+    .\tools\release.ps1 -Channel html -DryRun    # build only, no push
+    .\tools\release.ps1 -Channel html -AllowUntagged -DryRun   # test build
 
   Needs: butler on PATH, BUTLER_API_KEY in the environment (never printed),
-  and the engine path below (or env GODOT4 / UNITY_EDITOR).
+  for a real push. Dry runs need only PowerShell and git.
   Version = the git tag on HEAD (git tag v1.2.3). Settings live in RELEASE.md + the block below.
 #>
 param(
@@ -21,6 +21,8 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # ---- per-game config (keep in sync with RELEASE.md) -------------------------
 $ItchTarget   = 'aquantumarchitect/eukaryotic-eucharist'
 $Channels = @{
+  # Reference build: September v1.3.3 "Predator Flow Balance", including the full body graph.
+  # Keep this explicit. The itch build must not silently follow whichever version folder is newest.
   html = @{ Kind='static'; Source='eukaryotic_eucharist_mobile_v1_3_3'; Include=@('index.html','src'); Out='build/release/html'; Check='index.html' }
 }
 # -----------------------------------------------------------------------------

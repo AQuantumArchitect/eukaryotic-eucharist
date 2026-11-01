@@ -46,15 +46,21 @@ eukaryotic_eucharist_mobile_v1_3_3          Mecha Fish! — the current game, pl
   DESIGN_CONSTITUTION_MECHA_FISH.md         product rules; SIM_TUNING_README / ECOLOGY_DIAGNOSIS for the sim
 immune_incursion/                           immune incursion prototype (kernel.py, spec.py, index.html, tests)
 site/index.html                             landing page for GitHub Pages
-tools/                                      kernel_tests.sh, browser_smoke.py, build_site.sh
+tools/                                      cross-platform Node test/site tools, browser_smoke.py, release.ps1
 deploy/itch, deploy/electron                itch.io zip packing, desktop wrapper
 SPLIT.md                                    why Mecha Fish and Immune Incursion are separate products
 ```
 
+## Windows development
+
+The canonical checkout is `C:\Users\Luke Spooner\ws-win\eukaryotic-eucharist`. Node 22 LTS and
+Python 3 are the supported local toolchain; the repository has no npm runtime dependencies.
+
 ## Run locally
 
-```bash
-python3 -m http.server 8787            # from the repo root
+```powershell
+npm ci
+npm start
 # open http://localhost:8787/eukaryotic_eucharist_mobile_v1_3_3/  (or any version folder)
 ```
 
@@ -63,11 +69,12 @@ Touch controls appear on phones. Each version's README lists its full key map.
 
 ## Tests
 
-```bash
-tools/kernel_tests.sh                  # every build's headless kernel smoke test + immune unit tests (node >= 18, python 3)
+```powershell
+npm test                               # every build's headless kernel smoke test + immune unit tests
 pip install playwright && python -m playwright install chromium
-python tools/browser_smoke.py          # every build boots in headless Chromium, plays a few seconds, no page errors
-tools/build_site.sh                    # assemble the Pages site into _site/
+npm run smoke:browser                  # every build boots in Chromium, plays briefly, no page errors
+npm run build:site                     # assemble the Pages site into _site/
+.\tools\release.ps1 -Channel html -DryRun -AllowUntagged
 ```
 
 CI (`.github/workflows/pages.yml`) runs all three on every push and deploys `_site/` to GitHub
