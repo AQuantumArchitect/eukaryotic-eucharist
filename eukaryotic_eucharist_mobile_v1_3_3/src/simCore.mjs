@@ -1,6 +1,12 @@
 // Mecha Fish! (v1.3.3 graph kernel; player-facing name of the swimming column)
 // Oxygen ecology branch: the kernel owns environment, bodies, fields, progression, actions, and Yuki offerings.
 
+import {
+  createEcologyEphemeris,
+  updateEcologyEphemeris,
+  ephemerisSnapshot as readEphemerisSnapshot
+} from './ecologyEphemeris.mjs';
+
 export const VERSION = 'mobile_v1_3_3_living_backdrop_20260719a';
 
 export const WORLD = Object.freeze({
@@ -335,8 +341,13 @@ export const DEFAULT_ECOLOGY_TUNING = Object.freeze({
   predatorHeatGain: 1.0,
   predatorHeatDecay: 1.0,
   predatorImmigration: 1.0,  // overall immigration-demand multiplier for the open predator population
-  predatorSeasonAmp: 0.5,    // seasonal immigration wave: fractional swing of the demand target (0 = off, steady)
-  predatorSeasonPeriod: 90   // seconds per immigration season — a slow driver that ebbs/floods the migrant tide
+  predatorEphemerisGain: 0.9,    // max fractional influence earned by an online forecast that beats persistence
+  predatorEphemerisFissionGain: 0.9, // bounded log-gain on already-earned hunter cleave hazard
+  predatorEphemerisEventGain: 2.0, // coupling from exact rupture/fission scent-memory into the driver
+  predatorEphemerisHorizon: 12,  // seconds ahead: long enough to see a turn, short enough to verify often
+  // Retained only for explicit ecologyEphemerisMode:'harmonic' A/B runs and old champion files.
+  predatorSeasonAmp: 0.5,
+  predatorSeasonPeriod: 90
 });
 
 // ── Phase-2 tunable parameter surface (the auto-tuning seam) ─────────────────────────────────────
@@ -364,11 +375,15 @@ export const PARAM_SPEC = Object.freeze([
   ['const', 'FAT_FRICTION', 4, 1, 10],
   ['const', 'GRAZER_FISSION_K', 0.16, 0.02, 0.6],
   ['const', 'GRAZER_METABOLIC_BURN', 3.4, 0.5, 8],
-  ['const', 'GRAZER_FAT_PULL', 300, 50, 1200],
+  ['const', 'GRAZER_FAT_PULL', 900, 50, 1200],
   ['const', 'PRED_TARGET_K', 0.16, 0.03, 0.5],       // open predator population: immigration-demand slope (predators per unit prey)
   ['const', 'PRED_EMIGRATE_STARVE', 10, 3, 30],      // seconds a lean predator drifts before emigrating out
   ['const', 'PRED_IMMIGRANT_BELLY', 0.45, 0.1, 0.8], // settling reserves a fresh migrant arrives carrying
   ['tuning', 'predatorImmigration', 1, 0.3, 3],      // overall predator immigration-demand multiplier
+  ['tuning', 'predatorEphemerisGain', 0.9, 0, 0.9],  // bounded influence of a forecast that beats persistence
+  ['tuning', 'predatorEphemerisFissionGain', 0.9, 0, 0.9], // outbreak reinforcement; cannot bypass gorge/heat physiology
+  ['tuning', 'predatorEphemerisEventGain', 2.0, 0, 3],       // continuous event-memory coupling
+  ['tuning', 'predatorEphemerisHorizon', 12, 3, 40], // forecast horizon in seconds
   ['tuning', 'predatorSeasonAmp', 0.5, 0, 0.9],      // seasonal immigration-wave amplitude (fraction of demand target)
   ['tuning', 'predatorSeasonPeriod', 90, 25, 200],   // seasonal immigration-wave period (s) — free vs the intrinsic predator cycle
   ['tuning', 'algaePhotoScale', 0.014, 0.003, 0.05],
@@ -420,8 +435,9 @@ function bindConstParams(p) {
 // A serializable description of the normal producer regime. It is an initial-condition
 // distribution, not a script: every world samples a different collection of phases and
 // metabolic traits from this same aggregate ecology.
-export const DEFAULT_ALGAE_REGIME = Object.freeze({
+export const DEFAULT_ECOLOGY_REGIME = Object.freeze({
   algaeMeanCount: 82,
+  algaeSeedMeanCount: 72,
   algaeCountSpread: 2.5,
   producerMassTarget: 10500,
   producerMassSpread: 1800,
@@ -429,17 +445,43 @@ export const DEFAULT_ALGAE_REGIME = Object.freeze({
   cycleMaxSeconds: 120,
   depthMin: 210,
   depthMax: 3000,
-  structuralMean: 96,
-  structuralSpread: 26,
-  structuralMedian: 78,
-  structuralLogSpread: 0.66,
-  healthBaseFill: 0.99,
-  healthSpread: 0.06,
-  healthDepthLoad: 0.05,
-  healthAscentLoad: 0.035,
-  healthVeteranLoad: 0.025,
-  traitSpread: 0.22
+  structuralMean: 70,
+  structuralSpread: 25,
+  structuralMedian: 20,
+  structuralLogSpread: 0.65,
+  giantSeedFraction: 0.035,
+  giantStructuralMedian: 320,
+  giantStructuralLogSpread: 0.18,
+  deepBloomStructuralMean: 120,
+  deepBloomStructuralSpread: 24,
+  healthBaseFill: 0.73,
+  healthSpread: 0.25,
+  healthDepthLoad: 0.08,
+  healthAscentLoad: 0.06,
+  healthVeteranLoad: 0.05,
+  traitSpread: 0.22,
+  // Founder composition is part of the analytic regime too. Keeping these here lets
+  // coarse labs fit a t=0 distribution without source edits or a hidden burn-in.
+  oxicGeneralistMean: 8,
+  oxicGeneralistSpread: 2,
+  fatGrazerCount: 18,
+  deepBloomMean: 13,
+  deepBloomSpread: 1,
+  predatorMean: 6,
+  predatorSpread: 1,
+  protozoanMean: 4,
+  protozoanSpread: 0.6,
+  metazoanMean: 2,
+  metazoanSpread: 0.5,
+  // Scales only the fresh/slurry biomass laid down before the analytic reservoir top-up.
+  // Keeping this serializable lets the lab fit the opening detritus age structure as well
+  // as its total, without turning the reservoir into an ongoing quota.
+  initialBiomassScale: 0.25,
+  fieldBiomassTarget: 3300,
+  fieldLipidTarget: 14200
 });
+// Backward-compatible name used by the algae fitter and older experiment files.
+export const DEFAULT_ALGAE_REGIME = DEFAULT_ECOLOGY_REGIME;
 // STEADY-STATE STAMP (burn-in): the OBSERVED equilibrium HP-fill and ATP(energy)-fill per lineage,
 // measured by burnin.mjs over the last half of a player-free run. New arrivals (spawn / immigration)
 // draw their starting HP and charge from these distributions instead of a wild uniform guess, so a
@@ -1750,7 +1792,9 @@ export function createWorld(options = {}) {
     escalation: 0,     // ratchets up with the player's progress → the deep releases more, and more
     ecologyTuning: { ...DEFAULT_ECOLOGY_TUNING, ...(options.ecologyTuning || {}), ..._paramTuning },
     _constParams: { ...CONST_DEFAULTS, ..._paramConst },
-    ecologyRegime: { ...DEFAULT_ALGAE_REGIME, ...(options.ecologyRegime || {}) },
+    ecologyRegime: { ...DEFAULT_ECOLOGY_REGIME, ...(options.ecologyRegime || {}) },
+    ecologyEphemeris: null,
+    ecologyEphemerisMode: options.ecologyEphemerisMode || 'belief',
     playerId: null,
     ecologyOnly,
     // Algae developmental-arc controls (see updateAlgaeAI / algaePolicy). `algaePolicyMode` picks how a
@@ -1771,6 +1815,11 @@ export function createWorld(options = {}) {
     world.entities.push(player);
   }
   seedMatureEcosystem(world);
+  world.ecologyEphemeris = createEcologyEphemeris(ecologyEphemerisObservation(world), {
+    mode: world.ecologyEphemerisMode,
+    horizon: world.ecologyTuning.predatorEphemerisHorizon,
+    now: 0
+  });
   // Start the world "in the middle": the seeded ecology is a cold snapshot, so optionally
   // step it forward N seconds before play begins — blooms photosynthesize, ferment, fall,
   // and shed fields, so the column is already at its lush steady state at t=0 instead of
@@ -1804,6 +1853,14 @@ export function createWorld(options = {}) {
     world.t = 0;
     world.events.length = 0;
     for (const k of Object.keys(world.stats)) world.stats[k] = 0;
+    // Keep the beliefs learned during warmup, but reset their wall-clock obligations:
+    // forecasts issued at the old warmup time must not mature in the new t=0 session.
+    if (world.ecologyEphemeris) {
+      world.ecologyEphemeris.lastSampleTime = 0;
+      world.ecologyEphemeris.elapsed = 0;
+      world.ecologyEphemeris.pending.length = 0;
+      world.ecologyEphemeris.lastRisingCross = null;
+    }
   }
   return world;
 }
@@ -1855,17 +1912,30 @@ function sampleAlgaeTraits(world, regime) {
 
 function seedAnalyticAlgaeRegime(world) {
   const r = world.ecologyRegime;
-  const count = clamp(Math.round(gaussian(world.rng, r.algaeMeanCount, r.algaeCountSpread)), 24, ALGAE_EMERGENCY_CAP - 8);
+  const count = clamp(Math.round(gaussian(world.rng, r.algaeSeedMeanCount ?? r.algaeMeanCount,
+    r.algaeCountSpread)), 24, ALGAE_EMERGENCY_CAP - 8);
   for (let i = 0; i < count; i++) {
     const traits = sampleAlgaeTraits(world, r);
-    const seedPhase = world.rng() * Math.PI * 2;
     // A log-normal producer spectrum gives the canopy its dream-of-fuzz shape without
     // size classes: abundant tiny blooms, progressively fewer medium bodies, and a long
     // continuous tail containing the rare old giant.
-    const structural = clamp(Math.exp(gaussian(world.rng,
-      Math.log(r.structuralMedian || 48), r.structuralLogSpread || 0.72)), 20, 420);
+    const veteranGiant = world.rng() < (r.giantSeedFraction || 0);
+    const structural = veteranGiant
+      ? clamp(Math.exp(gaussian(world.rng, Math.log(r.giantStructuralMedian || 320),
+        r.giantStructuralLogSpread || 0.18)), 180, 650)
+      : clamp(Math.exp(gaussian(world.rng,
+        Math.log(r.structuralMedian || 48), r.structuralLogSpread || 0.72)), 20, 420);
+    // The living population is not age-neutral: many small recent buds remain near Yuki while
+    // the rarer veterans occupy the whole orbit. Sample that stationary age/phase covariance
+    // continuously, with equal ascending/descending signs, rather than forcing phase buckets.
+    const shallowPhaseChance = clamp(0.70 - structural / 520, 0.18, 0.64);
+    let seedPhase;
+    if (world.rng() < shallowPhaseChance) {
+      const signed = (world.rng() < 0.5 ? -1 : 1) * Math.pow(world.rng(), 2) * Math.PI;
+      seedPhase = (signed + Math.PI * 2) % (Math.PI * 2);
+    } else seedPhase = world.rng() * Math.PI * 2;
     const cycleHistory = Math.max(0, Math.floor(Math.log(Math.max(1, structural / 26)) * 5 + gaussian(world.rng, 0, 1.8)));
-    const cargoBiomass = clamp(structural * rand(world, 0.16, 0.30) + gaussian(world.rng, 0, 3), 4, 96);
+    const cargoBiomass = clamp(structural * rand(world, 0.12, 0.22) + gaussian(world.rng, 0, 3), 4, 96);
     const depthWave = (1 - Math.cos(seedPhase)) * 0.5;
     const surfaceDepth = clamp(58 + structural * 0.72, 70, 260);
     const workDepth = WORLD.canopy + clamp(220 + structural * 10, r.depthMin, Math.min(r.depthMax + 900, 3200));
@@ -1932,21 +2002,24 @@ function seedMatureEcosystem(world) {
     const e = spawnScavenger(world, { abyssal: true, y: WORLD.h - 400, x: rand(world, 0, WORLD.w) });
     seedAt(e, 6686, 873, O2_ZONE_BOTTOM + 400, WORLD.h - 150);
   }
-  // Oxic forager cloud in the oxygenated upper column. Seeded AT the burned-in equilibrium (stamp.mjs:
-  // steady_n ~41 incl. grazers below) so the world starts at its carrying capacity instead of growing
-  // there over the opening minutes. Demand-driven immigration (scavengerTarget) still tops it up as
-  // detritus accumulates, and predator cannibalism/culling keeps it from overshooting.
-  const oxicN = 32 + Math.floor(world.rng() * 8); // 32..39 (settles ~38, +3 grazers below ~41)
+  // Oxic forager cloud in the oxygenated upper column. The burned-in lineage total is ~41 INCLUDING
+  // fat-grazers. A stale experiment had accidentally added forty grazers on top of 32..39 generalists
+  // (72..79 bodies at t=0), guaranteeing a visible opening emigration crash. Keep the combined draw
+  // centred on the measured ~41 instead.
+  const regime = world.ecologyRegime;
+  const oxicN = clamp(Math.round(gaussian(world.rng, regime.oxicGeneralistMean,
+    regime.oxicGeneralistSpread)), 2, 80);
   for (let i = 0; i < oxicN; i++) spawnScavenger(world, {
     y: WORLD.nurseryTop + rand(world, 120, 1100),
     x: rand(world, 0, WORLD.w)
   });
   // Founder crew of fat-grazers — seeded at BOTH the top slick and the mid fat band so both layers are
-  // worked from t=0 (5x the original crew). This only sets initial NUMBERS; where each body ultimately
+  // worked from t=0. This only sets initial NUMBERS; where each body ultimately
   // settles is still decided continuously by the fat gradient (fatSteerY) + its light/O2 comfort, and the
   // swarm's standing amplitude comes from fat-fed FISSION.
-  for (let i = 0; i < 40; i++) {
-    const mid = i >= 20;   // 20 on the surface slick + 20 already down in the mid band
+  const grazerN = clamp(Math.round(regime.fatGrazerCount), 2, 80);
+  for (let i = 0; i < grazerN; i++) {
+    const mid = i >= Math.ceil(grazerN / 2);
     const y = mid ? rand(world, WORLD.canopy + 3000, WORLD.canopy + 4200) : WORLD.canopy + rand(world, 60, 320);
     spawnScavenger(world, { grazer: true, y, x: rand(world, 0, WORLD.w) });
   }
@@ -1958,14 +2031,30 @@ function seedMatureEcosystem(world) {
   // DEEP TOXIC BLOOMS — a big standing population of huge, membrane-walled, toxic mats in the mid/deep
   // (the predators' zone). They are the reachable PREY that lets mid predators brawl, fill their belly,
   // and reproduce, and their torn membranes flood the deep with fat. Seeded thick; maintained in spawnTick.
-  const deepBloomN = 16 + Math.floor(world.rng() * 8); // 16..23
+  const deepBloomN = clamp(Math.round(gaussian(world.rng, regime.deepBloomMean,
+    regime.deepBloomSpread)), 4, 60);
   for (let i = 0; i < deepBloomN; i++) {
-    spawnAlgae(world, { deep: true, y: clamp(gaussian(world.rng, 4100, 380), WORLD.deepTop + 400, 4700) });
+    const e = spawnAlgae(world, { deep: true, y: clamp(gaussian(world.rng, 4100, 380), WORLD.deepTop + 400, 4700) });
+    // Deep mats in a mature brawl are already scarred: seed their structural stock from the fitted
+    // post-shedding distribution instead of the pristine spawn radius. They remain large, armoured prey.
+    e.biomassMass = clamp(gaussian(world.rng, regime.deepBloomStructuralMean,
+      regime.deepBloomStructuralSpread), 70, 320);
+    // A standing deep mat is scar tissue plus a modest live reserve, not a pristine sack
+    // containing another whole body's worth of loose biomass. The old spawn cargo (140..260)
+    // was three times the observed mature producer reserve and made t=0 a compulsory shedding
+    // event even after structural mass itself had been fitted.
+    e.cargo.biomass = clamp(gaussian(world.rng, 28, 9), 8, 52);
+    e._capsEpoch = -1;
+    e.r = targetRadius(e);
+    e.hp = caps(e).hp * clamp(gaussian(world.rng, 0.48, 0.20), 0.15, 0.95);
   }
 
-  const predN = 10 + Math.floor(world.rng() * 5); // 10..14 (settles ~12, per stamp.mjs post-cannibalism)
-  const protoN = 4 + Math.floor(world.rng() * 3); // 4..6 (settles ~5)
-  const metaN = 2 + Math.floor(world.rng() * 2);  // 2..3 (settles ~2)
+  // The live prey-driven target is ~10 free hunters in this starting field. The previous 16..23
+  // founders therefore spent the opening minute emigrating, making t=0 a forced high phase. Sample
+  // around the supported standing pool and let feast/fission events create the exceptional outbreaks.
+  const predN = clamp(Math.round(gaussian(world.rng, regime.predatorMean, regime.predatorSpread)), 1, 30);
+  const protoN = clamp(Math.round(gaussian(world.rng, regime.protozoanMean, regime.protozoanSpread)), 1, 30);
+  const metaN = clamp(Math.round(gaussian(world.rng, regime.metazoanMean, regime.metazoanSpread)), 1, 20);
   const broodN = 1 + Math.floor(world.rng() * 2); // 1..2 (settles ~1)
   for (let i = 0; i < predN; i++) {
     const y = clamp(gaussian(world.rng, 4200, 850), 2900, 5400);
@@ -1992,7 +2081,7 @@ function seedMatureEcosystem(world) {
     const x = nearPlayer ? WORLD.w / 2 + rand(world, -420, 420) : rand(world, 0, WORLD.w);
     const y = nearPlayer ? WORLD.ruptureTop + rand(world, -90, 520) : WORLD.nurseryTop + rand(world, 0, 2600);
     spawnResourceField(world, x, y, {
-      biomass: rand(world, 120, 220),
+      biomass: rand(world, 120, 220) * regime.initialBiomassScale,
       lipids: rand(world, 20, 42),
       toxins: rand(world, 0, 10),
       energy: rand(world, 0, 8)
@@ -2003,7 +2092,7 @@ function seedMatureEcosystem(world) {
   // so the opening does not spend its first seconds manufacturing a special t=0→t=6 field ramp.
   for (let i = 0; i < 6; i++) {
     spawnResourceField(world, rand(world, 0, WORLD.w), WORLD.canopy + rand(world, 800, 1180),
-      { biomass: rand(world, 45, 90), lipids: rand(world, 8, 22), energy: rand(world, 3, 11) },
+      { biomass: rand(world, 45, 90) * regime.initialBiomassScale, lipids: rand(world, 8, 22), energy: rand(world, 3, 11) },
       { radius: rand(world, 44, 68), sourceKind: 'nursery_slurry', decayRate: 0.05, maxAge: 46, maxRadius: 150 });
   }
 
@@ -2015,13 +2104,39 @@ function seedMatureEcosystem(world) {
   // (burnin.mjs, DEEP_PILE: fields below deepTop+1500) at ~3400 +/- 1200 matter across the equilibrium
   // half, so a fresh world starts with that pile already scattered on the floor instead of needing
   // several minutes of photosynthesis + sinking to build one up from zero.
-  let deepPileLeft = clamp(gaussian(world.rng, 3400, 1200), 800, 7000);
+  let deepPileLeft = clamp(gaussian(world.rng, 3400, 1200), 800, 7000) * regime.initialBiomassScale;
   const deepPileChunks = 6 + Math.floor(world.rng() * 4); // 6..9 fields — a scattered fall, not one blob
   for (let i = 0; i < deepPileChunks && deepPileLeft > 20; i++) {
     const amt = i === deepPileChunks - 1 ? deepPileLeft : Math.min(deepPileLeft, deepPileLeft * rand(world, 0.18, 0.4));
     deepPileLeft -= amt;
     spawnResourceField(world, rand(world, 0, WORLD.w), clamp(gaussian(world.rng, 6600, 700), WORLD.deepTop + 1600, WORLD.h - 220),
       { biomass: amt }, { radius: rand(world, 60, 140), sourceKind: 'whale_fall_pile', maxAge: BIOMASS_MAX_AGE });
+  }
+
+  // Analytic standing reservoirs. The no-decay material physics maintains a large whale-fall and
+  // fat ocean once established; a cold seed containing only fresh rupture slurry otherwise spends
+  // its first several minutes manufacturing them, making t=0 visibly unique. Top up to the fitted
+  // regime with ordinary physical fields—no hidden burn-in and no ongoing quota.
+  let seededBiomass = 0, seededLipids = 0;
+  for (const f of world.fields) {
+    seededBiomass += f.stock.biomass || 0;
+    seededLipids += f.stock.lipids || 0;
+  }
+  let biomassDeficit = Math.max(0, regime.fieldBiomassTarget - seededBiomass);
+  const biomassChunks = 4;
+  for (let i = 0; i < biomassChunks && biomassDeficit > 1; i++) {
+    const amount = biomassDeficit / (biomassChunks - i); biomassDeficit -= amount;
+    spawnResourceField(world, rand(world, 0, WORLD.w), rand(world, WORLD.deepTop + 500, WORLD.h - 250),
+      { biomass: amount }, { radius: rand(world, 70, 150), sourceKind: 'standing_whale_fall', maxAge: BIOMASS_MAX_AGE });
+  }
+  let lipidDeficit = Math.max(0, regime.fieldLipidTarget - seededLipids);
+  const lipidChunks = 10;
+  for (let i = 0; i < lipidChunks && lipidDeficit > 1; i++) {
+    const amount = lipidDeficit / (lipidChunks - i); lipidDeficit -= amount;
+    // A mature column contains both a canopy slick and a broad, slowly-rising mid-water fat ocean.
+    const y = i < 4 ? WORLD.canopy + rand(world, 4, 70) : rand(world, WORLD.deepTop, WORLD.deepTop + 1700);
+    spawnResourceField(world, rand(world, 0, WORLD.w), y, { lipids: amount },
+      { radius: rand(world, 80, 170), sourceKind: 'standing_fat_ocean', maxAge: LIPID_MAX_AGE });
   }
 
   // Every body's HP and ATP already came from makeSoftBody's per-lineage STEADY_STATE sample (a
@@ -2405,6 +2520,70 @@ function algaeProducerMass(world) {
   return mass;
 }
 
+// The online Umwelt surface. Counts/stocks are compressed only enough to keep a whale fall from
+// dwarfing every other innovation; no zone labels or policy states enter the belief. This scan runs
+// once per ephemeris sample (normally 1 Hz), not once per physics frame.
+function ecologyEphemerisObservation(world) {
+  let prey = 0, predators = 0, hunterEnergy = 0, hunterHeat = 0;
+  for (const e of world.entities) {
+    if (!e.alive) continue;
+    if (e.controller === 'scavenger') prey += 1;
+    else if (e.controller === 'algae' && e.deepBloom) prey += 0.65;
+    if (FREE_HUNTERS.has(e.controller)) {
+      predators++;
+      const c = caps(e);
+      hunterEnergy += (e.cargo.energy || 0) / Math.max(1, c.energy);
+      hunterHeat += e.reproHeat || 0;
+    }
+  }
+  let carrion = 0;
+  for (const f of world.fields) carrion += totalMatter(f.stock);
+  const events = world.ecologyEphemeris?.eventCounts || {};
+  return {
+    prey,
+    carrion: Math.log1p(carrion),
+    producer: Math.log1p(algaeProducerMass(world)),
+    predators,
+    hunterEnergy: predators ? hunterEnergy / predators : 0,
+    hunterHeat: predators ? hunterHeat / predators : 0,
+    predatorFlux: world.flux?.predNet || 0,
+    woundPulse: events.woundPulse || 0,
+    deepBloomBirth: events.deepBloomBirth || 0,
+    hunterFission: events.hunterFission || 0,
+    hunterIn: events.hunterIn || 0,
+    hunterOut: events.hunterOut || 0
+  };
+}
+
+function advanceEcologyEphemeris(world, dt) {
+  const state = world.ecologyEphemeris;
+  if (!state || state.mode !== 'belief') return;
+  const events = state.eventCounts || (state.eventCounts = {
+    woundPulse: 0, deepBloomBirth: 0, hunterFission: 0, hunterIn: 0, hunterOut: 0
+  });
+  // Events live for one physics tick, so fold them into the 1 Hz belief bucket before
+  // the next step clears world.events. This loop is over a tiny event list, not entities.
+  for (const event of world.events) {
+    if (event.type === 'algae_wound_shed') events.woundPulse++;
+    else if (event.type === 'deep_bloom_birth') events.deepBloomBirth++;
+    else if (event.type === 'fission' && FREE_HUNTERS.has(event.controller)) events.hunterFission++;
+    else if (event.type === 'immigrate' && FREE_HUNTERS.has(event.controller)) events.hunterIn++;
+    else if (event.type === 'emigrate' && FREE_HUNTERS.has(event.controller)) events.hunterOut++;
+  }
+  state.elapsed += dt;
+  if (state.elapsed + 1e-9 < state.samplePeriod) return;
+  state.elapsed %= state.samplePeriod;
+  state.horizon = clamp(world.ecologyTuning.predatorEphemerisHorizon || state.horizon, 3, 40);
+  updateEcologyEphemeris(state, ecologyEphemerisObservation(world), world.t,
+    world.ecologyTuning.predatorEphemerisGain ?? world.ecologyTuning.predatorSeasonAmp ?? 0.5,
+    world.ecologyTuning.predatorEphemerisEventGain ?? 0.7);
+  for (const name of Object.keys(events)) events[name] = 0;
+}
+
+export function ecologyEphemerisSnapshot(world) {
+  return readEphemerisSnapshot(world?.ecologyEphemeris);
+}
+
 // Bladder lift only — excludes aerocyst (a rigid, always-full float that never varies with the gas pool's
 // fill level, so it doesn't belong under the "oxygen pulls you up" hang-force; it's baseline, like
 // BASE_BUOYANCY) and lipid-bladder lift (its own separate term, see lipidBladderLift below).
@@ -2628,7 +2807,9 @@ export function step(world, commands = {}, dt = 1 / 60, sheltered = false) {
   spawnTick(world, dt);
   if (sheltered) yukiRestore(world, dt, player.id);
   else applyPlayerCommands(world, player, commands, dt);
-  return finishWorldStep(world, player, dt);
+  const result = finishWorldStep(world, player, dt);
+  advanceEcologyEphemeris(world, dt);
+  return result;
 }
 
 // Advance the autonomous ecology with no player body in the world. This is intentionally the same
@@ -2640,7 +2821,9 @@ export function stepEcology(world, dt = 1 / 60) {
   world.t += dt;
   world.events.length = 0;
   spawnTick(world, dt);
-  return finishWorldStep(world, null, dt);
+  const result = finishWorldStep(world, null, dt);
+  advanceEcologyEphemeris(world, dt);
+  return result;
 }
 
 function finishWorldStep(world, player, dt) {
@@ -3402,7 +3585,13 @@ function bestWoundedAlgaeForScavenger(scavenger, world) {
 }
 
 function fieldForageScore(scavenger, field) {
-  const matter = (field.stock?.biomass || 0) + (field.stock?.lipids || 0) * 0.7 + (field.stock?.energy || 0) * 0.35;
+  const rawLipids = field.stock?.lipids || 0;
+  // A merged fat band is effectively infinite relative to one mouth. Score the locally handleable
+  // portion, not its entire ocean-wide inventory, or that one object attracts every grazer from miles
+  // away and erases the mid-water niche. Smooth saturation; no band/amount threshold.
+  const lipids = scavenger.trophicRole === 'fat_grazer'
+    ? 650 * rawLipids / (650 + rawLipids) : rawLipids;
+  const matter = (field.stock?.biomass || 0) + lipids * 0.7 + (field.stock?.energy || 0) * 0.35;
   return matter / Math.pow(120 + distWrap(scavenger.x, scavenger.y, field.x, field.y), 1.08);
 }
 
@@ -3585,7 +3774,13 @@ function updateScavengerBrain(world, e, dt) {
   // stages — where each body sits is a consequence of this gradient and its light/O2 comfort.
   const fatY = e.trophicRole === 'fat_grazer' ? fatSteerY(e, world) : 0;
   if (e.trophicRole === 'fat_grazer') e._squeeze = clamp(fatY, 0, 1);
-  const toward = norm(dxWrap(e.x, tx) + sepX * 110, (ty - e.y) + comfortSteerY(e) * comfortW + fatY * GRAZER_FAT_PULL + sepY * 110);
+  // When the whole-column gradient says the standing fat ocean is elsewhere, attenuate the vertical
+  // pull of one nearby meal. At zero imbalance the local target has full authority; as imbalance grows,
+  // the global gradient smoothly takes over. This prevents one merged surface band from trapping every
+  // grazer while most of the food accumulates below, without naming a depth or switching states.
+  const localVerticalWeight = e.trophicRole === 'fat_grazer' ? 1 / (1 + 5 * Math.abs(fatY)) : 1;
+  const toward = norm(dxWrap(e.x, tx) + sepX * 110, (ty - e.y) * localVerticalWeight
+    + comfortSteerY(e) * comfortW + fatY * GRAZER_FAT_PULL + sepY * 110);
   let sp = powered ? speedOf(e) * (e.feedIntent ? 0.62 : 1) * spMul : 0;
   // Same shared gradient-aware ATP price as the player and every hunter — see chargeThrustATP.
   if (sp > 0 && (Math.abs(toward.x) + Math.abs(toward.y) > 0.02)) {
@@ -4161,7 +4356,12 @@ function updateEnvironmentAndMetabolism(world, dt) {
       // just makes biomass; stored O2 is governed by BREATHING (feeding), not a passive photo drain.
       if (e.controller === 'algae') {
         // Real photosynthetic O2 — grows the tracked O2 sub-pool by the same amount as the total.
-        const photoGain = ORGANELLES.photosystem.stats.oxygenWaste * photo * light * dt;
+        // Gas production loses its driving force continuously as the bladder fills. This keeps
+        // the ordinary orbit inside the physical range; clampCargo's exact cap is only a final
+        // numerical guard, not the surface phase of every algae cycle.
+        const gasHeadroom = clamp(1 - (e.oxygen || 0) / Math.max(0.001, caps(e).oxygen), 0, 1);
+        const photoGain = ORGANELLES.photosystem.stats.oxygenWaste * photo * light
+          * Math.sqrt(gasHeadroom) * dt;
         e.oxygen += photoGain; addOxygenO2(e, photoGain);
         // Venting is real outward diffusion, not a tuned throttle curve: the driving force is the
         // actual gap between what you're holding and what the water already has. Sitting in
@@ -5848,12 +6048,27 @@ const POP_FLOOR = Object.freeze({ predator: 1, protozoan: 1, metazoan: 1, brood:
 
 function scavengerTarget(world) {
   let detritus = 0, hunterPressure = 0;
-  for (const f of world.fields) detritus += (f.stock.biomass || 0) + (f.stock.lipids || 0) + (f.stock.energy || 0);
+  // Handling-time saturation: a finite migrant pool can notice a richer column, but an already-vast
+  // slick does not summon one new body per fixed lump forever. Lipid is discounted here because it
+  // is calorie-dense specialist food; its fraction controls grazer *composition* separately below.
+  for (const f of world.fields) detritus += (f.stock.biomass || 0)
+    + (f.stock.lipids || 0) * 0.55 + (f.stock.energy || 0) * 0.25;
   for (const e of world.entities) if (e.alive && HUNTER_GUILD.has(e.controller)) hunterPressure++;
   // Open-boundary carrying signal: corpse pulses draw scavengers in; barren or predator-heavy water
-  // lets them flow back out. The response is deliberately broad and capped for performance.
+  // lets them flow back out. Smooth Michaelis-Menten response—no food threshold, no hard quota pillar.
   const tuning = world.ecologyTuning;
-  return Math.round(clamp(8 + detritus / 220 * tuning.scavengerDetritusGain - hunterPressure * 0.14 * tuning.scavengerHunterPressure, 8, 160)); // SHIPPED PLAYABLE CAP: ~2x over the measured realized scavenger/grazer count (~77-82). Was lifted to 16800 for headless tuning; stale original 42 is now too tight for the living demand.
+  const foodResponse = 44 * tuning.scavengerDetritusGain * detritus / (6000 + detritus);
+  return clamp(8 + foodResponse - hunterPressure * 0.16 * tuning.scavengerHunterPressure, 8, 80);
+}
+
+function scavengerGrazerShare(world) {
+  let lipids = 0, biomass = 0;
+  for (const f of world.fields) {
+    lipids += f.stock.lipids || 0;
+    biomass += f.stock.biomass || 0;
+  }
+  // Even a lean column admits some grazers; a fat-dominated one increasingly selects the specialist.
+  return clamp(0.14 + 0.68 * lipids / Math.max(1, lipids + biomass), 0.14, 0.78);
 }
 
 // ── FAT-GRAZER: the fat-clearing breeder swarm ────────────────────────────────────────────────────
@@ -5865,7 +6080,7 @@ function scavengerTarget(world) {
 // updateScavengerBrain (fatSteerY + the ballast-squeezer intent) and wildFissionRate.
 let GRAZER_FISSION_K = 0.16;         // wild fission rate of a fully fat+ATP+biomass-gorged breeder — fat is the DRIVE, biomass+ATP still gate
 let GRAZER_METABOLIC_BURN = 3.4;     // ATP/s the fat-grazer runs hot at — a hungry furnace that keeps its mitochondria oxidizing fat to refill (the sink); off the fat it starves fast, so the swarm's numbers track the fat itself, not a quota
-let GRAZER_FAT_PULL = 300;           // magnitude of the continuous fat-gradient pull folded into the grazer's vertical steer
+let GRAZER_FAT_PULL = 900;           // magnitude of the continuous fat-gradient pull folded into the grazer's vertical steer
 
 // CONTINUOUS FAT FIELD — a coarse vertical density profile of the standing lipid pool, memoized per tick.
 // The fat-grazers read its GRADIENT at their own depth (fatSteerY) as a smooth pull toward wherever the
@@ -5957,6 +6172,13 @@ function wildFissionRate(entity, world = null) {
   // GENOTYPE: a FEROCIOUS hunter breeds faster off its kills (paired with faster starvation-emigration in
   // populationTick — the trade-off that makes ferocity a real, selectable strategy, not a free win).
   if (entity.gene && PRED_GUILD.has(entity.controller)) rate *= 0.7 + 0.6 * entity.gene.ferocity;
+  // The shared event-belief can reinforce a success cascade, but it cannot create one: all of the
+  // continuous local requirements above (belly, heat, health, cooldown) still apply. Exponential
+  // form makes positive and negative evidence symmetric and stays bounded by the driver's [-1,1].
+  if (world && world.ecologyEphemerisMode === 'belief' && PRED_GUILD.has(entity.controller)) {
+    const gain = clamp(world.ecologyTuning.predatorEphemerisFissionGain || 0, 0, 0.9);
+    rate *= Math.exp(gain * (world.ecologyEphemeris?.driver || 0));
+  }
   return rate;
 }
 
@@ -6083,14 +6305,17 @@ function predatorTarget(world) {
   for (const e of world.entities) if (e.alive && (e.controller === 'scavenger' || (e.controller === 'algae' && e.deepBloom))) prey++;
   const t = world.ecologyTuning;
   let target = 2 + prey * PRED_TARGET_K * (t.predatorImmigration != null ? t.predatorImmigration : 1);
-  // Seasonal immigration wave: a slow sine driver floods the migrant tide, then lets it ebb, so the predator
-  // population breathes on a period free of its intrinsic prey-chase cycle (the tuner finds where they beat).
-  const amp = t.predatorSeasonAmp != null ? t.predatorSeasonAmp : 0;
-  if (amp > 0) {
+  // Production uses the learned ecology ephemeris: it may bias the continuous demand only after its
+  // forecast beats persistence. The old exact sine survives solely as an explicit A/B control so the
+  // lab can ask whether an endogenous, irregular cue actually improves on decorative periodicity.
+  if (world.ecologyEphemerisMode === 'belief') {
+    target *= world.ecologyEphemeris?.multiplier || 1;
+  } else if (world.ecologyEphemerisMode === 'harmonic') {
+    const amp = t.predatorSeasonAmp != null ? t.predatorSeasonAmp : 0;
     const period = Math.max(1, t.predatorSeasonPeriod != null ? t.predatorSeasonPeriod : 90);
     target *= 1 + amp * Math.sin(2 * Math.PI * world.t / period);
   }
-  return Math.round(clamp(target, 2, POP_CAP));
+  return clamp(target, 2, POP_CAP);
 }
 // Record a predator crossing the boundary: bump the flux counter and fold its genotype into the running
 // composition of the in/out stream. dir = +1 immigrant, −1 emigrant.
@@ -6380,7 +6605,7 @@ function spawnTick(world, dt) {
       // The fat-grazer is a sub-variety of the oxic caste, not a separately-budgeted population — it
       // shares scavengerTarget's demand-driven cap, just biased toward the canopy fat slick instead of
       // the general oxic depth spread.
-      const wantGrazer = world.rng() < 0.3;
+      const wantGrazer = world.rng() < scavengerGrazerShare(world);
       spawnScavenger(world, wantGrazer ? { ...entrySpawn(world, 'grazer_scavenger'), grazer: true } : entrySpawn(world, 'scavenger')); // burned-in HP-fill sampled in makeSoftBody
       world.stats.immigrations += 1;
       world.events.push({ type: 'immigrate', controller: 'scavenger' });
@@ -6886,14 +7111,18 @@ function bestFieldFor(entity, world, reach = 1300) {
   for (const f of world.fields) {
     const d = distWrap(entity.x, entity.y, f.x, f.y);
     if (d > reach) continue; // far fields never win matter/(35+d); skip the reduce over stock
-    const matter = f._matter || 0; if (matter <= 0.5) continue; // cached in updateFields this frame
+    const rawMatter = f._matter || 0; if (rawMatter <= 0.5) continue; // cached in updateFields this frame
+    const rawLipids = f.stock.lipids || 0;
+    const handledLipids = entity.trophicRole === 'fat_grazer'
+      ? 650 * rawLipids / (650 + rawLipids) : rawLipids;
+    const matter = rawMatter - rawLipids + handledLipids;
     // The migratory twilight grazer isn't home-bound — barely penalize distance from its (still-canopy)
     // depthHome so the deep glut it's diving for isn't scored away before it gets there.
     const depthPenalty = Math.abs(f.y - entity.depthHome) * (entity.trophicRole === 'fat_grazer' ? 0.0012 : 0.010);
     const toxinPenalty = (f.stock.toxins || 0) * (hasOrg(entity, 'toxin_launcher') ? 0.01 : 0.09);
     // FAT is the mid predators' day-to-day food: a rising fat plume is calorie-dense and strongly
     // preferred by the hunter guild (which grazes it for upkeep between kills). Others value it mildly.
-    const lipidBonus = (f.stock.lipids || 0) * (FREE_HUNTERS.has(entity.controller) ? 0.05 : entity.controller === 'scavenger' ? 0.045 : 0.018); // scavengers prize rising fat — grazed on the ascent, spent on repair
+    const lipidBonus = handledLipids * (FREE_HUNTERS.has(entity.controller) ? 0.05 : entity.controller === 'scavenger' ? 0.045 : 0.018); // scavengers prize rising fat — grazed on the ascent, spent on repair
     const envCost = comfortPain(entity, f.y) * FIELD_ENV_COST * (1 - envDiscount);
     const score = matter / (35 + d) - depthPenalty - toxinPenalty + lipidBonus - envCost;
     if (score > bestScore) { best = f; bestScore = score; }

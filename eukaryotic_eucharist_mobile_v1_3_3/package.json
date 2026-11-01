@@ -4,6 +4,9 @@
     "stop": "kill $(lsof -ti:8787) 2>/dev/null; true",
     "smoke": "node smoke_test.mjs",
     "ecology": "node ecology_report.mjs",
+    "ephemeris": "node umwelt_ephemeris_lab.mjs",
+    "ephemeris:events": "node umwelt_event_lab.mjs",
+    "test:ephemeris": "node ephemeris_test.mjs",
     "stamp": "node stamp.mjs 10 3 0.05"
   },
   "devDependencies": {}

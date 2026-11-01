@@ -60,6 +60,7 @@ function snapshot(w) {
   return {
     t: w.t, pop, states, targets, phases,
     algaeBiomass: mean(algae.map(e => e.cargo.biomass || 0)),
+    producerMass: K.algaeProducerMass(w),
     giantAlgae: algae.filter(e => (e.biomassMass || 0) >= 210 && (e.algaeCycleCount || 0) >= 11).length,
     algaeStructure: mean(sizes), algaeDepth: mean(depths), algaeDepthStd: std(depths),
     algaeHpFill: mean(hpFills), algaeHpStd: std(hpFills),
@@ -71,7 +72,7 @@ function snapshot(w) {
     algaeSmall: algae.filter(e => (e.biomassMass || 0) < 70).length,
     algaeMedium: algae.filter(e => (e.biomassMass || 0) >= 70 && (e.biomassMass || 0) < 210).length,
     algaeLarge: algae.filter(e => (e.biomassMass || 0) >= 210).length,
-    algaeGasFill: mean(algae.map(e => (e.ballastGas || 0) / Math.max(0.001, K.__test.caps(e).ballastGas))),
+    algaeGasFill: mean(algae.map(e => (e.oxygen || 0) / Math.max(0.001, K.__test.caps(e).oxygen))),
     algaeNetLift: mean(algae.map(e => K.__test.buoyancy(e) - K.__test.biomassWeight(e))),
     sizeDepthCorr: corr(sizes, depths), phaseEntropy, cycleEntropy,
     maxDirectionShare: Math.max(phases.sinking, phases.rising) / Math.max(1, algae.length),
@@ -163,7 +164,7 @@ function run(seed) {
 }
 
 const runs = SEEDS.map(run);
-const keys = ['algaeBiomass', 'giantAlgae', 'algaeStructure', 'algaeDepth', 'algaeDepthStd', 'algaeHpFill', 'algaeHpStd', 'algaeWounded', 'algaeCritical', 'algaeRisingHp', 'algaeSinkingHp', 'healthDepthCorr', 'algaeShallow', 'algaeSmall', 'algaeMedium', 'algaeLarge', 'algaeGasFill', 'algaeNetLift', 'sizeDepthCorr', 'phaseEntropy', 'cycleEntropy', 'maxDirectionShare', 'algaeBoundaryFraction', 'hunterEnergyFill', 'hunterZeroEnergy', 'hunterDepth', 'hunterDepthStd', 'hunterMiddle', 'deepAboveFourPct', 'tier2AboveThirtyFourPct', 'claimMean', 'claimMax', 'fields', 'fieldMatter', 'particles'];
+const keys = ['algaeBiomass', 'producerMass', 'giantAlgae', 'algaeStructure', 'algaeDepth', 'algaeDepthStd', 'algaeHpFill', 'algaeHpStd', 'algaeWounded', 'algaeCritical', 'algaeRisingHp', 'algaeSinkingHp', 'healthDepthCorr', 'algaeShallow', 'algaeSmall', 'algaeMedium', 'algaeLarge', 'algaeGasFill', 'algaeNetLift', 'sizeDepthCorr', 'phaseEntropy', 'cycleEntropy', 'maxDirectionShare', 'algaeBoundaryFraction', 'hunterEnergyFill', 'hunterZeroEnergy', 'hunterDepth', 'hunterDepthStd', 'hunterMiddle', 'deepAboveFourPct', 'tier2AboveThirtyFourPct', 'claimMean', 'claimMax', 'fields', 'fieldMatter', 'particles'];
 const n = Math.min(...runs.map(r => r.samples.length));
 const avg = [];
 for (let i = 0; i < n; i++) {
@@ -187,7 +188,7 @@ console.log('metric                 t=0       compare    gap');
 for (const [label, get] of [
   ['algae pop', r => r.pop.algae], ['scavenger pop', r => r.pop.scavenger],
   ['predator pop', r => r.pop.predator], ['protozoan pop', r => r.pop.protozoan],
-  ['metazoan pop', r => r.pop.metazoan], ['algae biomass', r => r.algaeBiomass],
+  ['metazoan pop', r => r.pop.metazoan], ['producer mass', r => r.producerMass], ['algae biomass', r => r.algaeBiomass],
   ['algae structure', r => r.algaeStructure], ['algae depth', r => r.algaeDepth],
   ['field matter', r => r.fieldMatter], ['field count', r => r.fields]
 ]) {
@@ -238,6 +239,10 @@ for (const r of avg.filter((_, i) => i % Math.max(1, Math.round(TIMELINE_SECONDS
 }
 
 const acceptance = {
+  algaeCountCentered: Math.abs(gap(start.pop.algae, compare.pop.algae)) <= 0.10,
+  producerMassCentered: Math.abs(gap(start.producerMass, compare.producerMass)) <= 0.10,
+  algaeDepthCentered: Math.abs(gap(start.algaeDepth, compare.algaeDepth)) <= 0.10,
+  fieldMatterCentered: Math.abs(gap(start.fieldMatter, compare.fieldMatter)) <= 0.10,
   phaseEntropy: compare.cycleEntropy >= 0.75,
   directionSpread: compare.maxDirectionShare <= 0.75,
   boundaryHeadroom: compare.algaeBoundaryFraction < 0.01,
