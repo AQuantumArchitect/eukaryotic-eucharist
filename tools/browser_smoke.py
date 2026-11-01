@@ -41,6 +41,7 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         **http.server.SimpleHTTPRequestHandler.extensions_map,
         ".js": "text/javascript",
         ".mjs": "text/javascript",
+        ".mp3": "audio/mpeg",
     }
 
     def log_message(self, *args):

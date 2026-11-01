@@ -67,6 +67,12 @@ npm start
 Controls: WASD / arrows to swim, F or right mouse to feed, E to open Yuki, O for the hull graph.
 Touch controls appear on phones. Each version's README lists its full key map.
 
+## Credits
+
+- Original twelve-track soundtrack: **Paul Spooner** (`dudecon`), produced with Suno. Music is
+  opt-in in Mecha Fish and credited in the player at all times; tracks are loaded one at a time only
+  after the player presses Play.
+
 ## Tests
 
 ```powershell

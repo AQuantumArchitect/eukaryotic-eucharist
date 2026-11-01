@@ -23,7 +23,7 @@ $ItchTarget   = 'aquantumarchitect/eukaryotic-eucharist'
 $Channels = @{
   # Reference build: September v1.3.3 "Predator Flow Balance", including the full body graph.
   # Keep this explicit. The itch build must not silently follow whichever version folder is newest.
-  html = @{ Kind='static'; Source='eukaryotic_eucharist_mobile_v1_3_3'; Include=@('index.html','src'); Out='build/release/html'; Check='index.html' }
+  html = @{ Kind='static'; Source='eukaryotic_eucharist_mobile_v1_3_3'; Include=@('index.html','src','music'); Out='build/release/html'; Check='index.html' }
 }
 # -----------------------------------------------------------------------------
 
