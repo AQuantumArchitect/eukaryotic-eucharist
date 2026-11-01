@@ -1,0 +1,56 @@
+name: Test and deploy Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Kernel smoke tests (every build) + immune incursion unit tests
+        run: node tools/kernel_tests.mjs
+      - name: Install headless Chromium
+        run: |
+          pip install playwright==1.54.0
+          python -m playwright install --with-deps chromium
+      - name: Browser smoke (every build boots and renders without a page error)
+        run: python tools/browser_smoke.py
+      - name: Build site
+        run: node tools/build_site.mjs
+      - name: Browser smoke (built site)
+        run: python tools/browser_smoke.py _site --seconds 2
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

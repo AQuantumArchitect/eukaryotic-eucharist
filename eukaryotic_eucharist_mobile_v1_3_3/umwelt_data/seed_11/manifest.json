@@ -1,0 +1,118 @@
+{
+  "seed": 11,
+  "dt": 0.05,
+  "coarse_cadence_s": 5,
+  "fine_cadence_s": 2,
+  "sim_seconds_total": 6518.050000014947,
+  "rows": 46416,
+  "hit_safety_cap": false,
+  "start": "2026-01-05T00:00:00.000Z",
+  "sensor_ids": [
+    "pop_algae_surface",
+    "pop_algae_deep_bloom",
+    "pop_scavenger_oxic",
+    "pop_scavenger_abyssal",
+    "pop_predator_skirmisher",
+    "pop_predator_aerobic_wall",
+    "pop_protozoan",
+    "pop_metazoan",
+    "pop_brood",
+    "pop_swarm_agent",
+    "pop_total",
+    "hpfill_algae_surface",
+    "hpfill_algae_deep_bloom",
+    "hpfill_scavenger_oxic",
+    "hpfill_scavenger_abyssal",
+    "hpfill_predator_skirmisher",
+    "hpfill_predator_aerobic_wall",
+    "hpfill_protozoan",
+    "hpfill_metazoan",
+    "hpfill_brood",
+    "hpfill_swarm_agent",
+    "atpfill_algae_surface",
+    "atpfill_algae_deep_bloom",
+    "atpfill_scavenger_oxic",
+    "atpfill_scavenger_abyssal",
+    "atpfill_predator_skirmisher",
+    "atpfill_predator_aerobic_wall",
+    "atpfill_protozoan",
+    "atpfill_metazoan",
+    "atpfill_brood",
+    "atpfill_swarm_agent",
+    "matter_fields",
+    "matter_cargo",
+    "matter_body",
+    "matter_transit",
+    "matter_total",
+    "crab_r",
+    "crab_swallowed",
+    "crab_lap_frac",
+    "crab_alive"
+  ],
+  "generations": [
+    {
+      "index": 1,
+      "arrive_t": 45.19999999999957,
+      "arrive_r": 1627,
+      "depart_t": 111.6999999999958,
+      "swallowed": 9225,
+      "exit": "departed"
+    },
+    {
+      "index": 2,
+      "arrive_t": 531.2000000000646,
+      "arrive_r": 1508,
+      "depart_t": 598.3500000000035,
+      "swallowed": 6718,
+      "exit": "departed"
+    },
+    {
+      "index": 3,
+      "arrive_t": 2000.0999999987287,
+      "arrive_r": 1500,
+      "depart_t": 2067.299999998755,
+      "swallowed": 7992,
+      "exit": "departed"
+    },
+    {
+      "index": 4,
+      "arrive_t": 3342.5500000033944,
+      "arrive_r": 1532,
+      "depart_t": 3409.550000003638,
+      "swallowed": 8714,
+      "exit": "departed"
+    },
+    {
+      "index": 5,
+      "arrive_t": 4541.300000007755,
+      "arrive_r": 1507,
+      "depart_t": 4608.450000008,
+      "swallowed": 10152,
+      "exit": "departed"
+    },
+    {
+      "index": 6,
+      "arrive_t": 5290.20000001048,
+      "arrive_r": 1505,
+      "depart_t": 5357.350000010724,
+      "swallowed": 10341,
+      "exit": "departed"
+    },
+    {
+      "index": 7,
+      "arrive_t": 6031.200000013176,
+      "arrive_r": 1564,
+      "depart_t": 6098.050000013419,
+      "swallowed": 12746,
+      "exit": "departed"
+    },
+    {
+      "index": 8,
+      "arrive_t": 6451.050000014703,
+      "arrive_r": 1532,
+      "depart_t": 6518.050000014947,
+      "swallowed": 8181,
+      "exit": "departed"
+    }
+  ]
+}

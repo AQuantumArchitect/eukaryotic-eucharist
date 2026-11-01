@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "start": "kill $(lsof -ti:8787) 2>/dev/null; true && python3 -m http.server 8787",
+    "stop": "kill $(lsof -ti:8787) 2>/dev/null; true",
+    "smoke": "node smoke_test.mjs"
+  },
+  "devDependencies": {}
+}

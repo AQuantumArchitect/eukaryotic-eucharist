@@ -1,0 +1,14 @@
+{
+  "name": "eukarayotic-eucharist-workspace",
+  "private": true,
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "smoke": "node tools/run_latest.mjs smoke",
+    "test": "node tools/kernel_tests.mjs",
+    "test:latest": "node tools/run_latest.mjs test",
+    "ecology": "node tools/run_latest.mjs ecology",
+    "stamp": "node tools/run_latest.mjs stamp",
+    "build:site": "node tools/build_site.mjs",
+    "smoke:browser": "python tools/browser_smoke.py"
+  }
+}

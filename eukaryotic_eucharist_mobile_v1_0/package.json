@@ -1,0 +1,9 @@
+{
+  "name": "eukaryotic-eucharist-mobile-v1-0",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8787",
+    "smoke": "node test/smoke_v1_0.mjs"
+  }
+}
