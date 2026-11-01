@@ -28,6 +28,8 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'versions'), { recursive: true });
 cpSync(join(root, 'site', 'index.html'), join(out, 'index.html'));
 cpSync(join(root, 'docs', 'screenshots'), join(out, 'screenshots'), { recursive: true });
+// Mecha Fish and its archived v1.3.3 route share one soundtrack copy in the Pages artifact.
+cpSync(join(root, latest, 'music'), join(out, 'music'), { recursive: true });
 writeFileSync(join(out, '.nojekyll'), '');
 
 copyBuild(join(root, latest), join(out, 'mecha-fish'));

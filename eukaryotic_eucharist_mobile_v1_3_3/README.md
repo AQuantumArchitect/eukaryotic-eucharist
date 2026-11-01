@@ -1,5 +1,7 @@
 # Mecha Fish! — Mobile v1.3.3
 
+Original twelve-track soundtrack composed and contributed by **Paul Spooner**.
+
 Player-facing name of the swimming-column playable (light, oxygen, flow).
 Split from Eukaryotic Eucharist: this is the packed winner. The bacteria
 identity lives in `../immune_incursion/`.
