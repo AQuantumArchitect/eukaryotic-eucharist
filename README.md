@@ -48,6 +48,7 @@ immune_incursion/                           immune incursion prototype (kernel.p
 site/index.html                             landing page for GitHub Pages
 tools/                                      cross-platform Node test/site tools, browser_smoke.py, release.ps1
 deploy/itch, deploy/electron                itch.io zip packing, desktop wrapper
+docs/VERSIONS.md                            which folder is live where (Pages, itch, archive)
 SPLIT.md                                    why Mecha Fish and Immune Incursion are separate products
 ```
 

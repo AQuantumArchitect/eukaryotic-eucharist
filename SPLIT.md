@@ -22,6 +22,18 @@ existing organelle tooling remapped as immune tools.
 Home: `immune_incursion/`. Player face `index.html`. Packed as
 `deploy/itch/ee_immune.zip`. Hive does not push. Viruses stay fog.
 
+## Status
+
+| Item | State |
+|---|---|
+| Mecha Fish! packed as `deploy/itch/mecha_fish.zip` | done |
+| Immune Incursion home, face and `ee_immune.zip` | done |
+| Both games served on Pages (`mecha-fish/`, `immune/`) | done |
+| Folder-to-destination index | done, see `docs/VERSIONS.md` |
+| itch slug / LIVE URL for either game | `needs:luke` (not invented) |
+| Butler push of either zip | `needs:luke` (login required) |
+| Viruses in Immune Incursion | deferred by design, stay fog |
+
 ## Do not
 
 - Move canonical development back to the retired WSL checkout.
