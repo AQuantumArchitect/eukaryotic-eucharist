@@ -1,0 +1,49 @@
+name: HTML build checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: html-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pages-load:
+    name: Playable pages load and run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install headless Chromium
+        run: |
+          pip install playwright==1.54.0
+          python -m playwright install --with-deps chromium
+      - name: Build site
+        run: node tools/build_site.mjs
+      - name: Load site, classic, mecha-fish, immune (console errors / frozen canvas over 10 s)
+        run: python tools/page_check.py _site --seconds 10
+
+  release-dry-run:
+    name: Release packaging (dry run, no upload)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: release.ps1 -DryRun -Channel html
+        shell: pwsh
+        run: ./tools/release.ps1 -DryRun -Channel html -AllowUntagged
+      - name: Check staged output
+        run: |
+          test -s build/release/html/index.html
+          test -d build/release/html/src
+          test -s build/release/html/VERSION.txt
