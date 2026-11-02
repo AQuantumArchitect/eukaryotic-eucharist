@@ -2,10 +2,13 @@
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
-LATEST=$(ls -d "$WORKSPACE"/eukaryotic_eucharist_mobile_v* 2>/dev/null | sort -V | tail -1)
+# Pinned to the v1.3.3 reference build, same as tools/release.ps1 -Channel html.
+# Newer version folders (e.g. v1.3.4) are Pages-only until the pin is moved on purpose.
+LATEST="$WORKSPACE/eukaryotic_eucharist_mobile_v1_3_3"
 VERSION=$(basename "$LATEST")
 OUT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ZIP="$OUT_DIR/mecha_fish.zip"
+[ -f "$LATEST/index.html" ] || { echo "Pinned build missing: $LATEST" >&2; exit 1; }
 
 echo "Packaging $VERSION as Mecha Fish! for itch.io..."
 rm -f "$ZIP"
