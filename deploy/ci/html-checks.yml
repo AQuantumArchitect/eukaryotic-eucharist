@@ -1,3 +1,4 @@
+# Move to .github/workflows/html-checks.yml (the builder token cannot write workflow files).
 name: HTML build checks
 
 on:
