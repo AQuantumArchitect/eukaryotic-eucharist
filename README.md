@@ -70,9 +70,10 @@ Touch controls appear on phones. Each version's README lists its full key map.
 
 ## Credits
 
-- Original twelve-track soundtrack: **Paul Spooner** (`dudecon`), produced with Suno. Music is
-  opt-in in Mecha Fish and credited in the player at all times; tracks are loaded one at a time only
-  after the player presses Play.
+- Original twelve-track soundtrack: **Paul Spooner** (`dudecon`), produced with Suno, used with
+  permission of the composer. Music is opt-in in Mecha Fish and credited in the player at all times;
+  tracks are loaded one at a time only after the player presses Play. The recordings are not under
+  the MIT license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Tests
 
@@ -101,4 +102,7 @@ Pages from `main`.
 
 ## License
 
-No license has been chosen yet, so all rights are reserved by default. Ask before reusing code or assets.
+Game code and documentation are under the [MIT License](LICENSE). Copyright (c) 2026 Luke Spooner.
+
+The soundtrack is separate. Original music by Paul Spooner (`dudecon`) is used with permission of the
+composer and is not under the MIT license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
