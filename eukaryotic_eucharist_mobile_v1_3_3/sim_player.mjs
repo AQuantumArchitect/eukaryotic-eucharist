@@ -8,13 +8,14 @@
 // (the climax) → farm the monstrous deep (the falling action).
 //
 // Nodes: escape(O2) / forage / gather(exotics+DNA) / hunt / dive / ascend / survive(incubation) /
-//        flee. Yuki shopping is modeled as a PAUSE (maybeShop, called by the driver before step),
-// because the real game freezes the sim while the shop menu is open — so a fragile early cell isn't
-// bled by surface O2 while it decides. Determinism: the player carries its own seeded PRNG.
+//        flee. Yuki shopping is modeled as SHELTER (maybeShop, called by the driver before step),
+// matching the real game since its pause was removed: with the shop open the player rests inside Yuki
+// (step(..., sheltered=true)): damage-immune, healed and O2-eased by yukiRestore, while the world runs on. Determinism: the player carries its own seeded PRNG.
 //
 // Driver contract each frame:
 //   if (!player.maybeShop(world)) { const cmd = player.update(world, dt); K.step(world, cmd, dt); }
-// maybeShop returns true on a frame it shopped (a paused frame — do NOT step or advance time).
+// maybeShop returns true on a SHELTERED frame; the driver then steps with no commands and sheltered=true:
+//   const sh = player.maybeShop(world); K.step(world, sh ? {} : player.update(world, dt), dt, sh);
 
 import { WORLD } from './src/graph_kernel.mjs';
 
@@ -51,6 +52,7 @@ export class PolicyPlayer {
     this.wander = this.rng() * Math.PI * 2;
     this.lingerT = 0; this.lingerX = 0; this.lingerY = 0;
     this.shopArmed = false;                        // re-arm once we leave Yuki, so we don't re-burst
+    this.shelterT = 0;                             // seconds left resting inside Yuki (shop open)
     this.log = []; this.milestones = {};
     this._seenDisc = 0;
     this._hadBite = false; this._hadMito = false; this._incub = false;
@@ -212,14 +214,16 @@ export class PolicyPlayer {
 
   anyGatherNeed(need) { return need.spores || need.enzymes || need.crystals || need.dna; }
 
-  // ---- shop as a PAUSE (driver calls this before step) ----------------------------------------
+  // ---- shop as SHELTER (driver calls this before step) --------------------------------------
   maybeShop(world) {
     const K = this.K;
     const p = K.getPlayer(world);
-    if (!p || !p.alive) return false;
+    if (!p || !p.alive) { this.shelterT = 0; return false; }
+    if (this.shelterT > 0) { this.shelterT -= 1 / 60; return true; }   // still resting inside Yuki
     if (!K.nearYuki(world, p)) { this.shopArmed = true; this._conv = 0; return false; }
     if (!this.shopArmed) return false;              // already shopped this visit; leave before re-arming
-    if (!this.wantShop(world, p)) return false;
+    const hurting = p.hp < this._caps(p).hp * 0.6 || this._o2over(p) > 0.02;
+    if (!this.wantShop(world, p) && !hurting) return false;
     // One paused visit: heal, buy/sequence everything we can, top up lipids/ATP, detox if choking.
     let actions = 0;
     for (let g = 0; g < 8; g++) {                                  // Repair Communion (value-based) — heal
@@ -242,8 +246,11 @@ export class PolicyPlayer {
     }
     if (this._o2over(p) > 0.05) K.buyOffering(world, 'detox');   // vent surface O2 before diving off
     this.shopArmed = false;
-    if (actions > 0) { this.node = 'dive'; return true; }        // paused frame — driver skips step
-    return false;
+    // Rest inside Yuki like a human with the shop open: she heals ~30%/s and eases O2 below the poison
+    // line. Stay until healed (at most 4 s), then dive back out.
+    this.shelterT = Math.min(4, 0.5 + Math.max(0, 1 - p.hp / this._caps(p).hp) / 0.3);
+    this.node = 'dive';
+    return true;
   }
 
   doShop(world, p) {
@@ -322,7 +329,7 @@ export class PolicyPlayer {
         this.node = 'gather';                                      // STAY committed to the dive — don't let
                                                                    // recharge/shop yo-yo abort it before we
                                                                    // reach the exotics (only flee preempts)
-      } else if (ws && atNyuki) {
+      } else if (ws && atNyuki && this.shopArmed) {
         this.node = 'shop';                                      // maybeShop handles the paused burst
       } else if (!atNyuki && (K.orgCount(p, "membrane") + K.orgCount(p, "membrane_intake")) >= 3 &&
                  hpFrac > 0.5 && atpFrac > 0.2 && (need.spores || need.enzymes || need.crystals)) {

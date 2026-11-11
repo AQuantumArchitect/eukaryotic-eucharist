@@ -10,10 +10,8 @@ const frames = Math.round(seconds * 60);
 const nodes = new Set();
 let alive = true;
 for (let i = 0; i < frames; i++) {
-  if (!player.maybeShop(world)) {
-    const cmd = player.update(world, DT);
-    K.step(world, cmd, DT);
-  }
+  const sh = player.maybeShop(world);
+  K.step(world, sh ? {} : player.update(world, DT), DT, sh);   // sh: resting inside Yuki (shop open)
   nodes.add(player.node);
   if (!K.getPlayer(world)) { alive = false; break; }
 }

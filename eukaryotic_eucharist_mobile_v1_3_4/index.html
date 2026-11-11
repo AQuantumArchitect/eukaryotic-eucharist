@@ -148,7 +148,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
     <div class="toast card" id="toast"></div>
   </div>
   <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1 id="shopTitle">Yuki <small style="font-size:11px;font-weight:800;color:var(--muted)">— dock · hull grafts · ballast</small></h1></div><div class="close" id="closeShop">Clos<b class="ckey">e</b></div></div><div id="shopGuide" class="shopGuide"></div><div id="shopExchange" class="shopExchange"></div><div id="shopWarn" class="shopWarn" style="display:none"></div><div id="bodyHead" class="bodyHead"><span>Your Hull <small id="bodyCount"></small></span></div><div id="shopBody"></div></div></div>
-  <div class="gameOver" id="gameOver"><div class="box card"><h1>Hull Ruptured</h1><p>The world did not reset. Your wreck bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
+  <div class="gameOver" id="gameOver"><div class="box card"><h1>Hull Ruptured</h1><p id="deathCause" style="color:#ffd8df;font-weight:850"></p><p>The world did not reset. Your wreck bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
   <div class="gameOver" id="wipeConfirm"><div class="box card"><h1>Wipe everything?</h1><p>This erases every DNA unlock permanently — Yuki's grafts return to locked, first-run state. This cannot be undone.</p><button id="wipeCancel" style="background:rgba(255,255,255,.14);color:#eae7ff;margin-right:8px">Cancel</button><button id="wipeConfirmBtn">Wipe everything</button></div></div>
   <div class="focusGate" id="focusGate"><h2>Click to dive</h2><p>Take the helm of a mechanical fish</p></div>
 </div>
@@ -434,7 +434,7 @@ addEventListener('keydown',e=>{
   }
   if(k==='p'){ if(e.shiftKey) confirmFullWipe(); else resetWorld(); }
   if(k==='o') dagToggleOpen();
-  if(k==='k') { K.killPlayer(world); toast('You burst your own membrane — your corpse blooms into a feeding field.'); }
+  if(k==='k') { if(K.killPlayer(world).ok) showDeath('Self-lysis: you burst your own membrane, and your corpse blooms into a feeding field.'); }
   if(e.key==='Escape') closeShop();
 });
 addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
@@ -487,9 +487,36 @@ function loop(now){
 }
 requestAnimationFrame(loop);
 
+// Why did I die? The kernel's death event carries sourceId: a body id (a killer) or a reason string
+// ('energy_biomass_collapse', 'metabolism'). Ambient deaths are read from the player's last frame, so the
+// game-over card names the cause instead of a bare "Hull Ruptured" (bot playtests: most deaths were
+// silent starvation or canopy O2, which a new player can't tell apart from being eaten).
+let lastSelf=null, lastBodies=new Map();
+const KILLER_NAME={algae:'an algal bloom',scavenger:'a scavenger',predator:'a predator',protozoan:'a protozoan',metazoan:'a metazoan colony',brood:'a brood cell',swarm_agent:'a swarm cell',shroomba:'the crab'};
+function deathCause(src){
+  if(typeof src==='number'){ const k=lastBodies.get(src); return k?`Killed by ${KILLER_NAME[k]||'another cell'}.`:'Killed in a fight.'; }
+  const s=lastSelf;
+  if(src==='energy_biomass_collapse') return 'Starved: ATP and biomass both ran dry and your cell dissolved. Feed on fields to refill them.';
+  if(s&&s.oxygen>s.oxygenTolerance+0.02) return 'Oxygen poisoning: you held more O2 than your cell can take. Dive below the sunlit canopy, or rest inside Yuki.';
+  if(s&&s.toxinCap>0&&s.toxins>s.toxinCap*0.68) return 'Poisoned by your own toxins. Yuki scrubs them; Compact (U) turns them into ballast.';
+  if(s&&s.atp<=0.05) return 'Starved: out of ATP with too little biomass to recover. Feed on fields before the tank runs dry.';
+  return 'Your cell gave out.';
+}
+function rememberSelf(){
+  const pid=world.playerId, me=projection.entities.find(e=>e.id===pid);
+  if(me){ const atp=hud?.resources?.find(r=>r.id==='energy'); lastSelf={oxygen:me.oxygen,oxygenTolerance:me.oxygenTolerance,toxins:me.toxins,toxinCap:me.toxinCap,atp:atp?atp.value:1}; }
+  lastBodies=new Map(projection.entities.map(e=>[e.id,e.controller]));
+}
+function showDeath(text){
+  if(didGameOver) return;
+  didGameOver=true; el('deathCause').textContent=text; ui.gameOver.style.display='flex';
+  setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},2600);
+}
 function checkDeathEvent(){
   const evs=projection.events, pid=world.playerId;
-  if(evs.some(e=>e.type==='death'&&e.entityId===pid)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
+  const died=evs.find(e=>e.type==='death'&&e.entityId===pid);
+  if(died) showDeath(deathCause(died.sourceId));
+  if(!died) rememberSelf();
   // The notification bar is for YOU: only events about the player's own body, and only
   // meaningful ones (progress, milestones), never the froth's per-cell simulation churn.
   // One highest-priority message per frame, so it reads clean instead of flickering.

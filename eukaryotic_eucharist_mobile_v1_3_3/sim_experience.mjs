@@ -86,7 +86,7 @@ function runSeed(seed) {
   const frames = Math.round(MIN * 60 * 60);
   let sec = 0;
   for (let i = 0; i < frames; i++) {
-    if (!player.maybeShop(world)) { const cmd = player.update(world, DT); K.step(world, cmd, DT); }
+    const sh = player.maybeShop(world); K.step(world, sh ? {} : player.update(world, DT), DT, sh); // sh: resting inside Yuki (shop open)
     const p = K.getPlayer(world);
     if (p) player._maxDepthEver = Math.max(player._maxDepthEver, p.y - CANOPY);
     if (world.playerId !== prevPid) { deaths.push(+world.t.toFixed(1)); prevPid = world.playerId; prevHp = 105; }
