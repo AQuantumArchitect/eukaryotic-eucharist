@@ -2,6 +2,38 @@
 
 Short dated entries from Claude Code on Fenrir, so Game Butler can read progress. Newest first.
 
+## 2026-11-11, afternoon (Claude Code on Fenrir, Opus 5.5): Luke's two answers implemented
+
+Both open questions were answered by Luke via Game Butler at 2:34 PM PT. Both are done (locally committed).
+
+**1. Fair starvation (v1.3.4 kernel, player only)**
+- Removed the instant death when ATP and biomass both hit zero. New rule (`PLAYER_STARVE` in simCore):
+  no ATP costs 2.5 HP/s; no biomass ferments the body for ATP at 1.5 HP/s (0.6 ATP per HP), but only up
+  to a 2-ATP reserve, so it is a lifeline to swim to food, not an ATP farm (Yuki heals HP for free).
+  Both pause while sheltered inside Yuki. Only running out of HP kills.
+- From full HP with no food at all, a cell lasts about 36 s; with some biomass but no ATP it lasts ~40 s.
+- Other creatures keep their old starvation, so the tuned ecology does not move.
+- Death card and starvation warnings now describe this rule: "Out of ATP: your cell is losing HP",
+  "No biomass: your cell is fermenting its own body for ATP", "Running dry ..." before either.
+- Smoke test updated to the new rule, plus two new asserts (no instant death at full HP; the fermentation
+  reserve is never exceeded).
+- Bots (`sim_experience.mjs 15`, same six seeds, now also copied into the v1.3.4 folder so they test the
+  shipping kernel): deaths per 15 min 7.7 -> 5.2 (4-6), best seed 38% progress, still 0/6 reach the climax.
+
+**2. The itch/html release is now v1.3.4, with the soundtrack**
+- `tools/release.ps1`, `deploy/itch/pack.sh` and `tools/build_site.mjs` point at v1.3.4. The soundtrack keeps
+  its one home in `eukaryotic_eucharist_mobile_v1_3_3/music` and is copied in as `music/`. The old pack.sh
+  never shipped music at all; it does now. release.ps1 fails the build if a track is missing.
+- pack.sh now works from Git Bash on Windows (native paths for Windows Python) and only replaces the zip
+  once the new one is complete.
+- v1.3.4 played from the repo folder (`npm start`) finds the soundtrack in the v1.3.3 folder.
+- Verified: `release.ps1 -DryRun` stages index.html, src, 12 tracks, VERSION.txt; the packed zip (18 files,
+  12 mp3s, v1.3.4 kernel with the new rule) boots in Edge and the music plays; Pages mecha-fish/ is v1.3.4
+  and plays music; `npm test` all green; page check: classic, mecha-fish, immune ok.
+- The zip is ~100 MB with music, at GitHub's per-file limit, so I did not commit a regenerated
+  `deploy/itch/mecha_fish.zip` (the tracked one is the old music-less pack). Game Butler should pack at release.
+- README, RELEASE.md, SPLIT.md and docs/VERSIONS.md updated.
+
 ## 2026-11-11 (Claude Code on Fenrir, Opus 5.5)
 
 Started the playtest-to-itch push. The goal is an itch-ready, human-playtestable build by about Nov 22.
@@ -54,6 +86,7 @@ Started the playtest-to-itch push. The goal is an itch-ready, human-playtestable
 - `npm test` v1.3.4 green; page check and the self-lysis card in Edge show no page errors.
 
 ### Questions for Luke
+(Both answered by Luke on 2026-11-11 at 2:34 PM PT: ship v1.3.4; starvation must drain HP, never kill instantly. Done above.)
 1. Should the itch/html release move from v1.3.3 to v1.3.4? v1.3.4 is the same kernel with the
    first-five-minutes front-end fixes, but `tools/release.ps1` and `build_site.mjs` deliberately pin 1.3.3,
    and v1.3.4 has no `music/` folder of its own (Pages serves the v1.3.3 copy).
@@ -64,4 +97,5 @@ Started the playtest-to-itch push. The goal is an itch-ready, human-playtestable
 - Commits and pushes: Claude Code's auto-mode permission check blocked a commit on 2026-11-11, so this
   work sits uncommitted in the `C:\Users\lukes\Documents\ee-playtest` worktree (branch
   `fenrir/playtest-polish`). Luke's research checkout (`research/umwelt-ephemeris`) is untouched.
-- No ready-for-human-playtest issue yet: the release-folder question above should be settled first.
+- No ready-for-human-playtest issue yet: the release folder is settled; next I need a time-to-beat estimate
+  (the bot never reaches the climax) and the pushed SHA to cite.

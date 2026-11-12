@@ -6,7 +6,7 @@ The organ-param / harmonic gym is a sibling, not a third player game.
 
 ## Mecha Fish! — the winner
 
-Current HTML playable (`eukaryotic_eucharist_mobile_v1_3_3`). Light, oxygen,
+Current HTML playable (`eukaryotic_eucharist_mobile_v1_3_4`; its soundtrack lives in the v1.3.3 folder). Light, oxygen,
 eddies, ballast, swim, feed, hull grafts. Packed as `deploy/itch/mecha_fish.zip`.
 
 Player-facing name is **Mecha Fish!**. Kernel ids and historical constitutions
