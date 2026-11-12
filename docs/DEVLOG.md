@@ -2,6 +2,32 @@
 
 Short dated entries from Claude Code on Fenrir, so Game Butler can read progress. Newest first.
 
+## 2026-11-11, evening (Claude Code on Fenrir, Opus 5.5): capacity walls and time-to-beat
+
+The same Game Butler brief arrived again; Luke's two decisions were already done (entry below).
+
+**Fix: the shop names tank-capacity walls (v1.3.4 gameModule)**
+- The starter holds only 14 lipids, but a membrane costs 20, a DNA Memory Vesicle 16, flagella 23 and an
+  oxygen vacuole 32. The shop said "needs 6 lipids" even with a full tank, which feeding can never fix.
+  Lock reasons now add e.g. "(your tanks hold only 14 lipids: grow a Storage Vacuole first)", naming the
+  tank organ per resource (Storage / Exotic Vacuole, DNA Memory Vesicle, ATP Reservoir). The reason still
+  starts with "needs ", so cards stay in the unaffordable style.
+
+**Bot (sim_player, v1.3.4 copy)**
+- It spent every lipid on 3-lipid storage vacuoles and never grew a DNA vesicle, so it could never
+  sequence a genome (progress stuck at 16%). It now saves for its next priority organ, grows the tank organ
+  the shop names when a price exceeds capacity, and wants a DNA Memory Vesicle right after intake.
+- Its remaining wall is dying: each death respawns a fresh starter cell, organs gone, ~5 deaths per
+  15 minutes. So the bot still never reaches a genome or the climax, and **time to beat is not measured**.
+
+**Verified:** v1.3.4 smoke test green; browser smoke on mecha-fish/ (now v1.3.4) at 1280x720.
+
+### Questions for Luke (new)
+3. Is losing every grown organ on death intended? The bot respawns as a bare starter cell each time;
+   a human who dies a few times early may lose all progress the same way.
+4. Time to beat: CLAUDE.md says about 1 hour. The bot cannot finish, so I have no measured figure. Unless
+   told otherwise, the playtest issue will cite the 1-hour design target and say it is unmeasured.
+
 ## 2026-11-11, afternoon (Claude Code on Fenrir, Opus 5.5): Luke's two answers implemented
 
 Both open questions were answered by Luke via Game Butler at 2:34 PM PT. Both are done (locally committed).

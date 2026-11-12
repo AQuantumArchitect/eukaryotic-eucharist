@@ -153,6 +153,7 @@ export class PolicyPlayer {
       return [
         { id: 'membrane', upTo: 2 },               // pure matter — HP FIRST, so a nursery predator doesn't one-shot us
         { id: 'membrane_intake', upTo: 2 },        // pure matter — faster feeding, bigger pickup radius
+        { id: 'dna_memory_vesicle', upTo: 1 },     // crystal — the starter holds NO DNA; every genome needs this first
         { id: 'oxygen_vacuole', upTo: 3 },          // pure matter — host-organ readiness term (×3 ⇒ 0.75 > 0.66 gate) + ballast
         { id: 'membrane', upTo: 3 },               // more HP for the deep dives
         { id: 'anaerobic_processor', upTo: 3 },    // enzyme — ATP throughput (faster recharge)
@@ -181,7 +182,17 @@ export class PolicyPlayer {
       if (o.id === 'mitochondrial_eucharist' && K.hasMito(p)) continue;
       if (!o.locked) { buyable.push(o.id); continue; }
       const onlyMoney = o.reasons.length && o.reasons.every(r => r.startsWith('needs '));
-      if (onlyMoney && !savingsGoal) savingsGoal = o;
+      // SAVE for it: a higher-priority organ blocked only by cost stops cheaper, lower-priority buys
+      // (otherwise every lipid went into 3-lipid storage vacuoles and membrane / the DNA vesicle never came).
+      // A price above tank capacity can't be saved for: grow the tank organ the shop names, then save.
+      const tank = /grow an? (Storage Vacuole|Exotic Vacuole|DNA Memory Vesicle|ATP Reservoir) first/.exec(o.reasons.join(' '));
+      if (onlyMoney && tank) {
+        const tankId = { 'Storage Vacuole': 'storage_vacuole', 'Exotic Vacuole': 'exotic_vacuole', 'DNA Memory Vesicle': 'dna_memory_vesicle', 'ATP Reservoir': 'atp_reservoir' }[tank[1]];
+        if (byId[tankId] && !byId[tankId].locked && !buyable.includes(tankId)) buyable.push(tankId);
+        if (!savingsGoal) savingsGoal = byId[tankId] || o;
+        break;
+      }
+      if (onlyMoney && !savingsGoal) { savingsGoal = o; break; }
     }
     const seq = byId['sequence_dna'];
     const hasSequence = seq && !seq.locked && ((p.carriedStrains && p.carriedStrains.size > 0) || (p.cargo.dna || 0) >= 3);
