@@ -43,6 +43,16 @@ Started the playtest-to-itch push. The goal is an itch-ready, human-playtestable
 - Verified: harness over the cause logic (6 cases), self-lysis card in Edge via Playwright (no page errors),
   `npm test` all green, browser smoke at 390x844.
 
+**Later the same day: starvation warning, and the death card made accurate**
+- New toast before starvation (v1.3.4 front end): once ATP is under 2 and biomass under 6 (unsheltered), it
+  says "Starving ... feed on a field now, or your cell dissolves", at most every 5 s. A fresh player idling
+  2 minutes never sees it (starts with 18 ATP). In bot runs it fired 5–21 s before each starvation death.
+- Fixed two bugs in my own death card: killer ids are strings (`body_119`), not numbers, so fight deaths
+  were mislabelled; and the bot lives above its O2 tolerance most of the time, so starvation was blamed on
+  oxygen. The card now names the biggest drain using the kernel's HP rates. Checked against the bot's real
+  last frames (7 cases).
+- `npm test` v1.3.4 green; page check and the self-lysis card in Edge show no page errors.
+
 ### Questions for Luke
 1. Should the itch/html release move from v1.3.3 to v1.3.4? v1.3.4 is the same kernel with the
    first-five-minutes front-end fixes, but `tools/release.ps1` and `build_site.mjs` deliberately pin 1.3.3,

@@ -487,24 +487,41 @@ function loop(now){
 }
 requestAnimationFrame(loop);
 
-// Why did I die? The kernel's death event carries sourceId: a body id (a killer) or a reason string
+// Why did I die? The kernel's death event carries sourceId: a body id like 'body_119' (a killer) or a reason string
 // ('energy_biomass_collapse', 'metabolism'). Ambient deaths are read from the player's last frame, so the
 // game-over card names the cause instead of a bare "Hull Ruptured" (bot playtests: most deaths were
 // silent starvation or canopy O2, which a new player can't tell apart from being eaten).
 let lastSelf=null, lastBodies=new Map();
 const KILLER_NAME={algae:'an algal bloom',scavenger:'a scavenger',predator:'a predator',protozoan:'a protozoan',metazoan:'a metazoan colony',brood:'a brood cell',swarm_agent:'a swarm cell',shroomba:'the crab'};
 function deathCause(src){
-  if(typeof src==='number'){ const k=lastBodies.get(src); return k?`Killed by ${KILLER_NAME[k]||'another cell'}.`:'Killed in a fight.'; }
+  if(lastBodies.has(src)){ const k=lastBodies.get(src); return `Killed by ${KILLER_NAME[k]||'another cell'}.`; }
+  if(typeof src==='number'||/^body_/.test(String(src))) return 'Killed in a fight.';
   const s=lastSelf;
-  if(src==='energy_biomass_collapse') return 'Starved: ATP and biomass both ran dry and your cell dissolved. Feed on fields to refill them.';
-  if(s&&s.oxygen>s.oxygenTolerance+0.02) return 'Oxygen poisoning: you held more O2 than your cell can take. Dive below the sunlit canopy, or rest inside Yuki.';
-  if(s&&s.toxinCap>0&&s.toxins>s.toxinCap*0.68) return 'Poisoned by your own toxins. Yuki scrubs them; Compact (U) turns them into ballast.';
-  if(s&&s.atp<=0.05) return 'Starved: out of ATP with too little biomass to recover. Feed on fields before the tank runs dry.';
-  return 'Your cell gave out.';
+  const STARVED='Starved: ATP and biomass both ran dry and your cell dissolved. Feed on fields to refill them.';
+  if(src==='energy_biomass_collapse'||!s) return src==='energy_biomass_collapse'?STARVED:'Your cell gave out.';
+  // Name the biggest ambient drain, using the kernel's own HP rates (updateEnvironmentAndMetabolism):
+  // O2 overload ~7.4/s per unit over tolerance, toxins (1.8+9.5x)x past 68% of the cap, autolysis 5-13/s.
+  const o2=Math.max(0,s.oxygen-s.oxygenTolerance)*7.4;
+  const tx=s.toxinCap>0?Math.max(0,(s.toxins-s.toxinCap*0.68)/s.toxinCap):0, tox=(1.8+9.5*tx)*tx;
+  const starve=s.atp<=0.05&&s.biomass<4?5+8*(1-s.biomass/4):0;
+  const worst=Math.max(o2,tox,starve);
+  if(worst<=0) return 'Your cell gave out.';
+  if(worst===starve) return STARVED;
+  if(worst===o2) return 'Oxygen poisoning: you held more O2 than your cell can take. Dive below the sunlit canopy, or rest inside Yuki.';
+  return 'Poisoned by your own toxins. Yuki scrubs them; Compact (U) turns them into ballast.';
 }
 function rememberSelf(){
   const pid=world.playerId, me=projection.entities.find(e=>e.id===pid);
-  if(me){ const atp=hud?.resources?.find(r=>r.id==='energy'); lastSelf={oxygen:me.oxygen,oxygenTolerance:me.oxygenTolerance,toxins:me.toxins,toxinCap:me.toxinCap,atp:atp?atp.value:1}; }
+  if(me){
+    const atp=hud?.resources?.find(r=>r.id==='energy'), bio=hud?.resources?.find(r=>r.id==='biomass');
+    lastSelf={oxygen:me.oxygen,oxygenTolerance:me.oxygenTolerance,toxins:me.toxins,toxinCap:me.toxinCap,atp:atp?atp.value:1,biomass:bio?bio.value:10};
+    // Starvation warning: the kernel autolyses a body with no ATP and under 4 biomass, and kills it outright
+    // (at ANY HP) once both are gone. Say so before it happens, at most every 5 s, never while sheltered.
+    const now=performance.now();
+    if(atp&&bio&&atp.value<2&&bio.value<6&&!me.sheltered&&now-(rememberSelf._warned||0)>5000){
+      rememberSelf._warned=now; toast('Starving: ATP is empty and biomass is almost gone. Feed on a field now, or your cell dissolves.');
+    }
+  }
   lastBodies=new Map(projection.entities.map(e=>[e.id,e.controller]));
 }
 function showDeath(text){
