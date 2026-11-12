@@ -4463,19 +4463,49 @@ function updateEnvironmentAndMetabolism(world, dt) {
       const massBurden = 1 + (e.cargo.biomass || 0) / Math.max(8, caps(e).biomass) * 0.55 + Object.values(e.organelles || {}).reduce((a,b)=>a+b,0) * 0.012;
       const upkeep = (e.controller === 'algae' ? 0.048 : 0.046) * massBurden * dt;
       e.cargo.energy = Math.max(0, (e.cargo.energy || 0) - upkeep);
-      // Starvation: out of ATP with too little biomass to recover, the body autolyses —
+      if (e.kind === 'player') {
+        // PLAYER STARVATION (Luke, 2026-11-11): no instant death while HP remains. Running dry costs HP
+        // over time and only running out of HP kills you:
+        //  - no biomass: the cell ferments its own body for ATP (HP -> ATP), but only up to a small
+        //    reserve, so it is a lifeline to swim to food, never an ATP farm (Yuki heals HP for free);
+        //  - no ATP: the cell loses HP until it gets ATP back.
+        // Both pause while sheltered inside Yuki. Bodies other than the player keep the autolysis below.
+        if (!e.sheltered) {
+          if ((e.cargo.biomass || 0) <= PLAYER_STARVE.biomassEmpty && (e.cargo.energy || 0) < PLAYER_STARVE.fermentReserve) {
+            const burn = Math.min(PLAYER_STARVE.fermentHpPerS * dt, Math.max(0, e.hp));
+            e.hp -= burn;
+            e.cargo.energy = Math.min(PLAYER_STARVE.fermentReserve, (e.cargo.energy || 0) + burn * PLAYER_STARVE.fermentAtpPerHp);
+            e.hit = Math.max(e.hit, 0.03);
+          }
+          if ((e.cargo.energy || 0) <= 0.02) {
+            e.hp -= PLAYER_STARVE.noAtpHpPerS * dt;
+            e.hit = Math.max(e.hit, 0.05);
+          }
+        }
+      }
+      // Starvation (non-player bodies): out of ATP with too little biomass to recover, the body autolyses —
       // faster the emptier it is. No more sitting dead-in-the-water waiting on nothing;
       // you feed, you flee, or you dissolve (and the froth already smells you — see starving aggro).
-      if ((e.cargo.energy || 0) <= 0.02 && (e.cargo.biomass || 0) < 4) {
+      else if ((e.cargo.energy || 0) <= 0.02 && (e.cargo.biomass || 0) < 4) {
         const failedHunter = HUNTER_GUILD.has(e.controller) ? 3.0 : 1.0;
         e.hp -= (5 + 8 * (1 - (e.cargo.biomass || 0) / 4)) * failedHunter * dt;
         e.hit = Math.max(e.hit, 0.05);
       }
-      if ((e.cargo.energy || 0) <= 0.01 && (e.cargo.biomass || 0) <= 0.03) hurt(world, e, caps(e).hp + 10, 'energy_biomass_collapse');
+      if (e.kind !== 'player' && (e.cargo.energy || 0) <= 0.01 && (e.cargo.biomass || 0) <= 0.03) hurt(world, e, caps(e).hp + 10, 'energy_biomass_collapse');
     }
     if (e.hp <= 0) hurt(world, e, 0.01, 'metabolism');
   }
 }
+
+// Player starvation rates (see updateEnvironmentAndMetabolism). From full HP (~105) with no ATP the cell
+// lasts ~40 s; with no biomass but some ATP, fermenting itself costs ~1.5 HP/s.
+export const PLAYER_STARVE = Object.freeze({
+  noAtpHpPerS: 2.5,       // HP/s lost while ATP is empty
+  biomassEmpty: 0.05,     // biomass at or below this counts as none
+  fermentHpPerS: 1.5,     // HP/s burned fermenting the body when biomass is gone
+  fermentAtpPerHp: 0.6,   // ATP gained per HP fermented
+  fermentReserve: 2,      // fermentation only tops ATP up to this; it is a lifeline, not a farm
+});
 
 function updateEucharistIncubation(world, e, dt) {
   e.incubating.time -= dt;

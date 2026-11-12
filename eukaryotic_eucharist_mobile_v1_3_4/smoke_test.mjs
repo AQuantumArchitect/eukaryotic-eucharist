@@ -412,11 +412,18 @@ function foe(w, p, extra = {}) { const e = K.__test.spawnProtozoan(w, { x: p.x, 
   assert(pred.cargo.biomass > bio0, 'a predator devours loose DNA for biomass');
   assert(!w.particles.some(q => q.id === 'dpred'), 'the eaten DNA strand is consumed'); }
 
-// Starvation: out of ATP with almost no biomass, the body bleeds HP (no idle stall).
+// Player starvation (Luke, 2026-11-11): no ATP bleeds HP over time (no idle stall), but nothing kills
+// instantly while HP remains; only running out of HP does.
 { const w = K.createWorld({ seed: 4949 }); const p = K.getPlayer(w);
   p.cargo.energy = 0; p.cargo.biomass = 0.1; p.hp = K.__test.caps(p).hp; const hp0 = p.hp;
   for (let i = 0; i < 60; i++) { p.cargo.energy = 0; p.cargo.biomass = Math.min(0.1, p.cargo.biomass); K.step(w, {}, 1 / 60); }
-  assert(K.getPlayer(w).hp < hp0 - 3, 'a starving cell (no ATP, no biomass) autolyses instead of stalling'); }
+  const hp1 = K.getPlayer(w).hp;
+  assert(hp1 < hp0 - 2 && hp1 > hp0 - 4, 'no ATP bleeds HP at the starvation rate (~2.5 HP/s), no idle stall'); }
+{ const w = K.createWorld({ seed: 4950 }); const p = K.getPlayer(w);
+  p.cargo.energy = 0; p.cargo.biomass = 0; p.hp = K.__test.caps(p).hp;
+  for (let i = 0; i < 30; i++) { p.cargo.biomass = 0; K.step(w, {}, 1 / 60); }
+  assert(K.getPlayer(w) && K.getPlayer(w).alive && w.playerId === p.id, 'empty ATP and biomass at full HP is not an instant death');
+  assert(p.cargo.energy <= K.PLAYER_STARVE.fermentReserve + 1e-9, 'fermenting the body only tops ATP up to the small reserve'); }
 
 // Yuki is a rest point, not a trader: healing while resting near her is FREE (no offering to buy, no
 // matter spent) — she just eases HP up while the shop is open.

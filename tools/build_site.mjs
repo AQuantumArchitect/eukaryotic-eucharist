@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const out = resolve(process.argv[2] || join(root, '_site'));
-const latest = 'eukaryotic_eucharist_mobile_v1_3_3';
+const latest = 'eukaryotic_eucharist_mobile_v1_3_4';
+// The soundtrack lives once, in the v1.3.3 folder (v1.3.4 has none of its own).
+const musicSource = 'eukaryotic_eucharist_mobile_v1_3_3';
 const classic = 'eukaryotic_eucharist_mobile_v1_3_2';
 
 if (out === root || !relative(dirname(root), out)) throw new Error(`Refusing unsafe output path: ${out}`);
@@ -28,8 +30,8 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'versions'), { recursive: true });
 cpSync(join(root, 'site', 'index.html'), join(out, 'index.html'));
 cpSync(join(root, 'docs', 'screenshots'), join(out, 'screenshots'), { recursive: true });
-// Mecha Fish and its archived v1.3.3 route share one soundtrack copy in the Pages artifact.
-cpSync(join(root, latest, 'music'), join(out, 'music'), { recursive: true });
+// Mecha Fish and every archived version route share one soundtrack copy in the Pages artifact.
+cpSync(join(root, musicSource, 'music'), join(out, 'music'), { recursive: true });
 writeFileSync(join(out, '.nojekyll'), '');
 
 copyBuild(join(root, latest), join(out, 'mecha-fish'));

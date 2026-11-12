@@ -8,7 +8,7 @@
 | itch page | https://aquantumarchitect.itch.io/eukaryotic-eucharist (HTML) |
 | itch channels | `html` |
 | Engine | Plain HTML/JS (no engine). Shipped files: `index.html` + `src/` + Paul Spooner's `music/` soundtrack from the version folder. |
-| HTML reference build | `eukaryotic_eucharist_mobile_v1_3_3` (September 1.3.3, "Predator Flow Balance", full body graph). `tools/release.ps1` is deliberately pinned here; do not auto-select a newer folder. |
+| HTML reference build | `eukaryotic_eucharist_mobile_v1_3_4` (1.3.4 "first five minutes" on the 1.3.3 kernel, plus the fair-starvation rule). Luke moved the pin from 1.3.3 on 2026-11-11. The soundtrack ships from `eukaryotic_eucharist_mobile_v1_3_3/music` as `music/`. `tools/release.ps1` is deliberately pinned here; do not auto-select a newer folder. |
 | Mecha Fish | Separate page `mecha-fish`, taken down until it has its own art. |
 | Play copy | the itch page itself |
 | Release command | `git tag vX.Y.Z; .\tools\release.ps1 -Channel html` |

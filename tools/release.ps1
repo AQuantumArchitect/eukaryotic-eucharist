@@ -21,9 +21,10 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # ---- per-game config (keep in sync with RELEASE.md) -------------------------
 $ItchTarget   = 'aquantumarchitect/eukaryotic-eucharist'
 $Channels = @{
-  # Reference build: September v1.3.3 "Predator Flow Balance", including the full body graph.
+  # Reference build: v1.3.4 "first five minutes" (Luke chose it over v1.3.3 on 2026-11-11).
   # Keep this explicit. The itch build must not silently follow whichever version folder is newest.
-  html = @{ Kind='static'; Source='eukaryotic_eucharist_mobile_v1_3_3'; Include=@('index.html','src','music'); Out='build/release/html'; Check='index.html' }
+  # Extra: Paul Spooner's soundtrack has one home in the repo (the v1.3.3 folder); it ships as music/.
+  html = @{ Kind='static'; Source='eukaryotic_eucharist_mobile_v1_3_4'; Include=@('index.html','src'); Extra=@{ 'music'='eukaryotic_eucharist_mobile_v1_3_3/music' }; Out='build/release/html'; Check=@('index.html','music/eukaryotic-eucharist-Tracks-12.mp3') }
 }
 # -----------------------------------------------------------------------------
 
@@ -64,6 +65,7 @@ try {
       $src = Join-Path $Root $C.Source
       if ($C.Include) { foreach ($i in $C.Include) { Copy-Item (Join-Path $src $i) $Out -Recurse -Force } }
       else { Copy-Item (Join-Path $src '*') $Out -Recurse -Force }
+      if ($C.Extra) { foreach ($k in $C.Extra.Keys) { Copy-Item (Join-Path $Root $C.Extra[$k]) (Join-Path $Out $k) -Recurse -Force } }
     }
     'script' {
       & (Join-Path $Root $C.Script) @($C.ScriptArgs)
@@ -73,7 +75,7 @@ try {
     default { throw "Unknown kind $($C.Kind)" }
   }
   Set-Content -Path (Join-Path $Out 'VERSION.txt') -Value "$Version`n$(git rev-parse HEAD)"
-  if ($C.Check -and -not (Test-Path (Join-Path $Out $C.Check))) { throw "Build output is missing $($C.Check)" }
+  foreach ($chk in @($C.Check)) { if ($chk -and -not (Test-Path (Join-Path $Out $chk))) { throw "Build output is missing $chk" } }
 
   if ($DryRun) { Write-Host "DryRun: built $Out, not pushed."; return }
   if (-not $env:BUTLER_API_KEY) { throw "BUTLER_API_KEY is not set" }

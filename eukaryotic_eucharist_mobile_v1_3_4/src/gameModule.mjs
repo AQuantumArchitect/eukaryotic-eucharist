@@ -259,7 +259,7 @@ export function getYukiOfferings(world, entityId = world.playerId, source = 'yuk
     if (atCompanionCap) reasons.push(swarmCap(e) <= 0 ? 'requires a Pheromone Gland to conduct a swarm' : `colony full — your ${orgCount(e, 'pheromone_gland')} gland(s) conduct ${swarmCap(e)} swarms`);
     if (needsHost) reasons.push(...readiness.reasons.slice(0, 3));
     if (incubating) reasons.push('incubation underway');
-    if (!affordable) reasons.push(isValue ? `needs ${Math.ceil(o.value)} worth of matter (biomass + fat)` : `needs ${fmtStock(missingStock(e.cargo, cost))}`);
+    if (!affordable) reasons.push(isValue ? `needs ${Math.ceil(o.value)} worth of matter (biomass + fat)` : `needs ${fmtStock(missingStock(e.cargo, cost))}${capacityHint(e, cost)}`);
     const category = o.organelle ? ORGANELLES[o.organelle]?.category || null : null;
     // Functional category + the current Fibonacci exotic-cost multiplier (from same-category organs
     // already grown), so the shop can explain why an exotic price has climbed.
@@ -354,6 +354,17 @@ export function getYukiOfferings(world, entityId = world.playerId, source = 'yuk
   return [...sequenceOfferings, ...crabDnaOfferings, ...staticOfferings, ...attachOfferings];
 }
 
+// A price above what your tanks can even hold can never be paid by feeding more: say which organ grows the
+// tank (the starter holds 14 lipids, but a membrane costs 20 and a DNA Memory Vesicle 16). Bot playtests
+// on 2026-11-11 stalled here, saving forever for an organ its tank could not fit.
+const CAPACITY_ORGAN = { biomass: 'Storage Vacuole', lipids: 'Storage Vacuole', spores: 'Exotic Vacuole', enzymes: 'Exotic Vacuole', crystals: 'Exotic Vacuole', dna: 'DNA Memory Vesicle', energy: 'ATP Reservoir' };
+function capacityHint(e, cost = {}) {
+  const c = caps(e);
+  const over = Object.entries(cost).find(([k, v]) => k !== 'oxygen' && c[k] != null && v > c[k] + 1e-9);
+  if (!over) return '';
+  const [k] = over;
+  return ` (your tanks hold only ${Math.floor(c[k])} ${k}: grow ${/^[AEIOU]/.test(CAPACITY_ORGAN[k] || '') ? 'an' : 'a'} ${CAPACITY_ORGAN[k] || 'bigger tank'} first)`;
+}
 function missingStock(cargo, cost = {}) { const m = {}; for (const [k, v] of Object.entries(cost)) if (k !== 'oxygen' && (cargo[k] || 0) < v) m[k] = v - (cargo[k] || 0); return m; }
 
 export function buyOffering(world, offeringId, entityId = world.playerId) {

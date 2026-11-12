@@ -9,7 +9,7 @@ body is a graph, and every death becomes food for the column.
 
 | | Build | What it is |
 |---|---|---|
-| ▶ [Play](https://aquantumarchitect.github.io/eukaryotic-eucharist/mecha-fish/) | **Mecha Fish!** (v1.3.3, latest) | A mechanical fish in a deep column (2240×7840). Swim the light, oxygen and flow gradients, feed your tanks from drifting fields, and graft organs onto your hull at Yuki's canopy dock. Best on desktop. |
+| ▶ [Play](https://aquantumarchitect.github.io/eukaryotic-eucharist/mecha-fish/) | **Mecha Fish!** (v1.3.4, latest) | A mechanical fish in a deep column (2240×7840). Swim the light, oxygen and flow gradients, feed your tanks from drifting fields, and graft organs onto your hull at Yuki's canopy dock. Best on desktop. |
 | ▶ [Play](https://aquantumarchitect.github.io/eukaryotic-eucharist/classic/) | **Classic** (v1.3.2) | The last build before the column expansion. Smaller world, a much lighter simulation, and a plain numeric HUD. Plays well on phones. |
 | ▶ [Play](https://aquantumarchitect.github.io/eukaryotic-eucharist/immune/) | **Immune Incursion** (prototype) | A sibling game: you are the host immune system. Detect, deploy, clear, remember. Headless Python kernel + a small HTML face. |
 | [Archive](https://aquantumarchitect.github.io/eukaryotic-eucharist/#archive) | v1.0 … v1.3.1 | Every snapshot, playable as it shipped. |
@@ -40,7 +40,8 @@ the tanks and vitals they feed. Near Yuki the same graph becomes the shop.
 
 ```
 eukaryotic_eucharist_mobile_v1_0 … v1_3_2   older snapshots, each self-contained (index.html + src/ + tests + design notes)
-eukaryotic_eucharist_mobile_v1_3_3          Mecha Fish! — the current game, plus its tuning/ecology tooling
+eukaryotic_eucharist_mobile_v1_3_3          Mecha Fish! 1.3.3: tuning/ecology tooling and the soundtrack (music/)
+eukaryotic_eucharist_mobile_v1_3_4          Mecha Fish! — the current game (Pages mecha-fish/ and the itch build)
   src/graph_kernel.mjs                      kernel entry (barrel over simCore.mjs + gameModule.mjs)
   smoke_test.mjs                            ~1,350 lines of kernel assertions
   DESIGN_CONSTITUTION_MECHA_FISH.md         product rules; SIM_TUNING_README / ECOLOGY_DIAGNOSIS for the sim
@@ -62,7 +63,7 @@ Python 3 are the supported local toolchain; the repository has no npm runtime de
 ```powershell
 npm ci
 npm start
-# open http://localhost:8787/eukaryotic_eucharist_mobile_v1_3_3/  (or any version folder)
+# open http://localhost:8787/eukaryotic_eucharist_mobile_v1_3_4/  (or any version folder)
 ```
 
 Controls: WASD / arrows to swim, F or right mouse to feed, E to open Yuki, O for the hull graph.

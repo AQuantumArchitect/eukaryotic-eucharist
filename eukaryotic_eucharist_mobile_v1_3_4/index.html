@@ -148,7 +148,7 @@ body.shopping .touch{display:none}body.shopping .law{display:none}body.shopping 
     <div class="toast card" id="toast"></div>
   </div>
   <div class="overlay" id="shopOverlay"><div class="shop"><div class="shopHead"><div><h1 id="shopTitle">Yuki <small style="font-size:11px;font-weight:800;color:var(--muted)">— dock · hull grafts · ballast</small></h1></div><div class="close" id="closeShop">Clos<b class="ckey">e</b></div></div><div id="shopGuide" class="shopGuide"></div><div id="shopExchange" class="shopExchange"></div><div id="shopWarn" class="shopWarn" style="display:none"></div><div id="bodyHead" class="bodyHead"><span>Your Hull <small id="bodyCount"></small></span></div><div id="shopBody"></div></div></div>
-  <div class="gameOver" id="gameOver"><div class="box card"><h1>Hull Ruptured</h1><p>The world did not reset. Your wreck bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
+  <div class="gameOver" id="gameOver"><div class="box card"><h1>Hull Ruptured</h1><p id="deathCause" style="color:#ffd8df;font-weight:850"></p><p>The world did not reset. Your wreck bloomed into a field.</p><button id="respawn">Continue descent</button></div></div>
   <div class="gameOver" id="wipeConfirm"><div class="box card"><h1>Wipe everything?</h1><p>This erases every DNA unlock permanently — Yuki's grafts return to locked, first-run state. This cannot be undone.</p><button id="wipeCancel" style="background:rgba(255,255,255,.14);color:#eae7ff;margin-right:8px">Cancel</button><button id="wipeConfirmBtn">Wipe everything</button></div></div>
   <div class="focusGate" id="focusGate"><h2>Click to dive</h2><p>Take the helm of a mechanical fish</p></div>
 </div>
@@ -177,7 +177,9 @@ function norm(x,y){const d=Math.hypot(x,y)||1;return{x:x/d,y:y/d,d}}
 // so resolve the one shared Pages copy without making the itch package depend on a parent folder.
 const musicPlayer=el('musicPlayer'),musicToggle=el('musicToggle'),musicNext=el('musicNext'),musicVolume=el('musicVolume'),musicNow=el('musicNow');
 const musicTracks=Array.from({length:12},(_,i)=>`eukaryotic-eucharist-Tracks-${String(i+1).padStart(2,'0')}.mp3`);
-const musicBase=location.pathname.includes('/mecha-fish/')?'../music/':location.pathname.includes('/versions/')?'../../music/':'./music/';
+// Pages: shared /music/. itch zip: ./music/ beside index.html. Repo checkout (npm start): the soundtrack's one
+// home is the v1.3.3 folder, since this folder has no music/ of its own.
+const musicBase=location.pathname.includes('/mecha-fish/')?'../music/':location.pathname.includes('/versions/')?'../../music/':location.pathname.includes('/eukaryotic_eucharist_mobile_v1_3_4/')?'../eukaryotic_eucharist_mobile_v1_3_3/music/':'./music/';
 let musicOrder=[],musicCursor=0;
 try{musicVolume.value=localStorage.getItem('eeMusicVolume')||'0.32'}catch{}
 musicPlayer.volume=Number(musicVolume.value);
@@ -434,7 +436,7 @@ addEventListener('keydown',e=>{
   }
   if(k==='p'){ if(e.shiftKey) confirmFullWipe(); else resetWorld(); }
   if(k==='o') dagToggleOpen();
-  if(k==='k') { K.killPlayer(world); toast('You burst your own membrane — your corpse blooms into a feeding field.'); }
+  if(k==='k') { if(K.killPlayer(world).ok) showDeath('Self-lysis: you burst your own membrane, and your corpse blooms into a feeding field.'); }
   if(e.key==='Escape') closeShop();
 });
 addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
@@ -487,9 +489,59 @@ function loop(now){
 }
 requestAnimationFrame(loop);
 
+// Why did I die? The kernel's death event carries sourceId: a body id like 'body_119' (a killer) or a reason string
+// ('metabolism', or 'energy_biomass_collapse' from older kernels). Ambient deaths are read from the player's last frame, so the
+// game-over card names the cause instead of a bare "Hull Ruptured" (bot playtests: most deaths were
+// silent starvation or canopy O2, which a new player can't tell apart from being eaten).
+let lastSelf=null, lastBodies=new Map();
+const KILLER_NAME={algae:'an algal bloom',scavenger:'a scavenger',predator:'a predator',protozoan:'a protozoan',metazoan:'a metazoan colony',brood:'a brood cell',swarm_agent:'a swarm cell',shroomba:'the crab'};
+function deathCause(src){
+  if(lastBodies.has(src)){ const k=lastBodies.get(src); return `Killed by ${KILLER_NAME[k]||'another cell'}.`; }
+  if(typeof src==='number'||/^body_/.test(String(src))) return 'Killed in a fight.';
+  const s=lastSelf;
+  const STARVED='Starved: with no ATP your cell burned through its HP. Feed on fields to refill biomass and ATP.';
+  if(src==='energy_biomass_collapse'||!s) return src==='energy_biomass_collapse'?STARVED:'Your cell gave out.';
+  // Name the biggest ambient drain, using the kernel's own HP rates (updateEnvironmentAndMetabolism):
+  // O2 overload ~7.4/s per unit over tolerance, toxins (1.8+9.5x)x past 68% of the cap, and player starvation
+  // (K.PLAYER_STARVE): no ATP 2.5/s, plus 1.5/s fermenting the body when biomass is gone.
+  const o2=Math.max(0,s.oxygen-s.oxygenTolerance)*7.4;
+  const tx=s.toxinCap>0?Math.max(0,(s.toxins-s.toxinCap*0.68)/s.toxinCap):0, tox=(1.8+9.5*tx)*tx;
+  const PS=K.PLAYER_STARVE||{noAtpHpPerS:2.5,fermentHpPerS:1.5,biomassEmpty:0.05,fermentReserve:2};
+  const starve=(s.atp<=0.05?PS.noAtpHpPerS:0)+(s.biomass<=PS.biomassEmpty&&s.atp<PS.fermentReserve?PS.fermentHpPerS:0);
+  const worst=Math.max(o2,tox,starve);
+  if(worst<=0) return 'Your cell gave out.';
+  if(worst===starve) return STARVED;
+  if(worst===o2) return 'Oxygen poisoning: you held more O2 than your cell can take. Dive below the sunlit canopy, or rest inside Yuki.';
+  return 'Poisoned by your own toxins. Yuki scrubs them; Compact (U) turns them into ballast.';
+}
+function rememberSelf(){
+  const pid=world.playerId, me=projection.entities.find(e=>e.id===pid);
+  if(me){
+    const atp=hud?.resources?.find(r=>r.id==='energy'), bio=hud?.resources?.find(r=>r.id==='biomass');
+    lastSelf={oxygen:me.oxygen,oxygenTolerance:me.oxygenTolerance,toxins:me.toxins,toxinCap:me.toxinCap,atp:atp?atp.value:1,biomass:bio?bio.value:10};
+    // Starvation warning (K.PLAYER_STARVE): no ATP costs HP over time, and with no biomass the cell ferments
+    // its own body for ATP. Only running out of HP kills. Say which is happening, at most every 5 s, never
+    // while sheltered inside Yuki (both pause there).
+    const now=performance.now();
+    if(atp&&bio&&!me.sheltered&&now-(rememberSelf._warned||0)>5000){
+      const msg=atp.value<=0.05?'Out of ATP: your cell is losing HP. Feed on a field to make ATP.'
+        :bio.value<=0.05?'No biomass: your cell is fermenting its own body for ATP and losing HP. Feed on a field.'
+        :atp.value<2&&bio.value<6?'Running dry: ATP and biomass are almost gone. Feed on a field before your cell starts burning HP.':null;
+      if(msg){ rememberSelf._warned=now; toast(msg); }
+    }
+  }
+  lastBodies=new Map(projection.entities.map(e=>[e.id,e.controller]));
+}
+function showDeath(text){
+  if(didGameOver) return;
+  didGameOver=true; el('deathCause').textContent=text; ui.gameOver.style.display='flex';
+  setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},2600);
+}
 function checkDeathEvent(){
   const evs=projection.events, pid=world.playerId;
-  if(evs.some(e=>e.type==='death'&&e.entityId===pid)&&!didGameOver){didGameOver=true;ui.gameOver.style.display='flex';setTimeout(()=>{ui.gameOver.style.display='none';didGameOver=false},900)}
+  const died=evs.find(e=>e.type==='death'&&e.entityId===pid);
+  if(died) showDeath(deathCause(died.sourceId));
+  if(!died) rememberSelf();
   // The notification bar is for YOU: only events about the player's own body, and only
   // meaningful ones (progress, milestones), never the froth's per-cell simulation churn.
   // One highest-priority message per frame, so it reads clean instead of flickering.
