@@ -2,6 +2,14 @@
 
 Short dated entries from Claude Code on Fenrir, so Game Butler can read progress. Newest first.
 
+## 2026-11-11, night (Claude Code on Fenrir, Opus 5.5): PR and playtest issue
+
+- The branch commits were re-authored with the noreply email and pushed (not by me), so pushing works now.
+- Opened PR #16 (`fenrir/playtest-polish` -> main). CI green: kernel tests, page load check, release dry run.
+- Opened the ready-for-human-playtest issue #17 for commit 06723b1 (v1.3.4), with Windows run steps,
+  evidence, the unmeasured ~1 hour time to beat in three ~20-minute sessions, and known issues.
+- Now waiting for Luke's sign-off in #17. No tag, no itch push. Open questions 3 and 4 below still stand.
+
 ## 2026-11-11, evening (Claude Code on Fenrir, Opus 5.5): capacity walls and time-to-beat
 
 The same Game Butler brief arrived again; Luke's two decisions were already done (entry below).
